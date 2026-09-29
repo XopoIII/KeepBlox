@@ -5,6 +5,10 @@ semantic versioning.
 
 ## Unreleased
 
+### Added
+
+- The Wally and pesde packages, `xopoiii/keepblox` (0.1.0 is published on both).
+
 ## 0.1.0 - 2026-09-29
 
 ### Added
