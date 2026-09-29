@@ -37,3 +37,8 @@ semantic versioning.
   of dropping.
 - Purchases (`KeepBlox.processReceipt`): granted once, and reported granted only once stored.
 - Versions: `store:versions`, `store:readVersion`, and `store:restore`, which refuses while a key is in use.
+- A schema for the data (`KeepBlox.schema`): types, defaults, bounds and nesting, with path errors on
+  refused saves.
+- Numbered migrations with a stored schema version. A load refuses data from a newer version, a failing
+  migration, or data that does not fit the schema; it lets the key go and writes nothing.
+  `KeepBlox.migrate` tests a migration against fixtures.

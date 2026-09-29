@@ -88,7 +88,7 @@ function Record.isHere(tag: any, identity: Identity): boolean
 end
 
 --> Our namespaced state in a record's MetaData, created if absent (a ProfileStore record has none).
-function Record.ours(meta: any): { lease: number, owner: string?, receipts: { string }? }
+function Record.ours(meta: any): { lease: number, owner: string?, receipts: { string }?, schemaVersion: number? }
 	local state = meta.KeepBlox
 	if type(state) ~= "table" then
 		state = { lease = 0 }

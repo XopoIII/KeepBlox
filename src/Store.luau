@@ -14,9 +14,11 @@ const Claim = require("./Claim")
 const Config = require("./Config")
 const Inbox = require("./Inbox")
 const Messages = require("./Messages")
+const Migrate = require("./Migrate")
 const MockServices = require("./MockServices")
 const Profile = require("./Profile")
 const Record = require("./Record")
+const Schema = require("./Schema")
 const Receipts = require("./Receipts")
 const Send = require("./Send")
 const Serial = require("./Serial")
@@ -28,8 +30,14 @@ const Validate = require("./Validate")
 const Versions = require("./Versions")
 
 export type Options = {
-	--> The data a new profile starts with.
-	template: { [any]: any },
+	--> The data a new profile starts with. Give this or `schema`, not both.
+	template: { [any]: any }?,
+	--> The shape of the data (see Schema). New profiles start from its defaults.
+	schema: Schema.Node?,
+	--> The schema version the data is at now; default: the highest migration.
+	version: number?,
+	--> Migrations `[n]`, each taking the data from version n - 1 to n (see Migrate).
+	migrations: { [number]: Migrate.Migration }?,
 	--> The engine services; the real ones by default. Tests pass fakes.
 	services: Services.Services?,
 	--> Overrides for `Config.DEFAULT`.
@@ -47,7 +55,9 @@ export type LoadOptions = {
 	steal: boolean?,
 }
 
-export type LoadResult = { ok: true, profile: Profile.Profile } | { ok: false, reason: Claim.Failure | "open" }
+export type LoadResult =
+	{ ok: true, profile: Profile.Profile }
+	| { ok: false, reason: Claim.Failure | "open" | "newerSchema" | "migration" | "schema" }
 
 export type Store = {
 	read name: string,
@@ -81,8 +91,17 @@ end
 
 function Store.new(name: string, options: Options): Store
 	assert(type(name) == "string" and #name > 0, "KeepBlox: a store needs a name")
-	assert(type(options) == "table" and type(options.template) == "table", "KeepBlox: a store needs a template")
-	assert(Validate.check(options.template, "template"), "KeepBlox: the template must be storable")
+	assert(type(options) == "table", "KeepBlox: a store needs options")
+	assert(
+		(options.template == nil) ~= (options.schema == nil),
+		"KeepBlox: a store needs a template or a schema, and not both"
+	)
+	const template = if options.schema then Schema.default(options.schema) else Record.copy(options.template)
+	assert(
+		type(template) == "table" and Validate.check(template, "template"),
+		"KeepBlox: the template must be storable"
+	)
+	const plan = Migrate.plan(options.schema, options.version, options.migrations)
 	const config = Config.resolve(options.config)
 	local services = options.services or require("./RobloxServices").build()
 	if options.mock then
@@ -91,7 +110,6 @@ function Store.new(name: string, options: Options): Store
 	-- Studio without API access is found by a read on first load; a write would touch a live key.
 	local checked = options.mock ~= nil or not services.isStudio
 	const clock = services.clock
-	const template = Record.copy(options.template)
 	const onError: Signal.Signal<string, string> = Signal.new(clock.spawn)
 	const sessions: { [string]: Session.Session } = {}
 	const opening: { [string]: boolean } = {}
@@ -102,6 +120,7 @@ function Store.new(name: string, options: Options): Store
 		config = config,
 		dataStore = services.dataStores:GetDataStore(name),
 		identity = { placeId = services.placeId, jobId = services.jobId, guid = "" },
+		plan = plan,
 		report = function(key: string, message: string)
 			onError:fire(key, message)
 		end,
@@ -180,6 +199,20 @@ function Store.new(name: string, options: Options): Store
 				return { ok = false, reason = claim.reason }
 			end
 			const record = claim.record
+			-- The data as stored, before any migration: a profile that did not change is not written again.
+			const stored = Validate.check(record.Data, "Data", nil, Session.slicer(clock))
+			const migrated = Migrate.run(plan, record.Data, Migrate.stored(record))
+			if not migrated.ok then
+				-- Never hand out, or write back, data this server cannot make sense of.
+				Claim.giveBack(context, key, claim.loadCount)
+				listener.done = true
+				if listener.connection then
+					listener.connection:Disconnect()
+				end
+				onError:fire(key, migrated.message)
+				return { ok = false, reason = migrated.reason }
+			end
+			record.Data = migrated.data
 			local session: Session.Session
 			const profile = Profile.new(key, claim.loadCount, record, clock.spawn, {
 				isActive = function(): boolean
@@ -195,7 +228,8 @@ function Store.new(name: string, options: Options): Store
 					session.inbox:handle(handler)
 				end,
 			})
-			const encoded = Validate.check(record.Data, "Data", nil, Session.slicer(clock))
+			-- Migrated data is written at the first renewal, with its new schema version.
+			const encoded = if migrated.changed then nil else stored
 			session = {
 				key = key,
 				loadCount = claim.loadCount,

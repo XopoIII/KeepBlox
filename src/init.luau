@@ -25,7 +25,10 @@
 ---         if profile then profile:release() end
 ---     end)
 const Config = require("@self/Config")
+const Migrate = require("@self/Migrate")
 const Profile = require("@self/Profile")
+const Record = require("@self/Record")
+const Schema = require("@self/Schema")
 const Store = require("@self/Store")
 
 export type Store = Store.Store
@@ -40,6 +43,24 @@ KeepBlox.store = Store.new
 
 --> The protocol's default numbers.
 KeepBlox.defaults = Config.DEFAULT
+
+--> Builders for a store's `schema` (see Schema).
+KeepBlox.schema = Schema
+
+--> Runs a store's migrations, defaults and schema check on a copy of `data` stored at version `from`,
+--> exactly as a load does. For testing each migration with fixtures from before and after it.
+function KeepBlox.migrate(
+	options: {
+		read schema: Schema.Node?,
+		read version: number?,
+		read migrations: { [number]: Migrate.Migration }?,
+	},
+	data: any,
+	from: number
+): Migrate.Outcome
+	const plan = Migrate.plan(options.schema, options.version, options.migrations)
+	return Migrate.run(plan, Record.copy(data), from)
+end
 
 --> The callback for `MarketplaceService.ProcessReceipt`, over `store:receipts(options)`: it returns the
 --> engine's `Enum.ProductPurchaseDecision`.

@@ -58,7 +58,7 @@ const function quarantine(context: Session.Context, storeName: string, key: stri
 end
 
 --> Lets go of a key this server has just taken but no longer wants (the player left, or shutdown).
-const function giveBack(context: Session.Context, key: string, loadCount: number)
+function Claim.giveBack(context: Session.Context, key: string, loadCount: number)
 	pcall(
 		Call.run,
 		context.services.clock,
@@ -125,7 +125,7 @@ function Claim.open(
 			const outcome = claim :: Lock.Claim
 			if outcome.kind == "taken" then
 				if context.closing() or (cancel and cancel()) then
-					giveBack(context, key, outcome.loadCount)
+					Claim.giveBack(context, key, outcome.loadCount)
 					return { ok = false, reason = if context.closing() then "closing" else "cancelled" }
 				end
 				return { ok = true, record = outcome.record, loadCount = outcome.loadCount }
