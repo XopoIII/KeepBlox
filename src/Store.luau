@@ -25,6 +25,7 @@ const Session = require("./Session")
 const Signal = require("./Signal")
 const Upkeep = require("./Upkeep")
 const Validate = require("./Validate")
+const Versions = require("./Versions")
 
 export type Options = {
 	--> The data a new profile starts with.
@@ -57,6 +58,12 @@ export type Store = {
 	profiles: (self: Store) -> { [string]: Profile.Profile },
 	--> Queues an offline message for `key`, open or not (see Send).
 	message: (self: Store, key: string, message: { [any]: any }) -> Send.Result,
+	--> Past versions of a key, newest last unless asked otherwise (see Versions).
+	versions: (self: Store, key: string, query: Versions.Query?) -> { Versions.Version },
+	--> The data a key held at a version, or nil.
+	readVersion: (self: Store, key: string, version: string) -> any,
+	--> Makes a version's data current. Refuses while any server holds the key.
+	restore: (self: Store, key: string, version: string) -> Versions.Restored,
 	--> A ProcessReceipt callback for this store, answering with a decision's name (see Receipts).
 	receipts: (self: Store, options: Receipts.Options) -> (receipt: Receipts.Receipt) -> Receipts.Decision,
 }
@@ -222,6 +229,15 @@ function Store.new(name: string, options: Options): Store
 		end,
 		message = function(_: Store, key: string, message: { [any]: any }): Send.Result
 			return Send.message(internals, key, message)
+		end,
+		versions = function(_: Store, key: string, query: Versions.Query?): { Versions.Version }
+			return Versions.list(base, key, query)
+		end,
+		readVersion = function(_: Store, key: string, version: string): any
+			return Versions.read(base, key, version)
+		end,
+		restore = function(_: Store, key: string, version: string): Versions.Restored
+			return Versions.restore(base, key, version)
 		end,
 		receipts = function(_: Store, receiptOptions: Receipts.Options): (Receipts.Receipt) -> Receipts.Decision
 			return Receipts.handler(internals, receiptOptions)

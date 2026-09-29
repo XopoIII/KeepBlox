@@ -33,3 +33,7 @@ semantic versioning.
 - ProfileStore compatibility:
   - mixed ProfileStore and KeepBlox servers keep every invariant in the harness (`tests/sim/Mixed.luau`);
   - `Compat/ProfileStore` offers ProfileStore's API, so the migration is one `require`.
+- Offline messages (`store:message`, `profile:onMessage`), handled exactly once; a full queue refuses instead
+  of dropping.
+- Purchases (`KeepBlox.processReceipt`): granted once, and reported granted only once stored.
+- Versions: `store:versions`, `store:readVersion`, and `store:restore`, which refuses while a key is in use.

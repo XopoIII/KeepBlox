@@ -66,6 +66,46 @@ Spec.test("Compat: ProfileStore keeps our MetaData.KeepBlox when it rewrites a k
 	Spec.equal(record.MetaData.SessionLoadCount, 2)
 end)
 
+Spec.test("Compat: messages cross between the libraries, both ways, handled once", function()
+	const RobloxEnv = require("@sim/RobloxEnv")
+	const source = RobloxEnv.read("tests/reference/ProfileStore.luau")
+	const world = World.new(1)
+	const psServer = world:server({ name = "PS" })
+	const kbServer = world:server({ name = "KB" })
+	const env = RobloxEnv.new(world, psServer)
+	const kbStore = KeepBlox.store("Profiles", { template = { gifts = 0 }, services = kbServer.services })
+	local psStore: any = nil
+	local psProfile: any = nil
+	Sim.run(world.scheduler, "PS", function()
+		psStore = env:load(source, "ProfileStore").New("Profiles", { gifts = 0 })
+		psProfile = psStore:StartSessionAsync("held_by_ps")
+		psProfile:MessageHandler(function(message: any, processed: () -> ())
+			psProfile.Data.gifts += message.amount
+			processed()
+		end)
+	end, 5)
+	local kbProfile: any = nil
+	Sim.run(world.scheduler, "KB", function()
+		const result = kbStore:load("held_by_kb")
+		assert(result.ok, "loaded")
+		const profile = result.profile
+		kbProfile = profile
+		profile:onMessage(function(message: any, processed: () -> ())
+			profile.Data.gifts += message.amount
+			processed()
+		end)
+		Spec.equal(kbStore:message("held_by_ps", { amount = 3 }), { ok = true })
+	end, 10)
+	Sim.run(world.scheduler, "PS", function()
+		Spec.equal(psStore:MessageAsync("held_by_kb", { amount = 4 }), true)
+	end, world.scheduler.now + 30)
+	Spec.equal(psProfile.Data.gifts, 3, "ProfileStore handled KeepBlox's message")
+	Spec.equal(kbProfile.Data.gifts, 4, "KeepBlox handled ProfileStore's message")
+	world.scheduler:run(world.scheduler.now + 60)
+	Spec.equal(psProfile.Data.gifts, 3, "once")
+	Spec.equal(kbProfile.Data.gifts, 4, "once")
+end)
+
 Spec.test("Compat: a ProfileService-era lock (no GUID) is honoured, and taken over by ProfileStore's rules", function()
 	const world = World.new(1)
 	const services = world:server({ name = "A" }).services

@@ -128,6 +128,9 @@ function CompatProfile.active(profile: Profile.Profile, template: { [any]: any }
 	function self.SetAsync(_: any)
 		error("KeepBlox: :SetAsync() is only for profiles read with :GetAsync()", 2)
 	end
+	function self.MessageHandler(_: any, handler: (message: any, processed: () -> ()) -> ())
+		profile:onMessage(handler)
+	end
 	return self
 end
 
@@ -177,6 +180,9 @@ function CompatProfile.view(
 	end
 	function self.SetAsync(this: any)
 		overwrite(this.Data)
+	end
+	function self.MessageHandler(_: any)
+		error("KeepBlox: messages are handled by an active session, not in view mode", 2)
 	end
 	return self
 end
