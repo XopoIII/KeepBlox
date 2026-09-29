@@ -28,3 +28,6 @@ bench/rivals/
 docs/node_modules/
 docs/dist/
 docs/.astro/
+
+# pesde publish --dry-run output
+package.tar.gz

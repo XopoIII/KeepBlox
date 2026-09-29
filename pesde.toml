@@ -1,0 +1,15 @@
+name = "xopoiii/keepblox"
+version = "0.1.0"
+description = "Player data for Roblox that loses nothing, fails loudly, and never stutters a frame"
+authors = ["XopoIII"]
+repository = "https://github.com/XopoIII/KeepBlox"
+license = "MIT"
+includes = ["src", "pesde.toml", "README.md", "LICENSE"]
+
+[target]
+environment = "roblox_server"
+lib = "src/init.luau"
+build_files = ["src"]
+
+[indices]
+default = "https://github.com/pesde-pkg/index"

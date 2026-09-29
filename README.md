@@ -11,6 +11,14 @@ new servers side by side during the rollout, and switch back.
 > **Status: 0.1.0, the first release.** Everything below is proven in the simulator, against ProfileStore
 > and five other libraries. It has not yet run in a live game: try it in a test place first.
 
+## Install
+
+- **Wally:** `KeepBlox = "xopoiii/keepblox@0.1.0"` under `[server-dependencies]`.
+- **pesde:** `pesde add xopoiii/keepblox -t roblox_server -a KeepBlox`.
+- **Studio:** `KeepBlox.rbxm` from the [latest release](https://github.com/XopoIII/KeepBlox/releases/latest).
+
+More in [Installation](https://xopoiii.github.io/KeepBlox/getting-started/installation/).
+
 ## Against the libraries games use today
 
 Every library runs unmodified in the same simulator: the same fakes of DataStore, MemoryStore,

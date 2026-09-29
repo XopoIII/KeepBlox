@@ -1,0 +1,12 @@
+[package]
+name = "xopoiii/keepblox"
+description = "Player data for Roblox that loses nothing, fails loudly, and never stutters a frame"
+version = "0.1.0"
+license = "MIT"
+authors = ["XopoIII"]
+repository = "https://github.com/XopoIII/KeepBlox"
+homepage = "https://xopoiii.github.io/KeepBlox/"
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "server"
+exclude = ["**"]
+include = ["src", "src/**", "default.project.json", "wally.toml", "README.md", "LICENSE"]

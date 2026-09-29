@@ -25,6 +25,7 @@ semantic versioning.
 - `tests/Mutate.luau`: mutation adequacy of the suite. 21 mutants, each a slip in code that keeps a
   guarantee, must each fail the suite.
 - Differential fuzzing of the save check against the store's encoding.
+- The Wally and pesde packages, `xopoiii/keepblox` (0.1.0 is published on both).
 
 ## 0.1.0 - 2026-09-29
 
