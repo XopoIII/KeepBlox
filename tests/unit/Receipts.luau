@@ -11,6 +11,13 @@ const PRODUCTS = {
 	end,
 }
 
+-- A table with an array part and a string key: a shape no data store holds, and no repair makes one.
+const function mixed(): any
+	const shape: any = { 1 }
+	shape.x = 2
+	return shape
+end
+
 const function receipt(id: string): any
 	return { PlayerId = 7, PurchaseId = id, ProductId = 1 }
 end
@@ -102,7 +109,7 @@ Spec.test("Receipts: data that cannot be stored means the purchase is not grante
 	Sim.run(world.scheduler, "A", function()
 		const result = store:load("u_7")
 		assert(result.ok, "loaded")
-		result.profile.Data.bad = 0 / 0
+		result.profile.Data.bad = mixed()
 		Spec.equal(decide(receipt("r1")), "NotProcessedYet")
 		Spec.equal(stored(world).Data.coins, 0)
 		result.profile.Data.bad = nil
@@ -110,7 +117,20 @@ Spec.test("Receipts: data that cannot be stored means the purchase is not grante
 		Spec.equal(stored(world).Data.coins, 100)
 		result.profile:release()
 	end, 60)
-	Spec.equal(errors[1], "not saved: Data.bad: NaN cannot be stored")
+	Spec.equal(errors[1], "not saved: Data.bad.1: number key in a table that is not an array")
+end)
+
+Spec.test("Receipts: a bad value the data store would refuse does not hold up a purchase: it is repaired", function()
+	const world, _, store, decide = setup()
+	Sim.run(world.scheduler, "A", function()
+		const result = store:load("u_7")
+		assert(result.ok, "loaded")
+		result.profile.Data.bad = 0 / 0
+		Spec.equal(decide(receipt("r1")), "PurchaseGranted")
+		Spec.equal(stored(world).Data, { coins = 100 })
+		Spec.equal(stored(world).MetaData.KeepBlox.receipts, { "r1" })
+		result.profile:release()
+	end, 60)
 end)
 
 Spec.test("Receipts: an unknown product is not granted, and says why", function()

@@ -185,14 +185,14 @@ const MUTANTS: { Mutant } = {
 	},
 	{
 		file = "src/Record.luau",
-		from = "\t\tsetmetatable(result :: any, nil)",
-		to = "",
+		from = 'error("KeepBlox: too deep to copy", 0)\n\tend\n\tconst result: { [any]: any } = table.clone(value)\n\tif getmetatable(result) ~= nil then',
+		to = 'error("KeepBlox: too deep to copy", 0)\n\tend\n\tconst result: { [any]: any } = table.clone(value)\n\tif false then',
 		breaks = "a copy of the data carries no metatable",
 	},
 	{
 		file = "src/Record.luau",
-		from = 'if kind == "table" or kind == "buffer" then',
-		to = 'if kind == "buffer" then',
+		from = "result[key] = copyFast(item, depth + 1)",
+		to = "result[key] = item",
 		breaks = "a copy shares no table with the data (a snapshot does not change after it is taken)",
 	},
 	{
@@ -200,6 +200,30 @@ const MUTANTS: { Mutant } = {
 		from = '\t\ttable.insert(state.chunks, table.concat(parts, ",", 1, state.count))\n\t\tstate.count = 0',
 		to = '\t\ttable.insert(state.chunks, table.concat(parts, ",", 1, state.count - 1))\n\t\tstate.count = 0',
 		breaks = "a large value's text keeps every part (its text decides whether it is written)",
+	},
+	{
+		file = "src/Session.luau",
+		from = "\telseif encoded == nil then\n\t\t-- One bad value must not cost",
+		to = "\telseif false then\n\t\t-- One bad value must not cost",
+		breaks = "one bad value does not cost the play around it (poison)",
+	},
+	{
+		file = "src/Lease.luau",
+		from = 'if #Repair.run(repaired, "Data") > 0 then',
+		to = "if false then",
+		breaks = "a bad value does not stop the crash snapshots",
+	},
+	{
+		file = "src/Repair.luau",
+		from = "tbl[key] = mend(value)",
+		to = "tbl[key] = nil",
+		breaks = "a bad string keeps its text, only its bad bytes replaced",
+	},
+	{
+		file = "src/Record.luau",
+		from = "return if ok then result else copyShared(value, {})",
+		to = "return if ok then result else nil",
+		breaks = "data that contains itself does not break the copy",
 	},
 	{
 		file = "src/Versions.luau",

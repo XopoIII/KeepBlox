@@ -8,6 +8,13 @@ const World = require("@fakes/World")
 
 const TEMPLATE = { coins = 0, gifts = {} }
 
+-- A table with an array part and a string key: a shape no data store holds, and no repair makes one.
+const function mixed(): any
+	const shape: any = { 1 }
+	shape.x = 2
+	return shape
+end
+
 const function stored(world: World.World, key: string): any
 	return (world.backend:latest("Profiles/global", key) :: any).value
 end
@@ -168,10 +175,30 @@ Spec.test("Snapshot: when the data turns unstorable, the last good snapshot is w
 		assert(result.ok, "A loaded")
 		result.profile.Data.coins = 40
 		world.scheduler:wait(6)
-		result.profile.Data.coins = 0 / 0
+		result.profile.Data.coins = mixed()
 		result.profile:release()
 	end, world.scheduler.now + 60)
 	Spec.equal(stored(world, "u_1").Data.coins, 40)
+end)
+
+Spec.test("Snapshot: a bad value does not stop the snapshots; a crash keeps the play around it", function()
+	const world = World.new(7)
+	const a = store(world, "A")
+	local played = 0
+	Sim.run(world.scheduler, "A", function()
+		const result = a:load("u_1")
+		assert(result.ok, "A loaded")
+		result.profile.Data.gifts = { "bad\xFF" }
+		for _ = 1, 25 do
+			world.scheduler:wait(1)
+			played += 1
+			result.profile.Data.coins = played
+		end
+	end, world.scheduler.now + 30)
+	crash(world, "A")
+	const profile = reload(world, store(world, "B"))
+	Spec.truthy(played - profile.Data.coins <= 5, `played {played}, got {profile.Data.coins}`)
+	Spec.equal(profile.Data.gifts, { `bad{utf8.char(0xFFFD)}` })
 end)
 
 Spec.test("Snapshot: a profile too large for one is written every renewFallback instead", function()

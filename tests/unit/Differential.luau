@@ -7,6 +7,7 @@
 const Encoding = require("@fakes/Encoding")
 const Prng = require("@fakes/Prng")
 const Record = require("@keepblox/Record")
+const Repair = require("@keepblox/Repair")
 const Spec = require("../Spec")
 const Validate = require("@keepblox/Validate")
 
@@ -145,5 +146,42 @@ Spec.test("Differential: a copy of storable data encodes the same and shares not
 		end
 	end
 end)
+
+Spec.test(
+	"Differential: repair leaves storable data alone, and leaves nothing but a table's shape to refuse",
+	function()
+		local repaired, shape = 0, 0
+		for seed = 1, 20 do
+			const random = Prng.new(seed)
+			for case = 1, 200 do
+				const input = value(random, 4)
+				const where = `seed {seed} case {case}: {describe(input)}`
+				const copied = Record.copy(input)
+				const fixes = Repair.run(copied, "Data")
+				if Validate.check(input, "Data", math.huge) then
+					Spec.equal(fixes, {}, where)
+					Spec.equal(Encoding.encode(copied), Encoding.encode(input), where)
+					continue
+				end
+				if type(input) ~= "table" then
+					continue -- a bad value at the root is not repaired
+				end
+				const encoded, problem = Validate.check(copied, "Data", math.huge)
+				const ok = pcall(Encoding.size, copied)
+				Spec.equal(encoded ~= nil, ok, `the store disagrees after repair, {where}`)
+				if encoded then
+					repaired += 1
+				else
+					Spec.truthy(
+						string.find(problem :: string, "key in a table that is not an array", 1, true) ~= nil,
+						`{where}: {problem}`
+					)
+					shape += 1
+				end
+			end
+		end
+		Spec.truthy(repaired > 300 and shape > 50, `repaired {repaired}, left for their shape {shape}`)
+	end
+)
 
 return nil

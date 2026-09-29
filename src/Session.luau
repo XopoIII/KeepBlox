@@ -15,6 +15,7 @@ const Lock = require("./Lock")
 const Migrate = require("./Migrate")
 const Profile = require("./Profile")
 const Record = require("./Record")
+const Repair = require("./Repair")
 const Schema = require("./Schema")
 const Types = require("./Types")
 const Validate = require("./Validate")
@@ -83,8 +84,27 @@ const function write(
 	-- A compressing store checks the size of what it stores (Codec), not of the data in memory.
 	local encoded, problem =
 		Validate.check(storable, "Data", if context.compress then math.huge else nil, Validate.slicer(clock))
+	local repairing = false
 	if turned then
 		encoded, problem = nil, turned
+	elseif encoded == nil then
+		-- One bad value must not cost the play around it: a repaired copy is stored instead (see Repair).
+		const repaired = Record.copy(storable)
+		const fixes = Repair.run(repaired, "Data")
+		const again = if #fixes > 0
+			then Validate.check(repaired, "Data", if context.compress then math.huge else nil, Validate.slicer(clock))
+			else nil
+		if again then
+			const note = `stored with a repair: {fixes[1]}{if #fixes > 1 then ` (and {#fixes - 1} more)` else ""}`
+			if note ~= session.lastProblem then
+				session.lastProblem = note
+				context.report(session.key, note)
+			end
+			if storable == snapshot then
+				snapshot = repaired
+			end
+			storable, encoded, problem, repairing = repaired, again, nil, true
+		end
 	end
 	if encoded and schema and plan.write == plan.version and encoded.text ~= session.storedText then
 		-- Only changed data is checked against the schema; unchanged data passed already.
@@ -107,7 +127,9 @@ const function write(
 			encoded = { text = good.text, size = good.size }
 		end
 	elseif encoded.text ~= session.storedText or next(consumed) ~= nil or newReceipt then
-		session.lastProblem = nil
+		if not repairing then
+			session.lastProblem = nil
+		end
 		-- A large profile writes less often, to stay inside the key's write throughput. Processed
 		-- messages do not wait: their removal must be written with their effect.
 		const spacing = encoded.size * 60 / context.config.writeBytesPerMinute

@@ -22,6 +22,7 @@ const Call = require("./Call")
 const Codec = require("./Codec")
 const Migrate = require("./Migrate")
 const Record = require("./Record")
+const Repair = require("./Repair")
 const Types = require("./Types")
 const Validate = require("./Validate")
 
@@ -83,7 +84,15 @@ const function snapshots(
 		if context.plan.write < context.plan.version then
 			data = Migrate.store(context.plan, Record.copy(play))
 		end
-		const encoded = if data == nil then nil else Validate.check(data, "Data", cap)
+		local encoded = if data == nil then nil else Validate.check(data, "Data", cap)
+		if encoded == nil and data ~= nil then
+			-- Stored repaired, as a save would store it (see Repair).
+			const repaired = Record.copy(data)
+			if #Repair.run(repaired, "Data") > 0 then
+				encoded = Validate.check(repaired, "Data", cap)
+				data = repaired
+			end
+		end
 		if encoded == nil or Codec.hasBuffer(data) then
 			continue
 		elseif encoded.text == session.storedText then

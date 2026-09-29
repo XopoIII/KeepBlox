@@ -43,6 +43,9 @@ end)
 Spec.test("KeepBlox: bad data never blocks the release (baseline: the next server waits 46 s)", function()
 	const metrics = soak("poison").metrics
 	Spec.truthy(metrics.maxOpenSeconds < 5, `the next server waited {metrics.maxOpenSeconds} s`)
+	-- The bad value is repaired in what is stored, so the play around it is kept (baseline: 258 steps).
+	Spec.equal(metrics.maxProgressLost, 0)
+	Spec.equal(metrics.failedOpens, 0)
 end)
 
 Spec.test("KeepBlox: shutdown with 50 players on a slow data store fits the deadline", function()
