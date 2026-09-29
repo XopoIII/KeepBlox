@@ -42,6 +42,8 @@ export type Payload = {
 	release: boolean,
 	--> Messages processed into `data`, removed from the queue by this same write.
 	consumed: { [number]: boolean }?,
+	--> Purchase receipt ids granted into `data`, stored by this same write.
+	receipts: { string }?,
 }
 
 const Lock = {}
@@ -126,6 +128,9 @@ function Lock.save(
 	end
 	if payload.consumed ~= nil then
 		Messages.consume(value, payload.consumed)
+	end
+	if payload.receipts ~= nil then
+		Record.ours(meta).receipts = payload.receipts
 	end
 	if payload.userIds ~= nil then
 		value.UserIds = payload.userIds

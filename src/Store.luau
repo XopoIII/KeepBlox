@@ -17,6 +17,7 @@ const Messages = require("./Messages")
 const MockServices = require("./MockServices")
 const Profile = require("./Profile")
 const Record = require("./Record")
+const Receipts = require("./Receipts")
 const Send = require("./Send")
 const Serial = require("./Serial")
 const Services = require("./Services")
@@ -56,6 +57,8 @@ export type Store = {
 	profiles: (self: Store) -> { [string]: Profile.Profile },
 	--> Queues an offline message for `key`, open or not (see Send).
 	message: (self: Store, key: string, message: { [any]: any }) -> Send.Result,
+	--> A ProcessReceipt callback for this store, answering with a decision's name (see Receipts).
+	receipts: (self: Store, options: Receipts.Options) -> (receipt: Receipts.Receipt) -> Receipts.Decision,
 }
 
 const Store = {}
@@ -205,15 +208,23 @@ function Store.new(name: string, options: Options): Store
 					onError:fire(key, message)
 				end),
 				saveSoon = false,
+				receipts = Record.receipts(record.MetaData),
+				storedReceipts = {},
 				listener = listener,
 			}
 			listener.session = session
 			session.inbox:receive(Messages.list(record))
+			for _, id in session.receipts do
+				session.storedReceipts[id] = true
+			end
 			sessions[key] = session
 			return { ok = true, profile = profile }
 		end,
 		message = function(_: Store, key: string, message: { [any]: any }): Send.Result
 			return Send.message(internals, key, message)
+		end,
+		receipts = function(_: Store, receiptOptions: Receipts.Options): (Receipts.Receipt) -> Receipts.Decision
+			return Receipts.handler(internals, receiptOptions)
 		end,
 		profiles = function(_: Store): { [string]: Profile.Profile }
 			const open = {}
