@@ -143,9 +143,15 @@ const MUTANTS: { Mutant } = {
 	},
 	{
 		file = "src/Versions.luau",
-		from = "Record.ours(record.MetaData).schemaVersion = if storedAt > 0 then storedAt else nil",
+		from = "ours.schemaVersion = if storedAt > 0 then storedAt else nil",
 		to = "",
 		breaks = "a restored version is migrated from its own schema version",
+	},
+	{
+		file = "src/Versions.luau",
+		from = "if not table.find(before, id) then",
+		to = "if false then",
+		breaks = "a restore names the purchases it rolled back",
 	},
 }
 

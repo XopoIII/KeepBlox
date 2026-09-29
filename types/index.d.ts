@@ -66,7 +66,10 @@ declare namespace KeepBlox {
 		limit?: number;
 	}
 
-	type Restored = { ok: true } | { ok: false; reason: "inUse" | "notAProfile" | "failed" };
+	/** `purchasesSince`: purchase ids granted after the version, which the restored data no longer holds. */
+	type Restored =
+		| { ok: true; purchasesSince: string[] }
+		| { ok: false; reason: "inUse" | "notAProfile" | "failed" };
 	type Sent = { ok: true } | { ok: false; reason: "full" | "foreign" | "failed" };
 	type EditResult<T> = { ok: true; data: T } | { ok: false; reason: LoadFailure | "error" | "refused" | "failed"; message?: string };
 	type TradeResult = { ok: true } | { ok: false; reason: "notHere" | "error" | "refused" | "lost" | "failed"; message?: string };

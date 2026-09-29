@@ -149,4 +149,29 @@ Spec.test("Receipts: the history keeps the newest ids only", function()
 	end, 30)
 end)
 
+Spec.test("Receipts: a restore names the purchases granted since the version it brings back", function()
+	-- Its data goes back to before them, and their ids stay granted (no purchase is replayed), so support
+	-- must see them to make them good (Rebound, IEEE S&P 2026: a rollback is an audited new version).
+	const world, _, store, decide = setup()
+	Sim.run(world.scheduler, "A", function()
+		const first = store:load("u_7")
+		assert(first.ok, "loaded")
+		Spec.equal(decide(receipt("r1")), "PurchaseGranted")
+		first.profile:release()
+		world.scheduler:wait(3600)
+		const second = store:load("u_7")
+		assert(second.ok, "loaded again")
+		Spec.equal(decide(receipt("r2")), "PurchaseGranted")
+		Spec.equal(decide(receipt("r3")), "PurchaseGranted")
+		second.profile:release()
+		world.scheduler:wait(60)
+		const version = store:versions("u_7")[1].version
+		Spec.equal(store:restore("u_7", version), { ok = true, purchasesSince = { "r2", "r3" } })
+		const record = stored(world)
+		Spec.equal(record.Data.coins, 100)
+		Spec.equal(record.MetaData.KeepBlox.receipts, { "r1", "r2", "r3" }, "none is granted again")
+		Spec.equal(record.MetaData.KeepBlox.restored, { from = version, at = record.MetaData.LastUpdate })
+	end, 2 * 3600)
+end)
+
 return nil

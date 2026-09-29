@@ -20,6 +20,12 @@ semantic versioning.
   while the record still vouches for it.
 - The size estimate counts an empty table as 2 bytes, not 1.
 
+### Changed
+
+- `restore` returns `purchasesSince`, the purchases granted after the restored version. The restored
+  data no longer holds them and they stay granted, so the game must make them good; before, they were
+  lost silently. The record notes the restore in `MetaData.KeepBlox.restored`.
+
 ### Added
 
 - `tests/Mutate.luau`: mutation adequacy of the suite. 21 mutants, each a slip in code that keeps a

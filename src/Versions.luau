@@ -27,7 +27,12 @@ export type Query = {
 	limit: number?,
 }
 
-export type Restored = { ok: true } | { ok: false, reason: "inUse" | "notAProfile" | "failed" }
+--> `purchasesSince`: the purchase ids granted after `version`, oldest first. The restored data is from
+--> before them, and they stay granted (a restore never replays a purchase), so the game must make them
+--> good. Only ids still in the kept history (see Receipts) are known.
+export type Restored =
+	{ ok: true, purchasesSince: { string } }
+	| { ok: false, reason: "inUse" | "notAProfile" | "failed" }
 
 const DEFAULT_LIMIT = 100
 
@@ -67,7 +72,9 @@ end
 
 --> Makes `version`'s data current for `key`, with the schema version it was stored at, so the
 --> migrations since then run on it at the next load. Everything else in the record (its lock, messages
---> and receipts) stays as it is now.
+--> and receipts) stays as it is now. The record notes the restore (`restored = { from, at }`), and the
+--> result names the purchases it rolled back (a rollback is an audited new version, as in Rebound,
+--> IEEE S&P 2026).
 function Versions.restore(context: Session.Context, key: string, version: string): Restored
 	const old = context.dataStore:GetVersionAsync(key, version)
 	if Record.classify(old) ~= "profile" then
@@ -95,10 +102,19 @@ function Versions.restore(context: Session.Context, key: string, version: string
 				return nil
 			end
 			record.Data = Record.copy(old.Data)
+			const ours = Record.ours(record.MetaData)
 			const storedAt = Migrate.stored(old)
-			Record.ours(record.MetaData).schemaVersion = if storedAt > 0 then storedAt else nil
+			ours.schemaVersion = if storedAt > 0 then storedAt else nil
+			const before = Record.receipts(old.MetaData)
+			const since = {}
+			for _, id in Record.receipts(record.MetaData) do
+				if not table.find(before, id) then
+					table.insert(since, id)
+				end
+			end
+			ours.restored = { from = version, at = clock.time() }
 			record.MetaData.LastUpdate = clock.time()
-			outcome = { ok = true } :: Restored
+			outcome = { ok = true, purchasesSince = since } :: Restored
 			return record
 		end
 	)

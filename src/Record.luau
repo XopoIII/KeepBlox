@@ -115,6 +115,8 @@ function Record.ours(meta: any): {
 	memory: boolean?,
 	--> The owner's latest MemoryStore snapshot number when this data was stored (see Lease).
 	snap: number?,
+	--> The last restore of this key (see Versions): the version it brought back, and when.
+	restored: { from: string, at: number }?,
 }
 	local state = meta.KeepBlox
 	if type(state) ~= "table" then

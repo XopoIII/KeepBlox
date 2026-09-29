@@ -46,7 +46,7 @@ Spec.test("Versions: restore brings back old data, and refuses while the key is 
 		assert(held.ok, "held")
 		Spec.equal(store:restore("u_1", oldest), { ok = false, reason = "inUse" })
 		held.profile:release()
-		Spec.equal(store:restore("u_1", oldest), { ok = true })
+		Spec.equal(store:restore("u_1", oldest), { ok = true, purchasesSince = {} })
 		const result = store:load("u_1")
 		assert(result.ok, "loaded")
 		Spec.equal(result.profile.Data.coins, 1)
@@ -81,7 +81,7 @@ Spec.test("Versions: a restored version keeps its schema version, so later migra
 		new.profile.Data.coins = 9
 		new.profile:release()
 		world.scheduler:wait(3600)
-		Spec.equal(after:restore("u_1", after:versions("u_1")[1].version), { ok = true })
+		Spec.equal(after:restore("u_1", after:versions("u_1")[1].version), { ok = true, purchasesSince = {} })
 		const restored = after:load("u_1")
 		assert(restored.ok, "loaded restored")
 		Spec.equal(restored.profile.Data, { coins = 7 })

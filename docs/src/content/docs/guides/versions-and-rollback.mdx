@@ -46,6 +46,8 @@ that version is not a profile. A version stored compressed is returned decompres
 const result = store:restore(`u_{userId}`, version)
 if not result.ok then
 	warn(`restore refused: {result.reason}`)
+elseif #result.purchasesSince > 0 then
+	warn(`these purchases were rolled back and must be made good: {table.concat(result.purchasesSince, ", ")}`)
 end
 ```
 
@@ -53,7 +55,15 @@ end
 `UpdateAsync`, and changes only the data: the record's lock, its queued messages and its purchase
 receipt ids stay as they are now. So a restore never replays a message or a purchase.
 
-It returns `{ ok = true }` or `{ ok = false, reason = ... }`:
+That has a cost: a purchase granted after the restored version is gone from the data, and it stays
+granted, so Roblox never asks for it again. The result names those purchases in `purchasesSince`, the
+purchase ids granted since that version, oldest first. Make each of them good (grant it again by hand,
+or refund it). Only ids still in the kept purchase history are known.
+
+The record also notes the restore in `MetaData.KeepBlox.restored = { from = version, at = time }`, so
+a later look at the key shows it was rolled back.
+
+It returns `{ ok = true, purchasesSince = { ... } }` or `{ ok = false, reason = ... }`:
 
 | Reason | When |
 |---|---|
@@ -81,7 +91,9 @@ matches the store.
 4. Call `store:restore`. If it returns `"inUse"`, the release has not landed yet: wait a few seconds
    and try again.
 
-5. Let the player rejoin. The next load starts from the restored data.
+5. Make good every purchase in `purchasesSince`.
+
+6. Let the player rejoin. The next load starts from the restored data.
 
 </Steps>
 
