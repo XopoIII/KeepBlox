@@ -151,6 +151,10 @@ declare namespace KeepBlox {
 		backoffMax: number;
 		writeBytesPerMinute: number;
 		shutdownDeadline: number;
+		heartbeat: number;
+		renewFallback: number;
+		snapshotBytes: number;
+		snapshotTtl: number;
 	}
 
 	interface SchemaNode {
@@ -200,7 +204,15 @@ declare namespace KeepBlox {
 
 interface KeepBlox {
 	store<T extends object>(name: string, options: KeepBlox.StoreOptions<T>): KeepBlox.Store<T>;
-	shared<T extends object>(name: string, options: { template?: T; schema?: KeepBlox.SchemaNode; mock?: boolean | string }): KeepBlox.SharedStore<T>;
+	shared<T extends object>(
+		name: string,
+		options: {
+			template?: T;
+			schema?: KeepBlox.SchemaNode;
+			mock?: boolean | string;
+			config?: Partial<Record<keyof KeepBlox.Defaults, number>>;
+		},
+	): KeepBlox.SharedStore<T>;
 	readonly defaults: KeepBlox.Defaults;
 	readonly schema: KeepBlox.Schema;
 	readonly importers: KeepBlox.Importers;

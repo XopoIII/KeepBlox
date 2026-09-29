@@ -1,0 +1,106 @@
+---
+title: Shared documents
+description: KeepBlox.shared keeps documents no single server owns, such as guilds or global counters, and changes them atomically from any server without a session lock.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A profile belongs to one server at a time. Some data belongs to no server: a guild's bank, a clan's
+member list, a global counter. Any server may change it at any time. `KeepBlox.shared` opens a store
+of such documents.
+
+```lua
+const guilds = KeepBlox.shared("Guilds", { template = { members = {}, bank = 0 } })
+
+const result = guilds:update(guildId, function(data)
+	data.bank += 50
+end)
+
+guilds:watch(guildId, function(data)
+	refreshGuildUi(data)
+end)
+```
+
+## Options
+
+`KeepBlox.shared(name, options)` takes the data store name and:
+
+| Option | Meaning |
+|---|---|
+| `template` | The data a document starts with. Give this or `schema`, not both. |
+| `schema` | The shape of the data (see [Schema and migrations](/KeepBlox/guides/schema-and-migrations/)). New documents start from its defaults, and every update is checked against it. |
+| `config` | Overrides for the defaults (see [Config](/KeepBlox/reference/config/)). A shared store uses `loadTimeout`, `callTimeout`, `backoffMin` and `backoffMax`. |
+| `mock` | Keep the documents in memory: `true`, or the name of a scratch set (see [Studio and testing](/KeepBlox/guides/studio-and-testing/)). |
+| `services` | The engine services; tests pass fakes. |
+
+## No session lock
+
+A shared store never claims a key. There is no load and no release, and no server holds a document
+between calls. Every `update` reads and writes the document in one `UpdateAsync`, so updates from many
+servers at once never overwrite each other.
+
+Documents are stored in the same record format as profiles, with the data under `Data`.
+
+## read
+
+```lua
+const result = guilds:read(guildId)
+if result.ok then
+	print(result.data.bank)
+end
+```
+
+`read(key)` returns a copy of the document's data. A document that does not exist yet reads as a copy
+of the template. With a schema, missing fields are filled from its defaults. A failed call is retried
+with backoff until `loadTimeout` passes.
+
+## update
+
+`update(key, change)` runs `change(data)` inside one `UpdateAsync`, on the value the store holds at
+that moment, and returns the data it stored as `{ ok = true, data = ... }`.
+
+That gives `change` a strict contract:
+
+- **It must not yield.** It runs inside the engine's transform function.
+- **It may run more than once.** The engine calls the transform again when another server wrote in
+  between, and KeepBlox retries a failed call with backoff until `loadTimeout`. Do not count calls,
+  send messages or grant anything from inside `change`; only change `data`.
+
+After `change` returns, the data is checked as a profile's is before a save: every value must be
+storable, and with a schema it must fit the schema. A refusal writes nothing, and the message names the
+path of the bad value.
+
+<Aside type="caution">
+Do something once only after `update` returns `ok`, never from inside `change`.
+</Aside>
+
+## watch
+
+`watch(key, handler)` calls `handler(data)` after each update of `key` made through a shared store, from
+any server. It returns a connection with `Disconnect()`.
+
+Each successful update publishes a notice on the MessagingService topic `KB_<name>/<key>`. A watcher
+that hears it reads the document again and passes the fresh data to `handler`. The notice carries no
+data, so a watcher always sees what the store holds. MessagingService is best effort: a notice can be
+lost, so treat `watch` as a hint to refresh, not as a log of every change.
+
+A topic may be at most 80 characters. A store name and key that make a longer topic raise an error
+when the topic is built.
+
+## Result reasons
+
+`read` and `update` return `{ ok = true, data = ... }` or `{ ok = false, reason = ..., message = ... }`.
+
+| Reason | From | When |
+|---|---|---|
+| `"error"` | `update` | `change` threw. `message` holds the error. Nothing is written. |
+| `"refused"` | `update` | The changed data cannot be stored, or breaks the schema. `message` names the path. Nothing is written. |
+| `"foreign"` | `read`, `update` | The key holds a value that is not a KeepBlox or ProfileStore record. It is left untouched. |
+| `"locked"` | `update` | A session holds the key: it is a profile, not a shared document. Nothing is written. |
+| `"failed"` | `read`, `update` | The data store kept failing until `loadTimeout` passed. |
+
+## Use a data store of its own
+
+Profile keys are session-locked, and `update` refuses a key that a session holds (`"locked"`). Keep
+shared documents in their own data store, never in the data store of a profile store, so a document
+key and a profile key can never meet.

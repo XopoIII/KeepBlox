@@ -1,0 +1,92 @@
+---
+title: Purchases
+description: Grant developer products from MarketplaceService.ProcessReceipt exactly once, without losing a purchase to a crash or a failed save.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+`KeepBlox.processReceipt` builds the callback for `MarketplaceService.ProcessReceipt` over a store. It
+grants each purchase once and never loses one.
+
+```lua
+local MarketplaceService = game:GetService("MarketplaceService")
+
+MarketplaceService.ProcessReceipt = KeepBlox.processReceipt(store, {
+	keyFor = function(userId)
+		return `u_{userId}`
+	end,
+	products = {
+		[12345] = function(profile, receipt)
+			profile.Data.coins += 100
+		end,
+		[67890] = function(profile, receipt)
+			table.insert(profile.Data.inventory, { id = "sword", level = 1 })
+		end,
+	},
+})
+```
+
+## Options
+
+| Option | Meaning |
+|---|---|
+| `keyFor` | `function(userId) -> string`: the profile key of a player. |
+| `products` | A table from product id to its grant, `function(profile, receipt)`. A grant changes `profile.Data` and must not yield. |
+| `history` | How many receipt ids a profile remembers. Default 100; Roblox never retries a very old purchase. |
+
+`store:receipts(options)` takes the same options and returns a callback that answers with the decision's
+name (`"PurchaseGranted"` or `"NotProcessedYet"`) instead of the `Enum.ProductPurchaseDecision` item.
+`KeepBlox.processReceipt` is a thin wrapper over it.
+
+## How it grants once
+
+Roblox calls `ProcessReceipt` until the game answers `PurchaseGranted`, possibly on another server, and
+possibly more than once at a time. The handler keeps the grant and the proof of it together:
+
+1. The grant changes `profile.Data`, and right after it, with no yield between, the receipt's
+   `PurchaseId` joins the profile's receipt list (kept in `MetaData.KeepBlox.receipts`).
+2. The profile saves at once. The data and the id are taken in the same snapshot and stored by the same
+   write.
+3. Only when a save holding the id has succeeded does the handler answer `PurchaseGranted`.
+
+What happens in each case:
+
+- **The player's profile is not open on this server,** or is ending: `NotProcessedYet`. Roblox asks
+  again later, when the player is somewhere with the profile loaded.
+- **The id is already stored:** `PurchaseGranted`, with no second grant.
+- **The id is granted but not yet stored** (a repeat call while the save is in flight): the handler
+  waits for that save instead of granting again.
+- **The save fails:** `NotProcessedYet`. The id is still in memory, so the retry saves again without
+  granting again.
+- **The session ends before the save lands** (a crash, or the key lost to another server): the grant is
+  lost together with its id, since neither was stored. The next session sees no id and grants anew. The
+  player gets the product exactly once.
+- **The data cannot be stored** (it breaks the schema, or holds a bad value): the save stores nothing,
+  so the purchase is not reported granted.
+- **An unknown product id,** or a grant that throws: `NotProcessedYet`, and `store.onError` says why.
+
+When a server crashes after a beat, the next server stores the MemoryStore snapshot of the profile
+together with the receipt ids granted into it, so a purchase in that snapshot is not granted again
+([How it works](/KeepBlox/guides/how-it-works/)).
+
+<Aside type="caution">
+Grant only by changing `profile.Data`. Anything a grant does outside the profile (a badge, a message to
+another service, an item in another store) is not undone if the save fails, and may happen again on the
+retry.
+</Aside>
+
+## Why a lost session cannot grant twice
+
+When another server takes the key, this server's session ends and its `Data` freezes. A late
+`ProcessReceipt` here finds no active profile and answers `NotProcessedYet`; a grant already running
+against a frozen table errors instead of changing a copy. Only the server that holds the key can grant.
+
+## Specs
+
+- `tests/unit/Receipts.luau`: "Receipts: granted into the data, stored with its id, then reported granted"
+- `tests/unit/Receipts.luau`: "Receipts: a failed save is not reported granted, and the retry does not grant again"
+- `tests/unit/Receipts.luau`: "Receipts: a crash before the save loses the grant with its id; the next session grants once"
+- `tests/unit/Receipts.luau`: "Receipts: data that cannot be stored means the purchase is not granted"
+- `tests/unit/Receipts.luau`: "Receipts: an unknown product is not granted, and says why"
+- `tests/unit/Receipts.luau`: "Receipts: the history keeps the newest ids only"
+- `tests/unit/Snapshot.luau`: "Snapshot: a purchase granted into it is not granted again after the crash"

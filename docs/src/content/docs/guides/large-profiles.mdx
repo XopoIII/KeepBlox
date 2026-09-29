@@ -1,0 +1,98 @@
+---
+title: Large profiles
+description: What happens as a profile grows toward the 4 MB a key may hold, how compression helps, and why large profiles are written on a different schedule.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Most profiles are a few kilobytes. Some games store build plots, logs or inventories that grow for
+years. This page covers what KeepBlox does as a profile grows.
+
+## The 4 MB limit
+
+A data store key holds at most 4,194,304 bytes of JSON. A write over that is rejected whole, and a
+library that tries it on every save loses the whole session.
+
+KeepBlox checks the data before every write, and estimates its stored JSON size on the way (a buffer
+counts as the base64 text Roblox stores). Data over the limit is not written. The lease is still
+renewed and the last good save stays in the store, so the session goes on, can be handed over, and
+can be released.
+
+The refusal is reported through `store.onError`, once per distinct problem, and it names the field that
+grew: it follows the largest field down while that field holds most of its parent's size.
+
+```
+not saved: Data: about 4300000 bytes, over the 4194304 byte limit (most of it: Data.log, 4100000 bytes)
+```
+
+```lua
+store.onError:connect(function(key, message)
+	warn(`[KeepBlox] {key}: {message}`)
+end)
+```
+
+## Compression
+
+```lua
+const store = KeepBlox.store("Profiles", {
+	template = TEMPLATE,
+	compress = { above = 1_000_000 },
+})
+```
+
+With `compress = { above = n }`, a profile whose data is over `n` bytes (the estimated JSON size) is
+stored as its JSON text compressed with Zstandard, in the form
+`{ __KeepBlox = "zstd1", z = <buffer> }`. Smaller profiles are stored as they are. The 4 MB limit
+applies to what is stored, so a compressed profile may be many times larger in memory. A profile still
+over the limit once compressed is refused like any other:
+
+```
+not saved: Data: about 5200000 bytes, still over the 4194304 byte limit when compressed
+```
+
+- **Off by default.** ProfileStore cannot read a compressed profile. Turn compression on only when every
+  server runs KeepBlox. KeepBlox reads both forms, so compression can be turned off again at any time:
+  each profile is stored uncompressed the next time its data changes and is saved.
+- **Buffers are never compressed.** Data that holds a buffer anywhere is stored as it is, because the
+  JSON text cannot carry buffers.
+- `above` must be a positive number of bytes, and the store needs the engine's compression (the real
+  services have it).
+
+## Snapshots and the fallback interval
+
+Every `heartbeat` seconds (default 4), each server writes one MemoryStore entry with snapshots of its
+changed profiles. After a crash, the server that takes over a key starts from the snapshot when it is
+newer than the stored data, so a crash loses seconds of play instead of a `renew` interval (see
+[How it works](/KeepBlox/guides/how-it-works/)).
+
+MemoryStore is small, so only small profiles get a snapshot. A profile has none when:
+
+- its data is over `snapshotBytes` (default 1000 bytes);
+- it holds a buffer;
+- it is in a [trade](/KeepBlox/guides/trades/);
+- the store's snapshots already fill its share of the server's entry (about 24 KB per store);
+- MemoryStore is not answering.
+
+A profile no snapshot covers is written every `renewFallback` seconds (default 30) instead of every
+`renew` seconds (default 300). For such a profile, `renewFallback` is the most play a crash can lose.
+It costs more data store writes; `renewFallback` is capped at `renew`.
+
+## Write spacing
+
+A key's write throughput is limited too. KeepBlox spaces the automatic data writes of a large profile
+so one key stays within `writeBytesPerMinute` (default 3 MB a minute): after writing the data, a
+renewal writes it again no sooner than `size * 60 / writeBytesPerMinute` seconds later. A 3 MB profile
+therefore stores its data at most once a minute; a 30 KB profile is not held back at all.
+
+The spacing applies only to renewals. The lease is renewed on schedule whether or not the data goes
+with it. These always write the data at once:
+
+- `profile:save()`;
+- the release;
+- a write that carries a processed message, a new purchase receipt, or the clearing of a trade
+  journal, since those must be stored with their effect.
+
+<Aside>
+Tune these numbers with the store's `config` option; [Config](/KeepBlox/reference/config/) lists each
+one with its default.
+</Aside>

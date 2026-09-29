@@ -1,0 +1,185 @@
+---
+title: Importing from other libraries
+description: Move players' data from DocumentService, Lapis, DataKeep, DataStore2, Suphi's DataStore Module or any other library, one key at a time on its first KeepBlox load.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A store's `import` option says where a key's data comes from the first time KeepBlox loads it. Players
+move over as they join; there is no batch job.
+
+```lua
+local store = KeepBlox.store("Profiles", {
+	template = TEMPLATE,
+	import = KeepBlox.importers.DocumentService({ store = "PlayerData" }),
+})
+```
+
+ProfileStore and ProfileService need no importer: KeepBlox reads their records as they are
+([Migrating from ProfileStore](/KeepBlox/guides/migrating-from-profilestore/)).
+
+## What happens on a load
+
+- **The KeepBlox key exists.** It loads as usual. The old store is never read again.
+- **The KeepBlox key is missing.** The old library's value is read and becomes the new profile's data.
+  The old value is only read, never written, so switching back stays possible. The new profile records
+  the importer's name in `MetaData.KeepBlox.importedFrom`.
+- **The old library has nothing for this player.** They are a new player: the profile starts from the
+  template (or schema defaults) at the current schema version.
+
+It never guesses:
+
+- **A failed read is retried**, with a backoff, until it succeeds or the load times out. It is never
+  taken for "no data", which would start a new player from the template over data that exists.
+- **A key the old library still holds** (its lock is fresh) is waited on, like a KeepBlox lock: the old
+  server is saving the player's last session. If the lock never goes, the load fails with
+  `"legacyLocked"` and nothing is written.
+- **A value the importer does not recognise** is left alone, and the load fails with `"foreign"`.
+
+Imported data is from before every migration: all of the store's migrations run on it from version 0
+([Schema and migrations](/KeepBlox/guides/schema-and-migrations/)).
+
+## Options every importer takes
+
+| Option | Meaning |
+|---|---|
+| `store` | The old data store's name. Omit it when KeepBlox uses the same store and keys (see below). |
+| `scope` | The old data store's scope, if it has one. |
+| `key` | `function(key) -> string`: the old key for a KeepBlox key. The same key by default. |
+| `convert` | `function(data) -> table`: shapes the old data into this store's. The old data as it is by default. The result must be a table. |
+| `lockSeconds` | Seconds after which the old library itself treats its lock as dead. Its own default otherwise. |
+
+```lua
+import = KeepBlox.importers.Lapis({
+	store = "PlayerData",
+	key = function(key)
+		return `Player{key:sub(3)}` -- KeepBlox "u_123" was Lapis "Player123"
+	end,
+	convert = function(old)
+		return { coins = old.money or 0, inventory = old.items or {} }
+	end,
+}),
+```
+
+## Converting in the same store
+
+When the old library used the same data store and the same keys, omit `store`. The old value is then
+converted in place, inside the claim's `UpdateAsync` transform, so no server of the old library can
+write between the read and the conversion. A same-key value the old library still holds is waited on
+first.
+
+## The importers
+
+### DocumentService
+
+```lua
+import = KeepBlox.importers.DocumentService({ store = "PlayerData" })
+```
+
+Reads `{data, sessionLockId, lockTimestamp, isLocked, dataSchemaVersion, ...}` and takes `data`. A lock
+older than 600 seconds (DocumentService's `LOCK_EXPIRE`) is dead.
+
+### Lapis
+
+```lua
+import = KeepBlox.importers.Lapis({ store = "PlayerData" })
+```
+
+Reads `{migrationVersion, lastCompatibleVersion, lockId, data}` and takes `data`, with the key's user
+ids. A lock is dead 30 minutes after the key was last updated.
+
+### DataKeep
+
+```lua
+import = KeepBlox.importers.DataKeep({ store = "PlayerData" })
+```
+
+Reads `{Data, Metadata = {ActiveSession, LastUpdate, LoadCount}, GlobalUpdates, UserIds}` and takes
+`Data` and `UserIds`. A session with no update for 600 seconds (DataKeep's `assumeDeadLock`) is dead.
+
+### DataStore2
+
+```lua
+import = KeepBlox.importers.DataStore2({
+	name = "DATA",
+	userId = function(key)
+		return tonumber(key:sub(3)) -- "u_123" -> 123
+	end,
+})
+```
+
+DataStore2 keys data by user id, so it needs two more options:
+
+- `name`: the DataStore2 store name, or the master key when the game used `DataStore2.Combine`.
+- `userId`: `function(key) -> number?`, the user id of a KeepBlox key. Nil means no old data.
+- `method`: `"OrderedBackups"` (DataStore2's default: the newest of the numbered saves in the data store
+  `"<name>/<UserId>"`, found through the ordered store of that name) or `"Standard"` (data store
+  `name`, key `UserId`).
+
+DataStore2 keeps no lock, so the importer cannot tell whether an old server still plays the key.
+
+### Suphi's DataStore Module
+
+```lua
+import = KeepBlox.importers.Suphi({ store = "PlayerData" })
+```
+
+The module stores the game's data as it is, and takes it as it is. A value the module compressed needs
+`decode = function(value, metadata) -> table`. A value that is not a table is refused. The module's lock
+lives in MemoryStore, which the importer cannot see.
+
+### Any other library
+
+```lua
+import = KeepBlox.importers.custom({
+	name = "MyOldSaves",
+	fetch = function(services, key)
+		return services.dataStores:GetDataStore("OldSaves"):GetAsync(key, false)
+	end,
+	read = function(value, keyInfo, now)
+		if type(value) ~= "table" or value.version == nil then
+			return { kind = "unknown" }
+		end
+		if value.lockedUntil and value.lockedUntil > now then
+			return { kind = "locked" }
+		end
+		return { kind = "data", data = value.payload }
+	end,
+})
+```
+
+- `name` is recorded in the new profile.
+- `fetch(services, key)` reads the old value and may yield and throw. It returns the value and its key
+  info. Omit it when the old value is at the same key of this store.
+- `read(value, keyInfo, now)` understands an old value. It must be pure and quick: it may run inside an
+  `UpdateAsync` transform. `now` is Unix seconds. It returns one of:
+  - `{ kind = "data", data = table, userIds = { number }? }`
+  - `{ kind = "locked" }`: the old library still holds the key; wait.
+  - `{ kind = "none" }`: nothing; a new player.
+  - `{ kind = "unknown" }`: not a value this importer recognises.
+
+`custom` takes no `convert`: shape the data in `read`.
+
+## The rollout rule
+
+<Aside type="caution" title="DataStore2 and Suphi's DataStore Module: switch every server first">
+These libraries keep no lock KeepBlox can see. A KeepBlox server cannot tell whether an old server still
+plays the key and will save over the data it just imported. Shut every old server down before any
+KeepBlox server imports: publish, then use "Migrate to latest update" or restart all servers.
+</Aside>
+
+For DocumentService, Lapis and DataKeep the old lock is honoured, so old and new servers can overlap: a
+KeepBlox server waits for the old one to finish the player's last session, then imports it. Switching
+back is still possible because the old value is never written, but play made on KeepBlox is not in it.
+
+## Specs
+
+- `tests/unit/Import.luau`: "Import: a new key takes the old library's data, and the old value is left as it was"
+- `tests/unit/Import.luau`: "Import: a key the old library still holds is waited on, then taken with its last save"
+- `tests/unit/Import.luau`: "Import: an old lock that never goes fails the load, and nothing is written"
+- `tests/unit/Import.luau`: "Import: a failed read of the old store is retried, never taken for a new player"
+- `tests/unit/Import.luau`: "Import: a player the old library never saw starts from the template, at the current version"
+- `tests/unit/Import.luau`: "Import: a key KeepBlox already has never reads the old store"
+- `tests/unit/Import.luau`: "Import: an old value at the same key is converted in place, inside the claim (DataKeep)"
+- `tests/unit/Import.luau`: "Import: DataStore2's newest ordered backup is the one taken"
+- `tests/unit/Import.luau`: "Import: imported data runs every migration, from version 0"

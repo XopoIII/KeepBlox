@@ -48,6 +48,7 @@ end
 Spec.test("Typings: every Store and Profile field, and every export, is declared for roblox-ts", function()
 	check(fields("src/Store.luau", "Store"), "Store")
 	check(fields("src/Profile.luau", "Profile"), "Profile")
+	check(fields("src/Config.luau", "Config"), "Config")
 	check(exported(), "KeepBlox")
 end)
 

@@ -1,0 +1,81 @@
+---
+title: Load failures
+description: Every reason a load can fail, when it happens and what the game should do, plus the reasons returned by edits, trades, messages, restores and shared documents.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+`store:load` returns `{ ok = true, profile = ... }` or `{ ok = false, reason = ... }`. A failed load
+never hands out data and never leaves the key locked by this server: a key it had already claimed is
+given back before it returns.
+
+```lua
+const result = store:load(`u_{player.UserId}`, {
+	cancel = function() return player.Parent == nil end,
+})
+if not result.ok then
+	if result.reason ~= "cancelled" then
+		player:Kick(`Your data could not be loaded ({result.reason}). Please rejoin.`)
+	end
+	return
+end
+```
+
+## Load reasons
+
+| Reason | When it happens | What the game should do |
+|---|---|---|
+| `"cancelled"` | The load's `cancel` function returned `true` while it waited (the player left). | Nothing: the player is gone. |
+| `"closing"` | The server is shutting down, or `store:close()` was called, before the load finished. | Nothing: the server is closing. |
+| `"timeout"` | The load took longer than `loadTimeout` (default 120 s): the key's owner did not hand it over and was not proven dead in time, the data store kept failing, or a trade the key's last server left open could not be settled. | Kick with a message asking the player to rejoin. |
+| `"foreign"` | The key holds a value that is not a profile record, or an importer does not recognise the old value. A non-profile value is copied to the data store `"<store>__quarantine"` and left untouched; `store.onError` reports it. | Kick, and investigate the key. Do not overwrite it blindly. |
+| `"outbid"` | This server decided to take the key over, but a third server asked for it since then. That server wins. | Kick with a message asking the player to rejoin. |
+| `"inUse"` | Only for a `quiet` load (and `store:edit`): a live server holds the key. | Send a message with `store:message`, or try again later. |
+| `"legacyLocked"` | Only with `import`: the library being imported from still holds the key (its lock is fresh) until the load times out. The old server is still saving the player's last session. | Kick with a message asking the player to rejoin. |
+| `"open"` | The key is already open, or being opened, on this server: a second load of the same key. | A bug in the game: load each key once and share the profile. |
+| `"newerSchema"` | The stored data is at a schema version newer than this server's. Old code never rewrites data it does not understand. | Kick; this server runs old code. The player can join a server with the new version. |
+| `"migration"` | A migration threw on the stored data. `store.onError` reports which migration and the error. | Kick, and fix the migration. Test migrations with `KeepBlox.migrate`. |
+| `"schema"` | After the migrations and defaults, the data does not fit the schema. `store.onError` reports the path. | Kick, and fix the schema or add a migration. |
+
+For `"newerSchema"`, `"migration"` and `"schema"` the key is given back and nothing is written: the
+stored data stays as it was. See [Schema and migrations](/KeepBlox/guides/schema-and-migrations/).
+
+<Aside>
+A player who leaves and rejoins the same server before the release finished does not get `"open"`: the
+load waits for that release, then claims the key afresh.
+</Aside>
+
+## Edit reasons
+
+`store:edit` returns `{ ok = true, data }` or `{ ok = false, reason, message }`. A key not open here is
+claimed with a quiet load, so any load reason above can come back (most often `"inUse"`), and also:
+
+| Reason | When |
+|---|---|
+| `"error"` | The edit function threw. The data is put back; nothing is written. |
+| `"refused"` | The edited data cannot be stored, or breaks the schema. `message` names the path. The data is put back. |
+| `"failed"` | The save of a profile open here was not stored, or the release of a claimed key did not store the edit. |
+
+See [Messages and edits](/KeepBlox/guides/messages-and-edits/).
+
+## Trade reasons
+
+`store:trade` returns `{ ok = true }` or `{ ok = false, reason, message }`.
+
+| Reason | When |
+|---|---|
+| `"notHere"` | A key is not open on this server, or its session has ended. Nothing is written. |
+| `"error"` | The change function threw. Both profiles are put back. |
+| `"refused"` | A changed profile cannot be stored, or breaks the schema. Both profiles are put back. |
+| `"lost"` | A profile's session ended or began releasing, or a profile's write did not land. The trade is aborted and both profiles are put back. |
+| `"failed"` | The trade record could not be created, the trade ended aborted, or the server is closing with the outcome unknown (each profile then settles the trade on its next load). |
+
+See [Trades](/KeepBlox/guides/trades/).
+
+## Other results
+
+| Call | Reasons |
+|---|---|
+| `store:message` | `"full"`: the key's queue holds its most messages (1000); nothing queued is dropped. `"foreign"`: the key holds a value that is not a profile. `"failed"`: the data store kept failing. |
+| `store:restore` | `"inUse"`: a server holds the key. `"notAProfile"`: the version or the current value is not a profile. `"failed"`: the write did not succeed. |
+| Shared `read`, `update` | `"error"`, `"refused"`, `"foreign"`, `"locked"` (the key is a profile), `"failed"`. See [Shared documents](/KeepBlox/guides/shared-documents/). |

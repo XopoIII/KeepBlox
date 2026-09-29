@@ -32,8 +32,6 @@ export type Config = {
 	shutdownDeadline: number,
 	--> Seconds between an owner's MemoryStore beats (see Lease).
 	heartbeat: number,
-	--> Seconds a beat keeps the lease alive: a dead owner is known this long after its last beat.
-	leaseTtl: number,
 	--> Seconds between writes of a profile no MemoryStore snapshot covers (too large, holding buffers,
 	--> or MemoryStore down): then this, not `renew`, is the most play a crash can lose.
 	renewFallback: number,
@@ -59,7 +57,6 @@ Config.DEFAULT = table.freeze({
 	writeBytesPerMinute = 3 * 1024 * 1024,
 	shutdownDeadline = 25,
 	heartbeat = 4,
-	leaseTtl = 12,
 	renewFallback = 30,
 	snapshotBytes = 1000,
 	snapshotTtl = 900,
@@ -79,7 +76,6 @@ function Config.resolve(overrides: { [string]: any }?): Config
 	end
 	assert(config.death >= 2 * config.renew, "KeepBlox: death must be at least twice renew")
 	assert(config.backoffMin <= config.backoffMax, "KeepBlox: backoffMin must not exceed backoffMax")
-	assert(config.leaseTtl >= 2 * config.heartbeat, "KeepBlox: leaseTtl must be at least twice heartbeat")
 	-- A fallback slower than the renewal itself would be no fallback.
 	config.renewFallback = math.min(config.renewFallback, config.renew)
 	return config

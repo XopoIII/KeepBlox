@@ -1,0 +1,100 @@
+---
+title: Installation
+description: How to add KeepBlox to a Roblox game before its first release, and what it needs to run.
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Pre-release">
+KeepBlox has no release yet. There is no Wally or pesde package and no `.rbxm` download; these come
+with 0.1.0. Until then, you take the source from the repository. It has not run on live servers yet, so
+do not ship it in a live game.
+</Aside>
+
+## Get the source
+
+KeepBlox is the `src/` folder of the repository. `src/init.luau` makes that folder one ModuleScript,
+and every other file becomes a child module of it. Name the ModuleScript `KeepBlox`.
+
+<Tabs>
+<TabItem label="Rojo project">
+
+<Steps>
+
+1. Clone the repository next to your game, or add it as a git submodule:
+
+   ```sh
+   git clone https://github.com/XopoIII/KeepBlox.git
+   ```
+
+2. Map its `src` folder into your game's `default.project.json`, somewhere only the server can see:
+
+   ```json
+   {
+     "name": "MyGame",
+     "tree": {
+       "$className": "DataModel",
+       "ServerScriptService": {
+         "KeepBlox": { "$path": "KeepBlox/src" }
+       }
+     }
+   }
+   ```
+
+3. Sync with `rojo serve`, or build the place with `rojo build`.
+
+</Steps>
+
+</TabItem>
+<TabItem label="Without a Rojo project">
+
+<Steps>
+
+1. Clone the repository.
+
+2. Build a model file from it. The repository's own `default.project.json` maps `src` to a
+   ModuleScript named `KeepBlox`:
+
+   ```sh
+   rojo build -o KeepBlox.rbxm
+   ```
+
+3. In Studio, insert `KeepBlox.rbxm` into `ServerScriptService` (or `ServerStorage`).
+
+</Steps>
+
+</TabItem>
+</Tabs>
+
+Then require it from a server script:
+
+```lua
+local KeepBlox = require(game:GetService("ServerScriptService").KeepBlox)
+```
+
+KeepBlox has no runtime dependencies. Nothing touches `game` when the module is required; the engine
+services are looked up when the first store is made.
+
+## Requirements
+
+- **Server only.** KeepBlox uses DataStoreService, MemoryStoreService and MessagingService, which only
+  a server can call. Keep the module where clients cannot see it, and require it from server scripts.
+- **The Luau Roblox runs today.** The source uses current syntax such as `const` bindings. Studio and
+  live servers run it; an old external tool may not parse it.
+- **API access in Studio is optional.** With "Enable Studio Access to API Services" off, the first
+  load makes one read-only check, then keeps profiles in memory and reports it through `store.onError`.
+  Nothing is saved. With it on, play tests use the live store by default; the `studio` option can keep
+  them in memory or on a copy. See [Studio and testing](/KeepBlox/guides/studio-and-testing/).
+
+## Coming with 0.1.0
+
+- Wally and pesde packages.
+- A `.rbxm` ModuleScript attached to each GitHub release, and a Creator Store model.
+
+Watch the [changelog](/KeepBlox/changelog/) for the release.
+
+## Next
+
+Write the load and release code in the [quick start](/KeepBlox/getting-started/quick-start/). If your
+game uses ProfileStore today, read [Migrating from ProfileStore](/KeepBlox/guides/migrating-from-profilestore/)
+first: you may only need to change one `require`.

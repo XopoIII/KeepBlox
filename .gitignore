@@ -23,3 +23,8 @@ globalTypes.d.luau
 
 # Rival libraries the benchmarks download (bench/download.luau)
 bench/rivals/
+
+# Docs site build output and dependencies
+docs/node_modules/
+docs/dist/
+docs/.astro/

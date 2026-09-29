@@ -42,3 +42,23 @@ semantic versioning.
 - Numbered migrations with a stored schema version. A load refuses data from a newer version, a failing
   migration, or data that does not fit the schema; it lets the key go and writes nothing.
   `KeepBlox.migrate` tests a migration against fixtures.
+- A server heartbeat in MemoryStore: a dead server's keys are taken within about 10 s, a live owner
+  hears a hand-over request without MessagingService, and each beat carries snapshots of changed
+  profiles, so a crash loses about one 4 s beat of play. Profiles too large for a snapshot are written
+  every 30 s (`renewFallback`); the data store is written every 300 s otherwise (`renew`).
+- Offline and admin edits (`store:edit`, `LoadOptions.quiet`) that never kick a player.
+- Trades (`store:trade`) that land in both profiles or in neither, whatever dies when.
+- Shared documents (`KeepBlox.shared`) updated atomically from any server, with `watch`.
+- Leaderboards (`leaderboards`, `store:leaderboard`) mirrored to ordered data stores.
+- Importers (`KeepBlox.importers`) for DocumentService, Lapis, DataKeep, DataStore2 and Suphi's
+  DataStore Module.
+- Optional compression for large profiles (`compress`), Studio modes (`studio = "memory" | "copy"`),
+  `store:close()` for tests, and roblox-ts declarations (`types/index.d.ts`).
+- Benchmarks against ProfileStore, ProfileService, DocumentService, Lapis, DataStore2 and Suphi's
+  DataStore Module (`bench/Report.luau`, `bench/Benchmarks.md`), and a documentation site (`docs/`).
+
+### Fixed
+
+- A new profile ran every migration on the template.
+- A quick rejoin into the same server failed with "open" while this server was still releasing.
+- A save loop queued one write per call; manual saves now join the one waiting.

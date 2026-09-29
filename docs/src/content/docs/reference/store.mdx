@@ -1,0 +1,241 @@
+---
+title: Store
+description: Every function of the KeepBlox module, and every option and method of a store, with its signature, its result and its behaviour.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## The module
+
+```lua
+const KeepBlox = require(path.to.KeepBlox)
+```
+
+Requiring KeepBlox touches no engine service. Services are reached when a store is opened.
+
+### KeepBlox.store
+
+```lua
+KeepBlox.store(name: string, options: Options): Store
+```
+
+Opens the store `name`: one DataStore of profiles, and the background work that keeps their leases
+alive. `name` must be a non-empty string. `options` must give a `template` or a `schema`, not both.
+Bad options raise an error at once, not at the first load.
+
+Open each store once per server, at startup, and share it.
+
+### KeepBlox.shared
+
+```lua
+KeepBlox.shared(name: string, options: SharedOptions): SharedStore
+```
+
+Opens a store of shared documents: data no server owns, changed atomically by any server, with `read`,
+`update` and `watch`. See [Shared documents](/KeepBlox/guides/shared-documents/).
+
+### KeepBlox.defaults
+
+The protocol's default numbers, a frozen table. See [Config](/KeepBlox/reference/config/).
+
+### KeepBlox.schema
+
+The builders for a store's `schema`: `number`, `string`, `boolean`, `buffer`, `enum`, `record`,
+`array`, `map`, `optional` and `any`. See
+[Schema and migrations](/KeepBlox/guides/schema-and-migrations/).
+
+### KeepBlox.importers
+
+The importers for a store's `import` option: `DocumentService`, `Lapis`, `DataKeep`, `DataStore2`,
+`Suphi` and `custom`. ProfileStore and ProfileService need none: KeepBlox reads their records as they
+are. See [Importing from other libraries](/KeepBlox/guides/importing-from-other-libraries/).
+
+### KeepBlox.migrate
+
+```lua
+KeepBlox.migrate(
+	options: { schema: Schema?, version: number?, migrations: { [number]: Migration }? },
+	data: any,
+	from: number
+): { ok: true, data: any, changed: boolean } | { ok: false, reason: "newerSchema" | "migration" | "schema", message: string }
+```
+
+Runs a store's migrations, defaults and schema check on a copy of `data` stored at schema version
+`from`, exactly as a load does. `data` is not changed. For testing each migration with fixtures; see
+[Studio and testing](/KeepBlox/guides/studio-and-testing/).
+
+### KeepBlox.processReceipt
+
+```lua
+KeepBlox.processReceipt(store: Store, options: ReceiptOptions): (receipt) -> Enum.ProductPurchaseDecision
+```
+
+The callback for `MarketplaceService.ProcessReceipt`, over `store:receipts(options)`. It turns the
+decision's name into the engine's `Enum.ProductPurchaseDecision`. See
+[Purchases](/KeepBlox/guides/purchases/).
+
+## Store options
+
+| Option | Type | Meaning |
+|---|---|---|
+| `template` | table | The data a new profile starts with. Give this or `schema`, not both. It must be storable. |
+| `schema` | schema node | The shape of the data. New profiles start from its defaults, and every save of changed data is checked against it. |
+| `version` | number | The schema version the data is at now. Default: the highest migration. It may not be below the highest migration. |
+| `migrations` | `{ [number]: (data) -> any }` | Migration `n` takes the data from version `n - 1` to `n`, changing it in place or returning a new table. They must be numbered 1..`version` with none missing. |
+| `services` | Services | The engine services; the real ones by default. Tests pass fakes. |
+| `config` | `{ [string]: number }` | Overrides for `KeepBlox.defaults`. An unknown name or a value that is not a positive number raises an error. See [Config](/KeepBlox/reference/config/). |
+| `mock` | `boolean` or `string` | Keep profiles in memory, never in a live data store: `true` for the scratch set `"scratch"`, or the name of a set. |
+| `reconcile` | boolean | Fill keys the stored data lacks from the template, deeply, on every load. Existing values are never replaced. Default `true`. A schema store fills from the schema's defaults instead. |
+| `studio` | `"live"`, `"memory"` or `"copy"` | What Studio play tests do with data. Default `"live"`. Live servers ignore it. See [Studio and testing](/KeepBlox/guides/studio-and-testing/). |
+| `import` | Importer | Where a key's data comes from on its first load, when moving from another library. |
+| `leaderboards` | `{ [string]: (data) -> number? }` | Boards mirrored to ordered data stores. See [Leaderboards](/KeepBlox/guides/leaderboards/). |
+| `leaderboardOptions` | `{ interval: number?, cache: number? }` | Seconds between one profile's board writes (default 60), and seconds a `leaderboard` answer is kept (default 60). |
+| `compress` | `{ above: number }` | Store profiles over `above` bytes compressed. Off by default: ProfileStore cannot read a compressed profile. See [Large profiles](/KeepBlox/guides/large-profiles/). |
+
+## Store fields
+
+### name
+
+```lua
+store.name: string
+```
+
+The store's name, as passed to `KeepBlox.store`.
+
+### onError
+
+```lua
+store.onError: Signal<(key: string, message: string)>
+```
+
+Fires for every problem worth logging: failed calls, refused data, quarantined values, failed migrations,
+failed leaderboard writes. `key` is the profile key, or `""` for a problem with no key. Listeners run in
+their own threads.
+
+```lua
+store.onError:connect(function(key, message)
+	warn(`[KeepBlox] {key}: {message}`)
+end)
+```
+
+## Store methods
+
+### load
+
+```lua
+store:load(key: string, options: LoadOptions?): LoadResult
+```
+
+Claims `key` for this server and returns its profile: `{ ok = true, profile = Profile }` or
+`{ ok = false, reason = string }`. Yields until the claim succeeds or fails. `key` must be 1 to 50
+characters.
+
+| Load option | Meaning |
+|---|---|
+| `cancel` | `() -> boolean`, polled while the load waits; `true` gives up with `"cancelled"`. Pass one that checks the player left. |
+| `steal` | Take the key at once from whoever holds it, as ProfileStore's `Steal = true`. For recovering a key stuck on a dead server by hand; a normal load never needs it. |
+| `quiet` | Never ask a live owner to hand the key over, so no player is kicked: fail with `"inUse"` instead. A dead owner is still taken over, once it is proven dead. For support tools. |
+
+A held key is asked for: its owner hands it over within about a second when it hears the request, and
+a dead owner is taken over once proven dead. Every failure reason is described in
+[Load failures](/KeepBlox/reference/load-failures/).
+
+### profiles
+
+```lua
+store:profiles(): { [string]: Profile }
+```
+
+The profiles open on this server, by key. A new table on every call.
+
+### message
+
+```lua
+store:message(key: string, message: table): { ok: true } | { ok: false, reason: "full" | "foreign" | "failed" }
+```
+
+Queues an offline message for `key`, whether it is open anywhere or not. The session that holds the
+key is told to save soon. A message that cannot be stored raises an error. See
+[Messages and edits](/KeepBlox/guides/messages-and-edits/).
+
+### edit
+
+```lua
+store:edit(key: string, edit: (data) -> (), options: { cancel: (() -> boolean)? }?): EditResult
+```
+
+Edits a key, open here or held by nobody, without kicking anyone. Returns
+`{ ok = true, data = copy }` or `{ ok = false, reason, message }`; `"inUse"` means a live server holds
+the key, so send it a message instead. See [Messages and edits](/KeepBlox/guides/messages-and-edits/).
+
+### trade
+
+```lua
+store:trade(keyA: string, keyB: string, change: (dataA, dataB) -> ()): TradeResult
+```
+
+One change to two profiles open on this server, landing in both or neither. See
+[Trades](/KeepBlox/guides/trades/).
+
+### receipts
+
+```lua
+store:receipts(options: ReceiptOptions): (receipt) -> "PurchaseGranted" | "NotProcessedYet"
+```
+
+A `ProcessReceipt` callback for this store that answers with the decision's name. `options` holds
+`keyFor(userId)`, `products` (product id to a grant function that changes `profile.Data` and does not
+yield), and `history` (how many receipt ids a profile remembers, default 100).
+`KeepBlox.processReceipt` wraps it. See [Purchases](/KeepBlox/guides/purchases/).
+
+### versions
+
+```lua
+store:versions(key: string, query: { from: number?, to: number?, newestFirst: boolean?, limit: number? }?): { { version: string, at: number, deleted: boolean } }
+```
+
+Past versions of a key, oldest first unless `newestFirst`. `at`, `from` and `to` are Unix
+milliseconds; `limit` defaults to 100. See [Versions and rollback](/KeepBlox/guides/versions-and-rollback/).
+
+### readVersion
+
+```lua
+store:readVersion(key: string, version: string): any
+```
+
+The profile data the key held at `version`, or nil when that version is not a profile.
+
+### restore
+
+```lua
+store:restore(key: string, version: string): { ok: true } | { ok: false, reason: "inUse" | "notAProfile" | "failed" }
+```
+
+Makes a version's data current. Refuses with `"inUse"` while any server holds the key.
+
+### leaderboard
+
+```lua
+store:leaderboard(name: string, query: { count: number?, ascending: boolean? }?): { { key: string, value: number } }
+```
+
+The top of a leaderboard, highest first unless `ascending`. `count` defaults to 10 and is clamped to
+1..100. Raises an error when the store has no board `name`. See
+[Leaderboards](/KeepBlox/guides/leaderboards/).
+
+### close
+
+```lua
+store:close(): ()
+```
+
+Releases every open profile in parallel, as a server shutdown does, and refuses new loads with
+`"closing"`. Yields until done or `shutdownDeadline` passes. For tests, and for closing a store early.
+A store also does this on its own when the server shuts down.
+
+<Aside>
+The background work of a store runs from the moment it is opened: every open profile is written every
+`renew` seconds (a renewal, which saves the data if it changed), spread over the interval, and the
+server beats in MemoryStore every `heartbeat` seconds. The renewal loop waits while the server's data
+store budget is spent, so loads and releases are not starved.
+</Aside>

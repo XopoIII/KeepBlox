@@ -1,0 +1,147 @@
+---
+title: Studio and testing
+description: What Studio play tests do with data, how scratch stores keep tests away from live keys, and how to test shutdown and migrations.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Studio play tests
+
+The store option `studio` decides what a Studio play test does with data. Live servers ignore it.
+
+```lua
+const store = KeepBlox.store("Profiles", {
+	template = TEMPLATE,
+	studio = "memory",
+})
+```
+
+| Value | What happens |
+|---|---|
+| `"live"` (default) | The real data store when the place has API access, memory when it has none. |
+| `"memory"` | Always memory. Nothing live is read or written. |
+| `"copy"` | Each profile starts as a copy of its live data, read once and never written, then lives in memory. |
+
+`"copy"` is for testing against real profiles without touching them. The copy is taken without the
+live record's lock, so a play test can load a key that a live server holds. It needs API access to
+read the live data; a key that cannot be read starts from the template.
+
+<Aside type="caution">
+With `"live"` and API access on, a play test reads and writes the real data store, the same keys live
+servers use. Use `"memory"` or `"copy"` when that is not what you want.
+</Aside>
+
+### Studio without API access
+
+With `studio = "live"` in a place without API access, the first load makes one read-only call
+(`GetAsync` of the key `__KeepBlox_access_check`). When it fails for lack of access, the store switches
+to memory for the rest of the play test, and `store.onError` fires once with the key `""` and the
+message:
+
+```
+Studio has no API access: profiles are kept in memory, and nothing is saved
+```
+
+The check reads and never writes, so it cannot touch a live key.
+
+## Scratch stores
+
+`mock` keeps a store's profiles in memory, anywhere, not only in Studio:
+
+```lua
+const store = KeepBlox.store("Profiles", { template = TEMPLATE, mock = true })
+const other = KeepBlox.store("Profiles", { template = TEMPLATE, mock = "test-trades" })
+```
+
+- `mock = true` uses the scratch set `"scratch"`; a string names the set.
+- Each set keeps its own data stores, ordered data stores (for leaderboards), messaging and MemoryStore,
+  for the lifetime of the server. Stores opened with the same set name see the same data; different
+  names stay apart.
+- Values are deep-copied on every write and read, as a real store serializes them, so test code can
+  never hold a reference into stored data.
+- Nothing in a scratch set ever reaches a live key.
+- `mock` takes precedence over `studio`.
+- A scratch set keeps no versions: `store:versions`, `store:readVersion` and `store:restore` raise an
+  error.
+
+`KeepBlox.shared` takes `mock` too; its default set is `"shared"`.
+
+## Testing shutdown
+
+On a live server, KeepBlox binds to `game:BindToClose` and releases every open profile when the server
+shuts down. `store:close()` runs the same code on demand:
+
+```lua
+const result = store:load("u_1")
+assert(result.ok)
+const profile = result.profile
+local endedWith = nil
+profile.onEnded:connect(function(reason)
+	endedWith = reason
+end)
+profile.Data.coins = 50
+
+store:close()
+
+assert(not profile:isActive())
+assert(store:load("u_2").reason == "closing")
+```
+
+`store:close()`:
+
+- marks the store closing, so every new load fails with `"closing"`;
+- releases every open profile in parallel, each with a final save, ending with the reason
+  `"shutdown"`;
+- yields until all are released or `shutdownDeadline` seconds (default 25) pass.
+
+`onEnded` listeners run in their own threads, so check `endedWith` after they had a chance to run.
+
+## Testing migrations
+
+`KeepBlox.migrate(options, data, from)` runs a store's migrations, defaults and schema check on a copy
+of `data` stored at schema version `from`, exactly as a load does. Use it with fixtures from before
+and after each migration.
+
+<Tabs>
+<TabItem label="Test">
+
+```lua
+const outcome = KeepBlox.migrate(PROFILE_OPTIONS, { gold = 5 }, 0)
+assert(outcome.ok)
+assert(outcome.data.coins == 5 and outcome.data.gold == nil)
+assert(outcome.changed)
+
+const newer = KeepBlox.migrate(PROFILE_OPTIONS, { coins = 5 }, 99)
+assert(not newer.ok and newer.reason == "newerSchema")
+```
+
+</TabItem>
+<TabItem label="Options">
+
+```lua
+const PROFILE_OPTIONS = {
+	schema = SCHEMA,
+	version = 1,
+	migrations = {
+		[1] = function(data)
+			data.coins = data.gold
+			data.gold = nil
+		end,
+	},
+}
+```
+
+</TabItem>
+</Tabs>
+
+It returns `{ ok = true, data, changed }`, where `changed` is true when `from` differs from the
+current version, or `{ ok = false, reason, message }` with the reason `"newerSchema"`, `"migration"` or
+`"schema"` (see [Load failures](/KeepBlox/reference/load-failures/)). The `data` you pass is not
+changed. Pass the same `schema`, `version` and `migrations` the store uses; see
+[Schema and migrations](/KeepBlox/guides/schema-and-migrations/).
+
+## Fake services
+
+The store option `services` replaces the engine services behind the store. KeepBlox's own test suite
+uses it to run many virtual servers with fake DataStore, MemoryStore and MessagingService under
+virtual time. A game rarely needs it: `mock` covers testing inside Roblox.

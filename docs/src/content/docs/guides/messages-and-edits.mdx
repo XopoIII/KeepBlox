@@ -1,0 +1,155 @@
+---
+title: Messages and edits
+description: Send offline messages that a player's profile handles exactly once, and edit a key from a support tool without kicking anyone.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+There are two ways to change a profile from outside the player's own session:
+
+- **`store:message`** queues a message in the key's record. Whichever server holds the profile, now or
+  later, handles it exactly once. Use it for gifts, admin grants and anything sent to a player who may
+  be online elsewhere.
+- **`store:edit`** changes the data directly, when the key is open on this server or nobody holds it.
+  Use it for support tools and admin commands.
+
+## Offline messages
+
+### Sending
+
+```lua
+local result = store:message(`u_{userId}`, { kind = "gift", coins = 500, from = senderId })
+if not result.ok then
+	warn(`gift not sent: {result.reason}`)
+end
+```
+
+The message is queued in the key's record, whether or not anyone holds the key, and stays there until a
+session processes it. A key that was never played gets a record holding only the queue. After queueing,
+the owner is told to save soon: directly when it is this server, or with ProfileStore's `{ LoadCount }`
+message on `"PS_" .. GUID` when it is another. A player online elsewhere gets the message within
+seconds.
+
+`store:message` yields, and returns:
+
+| Result | Meaning |
+|---|---|
+| `{ ok = true }` | The message is stored in the queue. |
+| `{ ok = false, reason = "full" }` | The key already holds 1000 messages. Nothing already queued is dropped to make room. |
+| `{ ok = false, reason = "foreign" }` | The key holds something that is not a profile. |
+| `{ ok = false, reason = "failed" }` | The data store failed on every one of five attempts. |
+
+The message must be storable data, like profile data. A message that cannot be stored is refused with
+an error before anything is sent.
+
+### Handling
+
+```lua
+profile:onMessage(function(message, processed)
+	if message.kind == "gift" then
+		profile.Data.coins += message.coins
+		processed()
+	end
+end)
+```
+
+Add handlers right after the load. Messages waiting in the queue are offered to a new handler at once,
+and new ones as they arrive.
+
+Each message goes to the handlers one at a time, in the order they were added, until one of them calls
+`processed()` after changing `Data`. A handler that does not recognise a message leaves it for the next
+handler, and a message no handler takes stays queued for a later session.
+
+### Why exactly once
+
+A processed message leaves the queue in the same write that stores what the handler did to `Data`. Until
+that write lands, the message stays queued:
+
+- if the server crashes before the write, the message comes back in the next session, and the change it
+  made was never stored either, so its effect lands once;
+- if the server crashed after a beat that snapshotted the change, the next server stores the snapshot
+  together with the list of messages processed into it, so they are not processed again.
+
+Handlers run in the inbox's own thread, one message after another. A handler that yields holds up the
+queue; it cannot let a second handler take the same message.
+
+<Aside type="caution">
+Call `processed()` only after the change is in `profile.Data`, and do nothing outside the profile that
+must not happen twice. Only changes to `Data` are stored with the message's removal.
+</Aside>
+
+Messages are stored in ProfileStore's `GlobalUpdates` format. ProfileStore's `MessageAsync` and
+`MessageHandler` and KeepBlox's `store:message` and `profile:onMessage` see each other's messages, and
+older ProfileService entries are read too.
+
+## Editing a key
+
+```lua
+local result = store:edit(`u_{userId}`, function(data)
+	data.coins += 100
+end)
+
+if not result.ok and result.reason == "inUse" then
+	-- The player is online on another server: let that server apply it.
+	store:message(`u_{userId}`, { kind = "grant", coins = 100 })
+end
+```
+
+`store:edit(key, edit, options)` yields, and depends on where the key is:
+
+- **Open on this server:** the live profile is edited in place and saved.
+- **Held by nobody:** the key is claimed quietly, edited and released. Migrations and defaults run as on
+  any load. A key that was never played starts from the template.
+- **Held by a live server:** it is left alone, and the edit fails with `"inUse"`. No player is kicked.
+  Send a message instead.
+- **Held by a server that died:** it is taken over once the owner is known dead, then edited.
+
+The edit lands whole or not at all. When `edit` throws, or its result cannot be stored (the schema
+refuses it, or a value is not storable), the data goes back to what it was, in place, and nothing is
+written.
+
+`edit` gets the live data table. Change it in place; do not yield in it. `options.cancel`, polled while
+the claim waits, gives up when it returns true.
+
+### Results
+
+| Result | Meaning |
+|---|---|
+| `{ ok = true, data = copy }` | Stored. `data` is a copy of what was stored. |
+| `{ ok = false, reason = "inUse" }` | A live server holds the key. |
+| `{ ok = false, reason = "error", message = text }` | `edit` threw; `message` is the error. |
+| `{ ok = false, reason = "refused", message = text }` | The result cannot be stored; `message` names the path of the bad value. |
+| `{ ok = false, reason = "failed", message = text }` | The save or release did not store the edit. |
+| `{ ok = false, reason = reason }` | The load failed for any other [load failure](/KeepBlox/reference/load-failures/) reason, such as `"timeout"` or `"foreign"`. |
+
+### Quiet loads
+
+`store:edit` is built on a load option any tool can use:
+
+```lua
+local result = store:load(key, { quiet = true })
+```
+
+A quiet load never asks a live owner to hand the key over, so no player is kicked; it fails with
+`"inUse"` instead. A dead owner is still taken over: when the owner beats in MemoryStore, once its beat
+stops, and otherwise once its lease has not moved for `death` (605 s). Release a profile opened this way
+as soon as the tool is done with it.
+
+For reading or restoring past versions instead of editing, see
+[Versions and rollback](/KeepBlox/guides/versions-and-rollback/).
+
+## Specs
+
+- `tests/unit/Messages.luau`: "Messages: a crash before the save redelivers the message; its effect lands once"
+- `tests/unit/Messages.luau`: "Messages: a handler that yields cannot let a second handler take the same message"
+- `tests/unit/Messages.luau`: "Messages: the owner on another server hears of a new message and handles it within seconds"
+- `tests/unit/Messages.luau`: "Messages: a full queue refuses, and nothing already queued is dropped"
+- `tests/unit/Messages.luau`: "Messages: a message that cannot be stored is refused before it is sent"
+- `tests/unit/Snapshot.luau`: "Snapshot: a message processed into it is not processed again after the crash"
+- `tests/scenario/Compat.luau`: "Compat: messages cross between the libraries, both ways, handled once"
+- `tests/unit/Edit.luau`: "Edit: an offline key is claimed, edited and released"
+- `tests/unit/Edit.luau`: "Edit: a key a live server holds is left alone, and its player is not kicked"
+- `tests/unit/Edit.luau`: "Edit: a key held by a crashed server is taken once its lease stops"
+- `tests/unit/Edit.luau`: "Edit: an edit that throws writes nothing and leaves the live data as it was"
+- `tests/unit/Edit.luau`: "Edit: an edit that cannot be stored is refused with its path; the offline key is unchanged"
+- `tests/unit/Lease.luau`: "Lease: a live owner's beat keeps a quiet edit out; a dead one's does not"

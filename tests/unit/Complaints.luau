@@ -2,7 +2,7 @@
 --- What users of other data libraries lost data or players to, each as a spec against KeepBlox.
 ---
 --- Every spec names the report it comes from: a GitHub issue (`<library>#<n>`) or a DevForum post of
---- the library's thread. The full list, with links, is in docs/complaints.md.
+--- the library's thread. The full list, with links, is in the docs site's guides/other-libraries page.
 const KeepBlox = require("@keepblox")
 const Sim = require("./Sim")
 const Spec = require("../Spec")
