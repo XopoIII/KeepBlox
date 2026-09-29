@@ -152,7 +152,8 @@ const function walk(state: State, value: any)
 			end
 			state.count += 1
 			parts[state.count] = "]"
-			state.size += 1 + length
+			-- Two brackets and a comma between items.
+			state.size += if length == 0 then 2 else 1 + length
 		else
 			state.count += 1
 			parts[state.count] = "{"
