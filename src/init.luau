@@ -25,6 +25,7 @@
 ---         if profile then profile:release() end
 ---     end)
 const Config = require("@self/Config")
+const Importers = require("@self/Importers")
 const Migrate = require("@self/Migrate")
 const Profile = require("@self/Profile")
 const Record = require("@self/Record")
@@ -46,6 +47,11 @@ KeepBlox.defaults = Config.DEFAULT
 
 --> Builders for a store's `schema` (see Schema).
 KeepBlox.schema = Schema
+
+--> Importers for a store's `import`: moving from DocumentService, Lapis, DataKeep, DataStore2 or
+--> Suphi's DataStore Module (see Importers). ProfileStore and ProfileService need none: KeepBlox reads
+--> their records as they are.
+KeepBlox.importers = Importers
 
 --> Runs a store's migrations, defaults and schema check on a copy of `data` stored at version `from`,
 --> exactly as a load does. For testing each migration with fixtures from before and after it.

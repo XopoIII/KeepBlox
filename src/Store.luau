@@ -12,6 +12,7 @@
 --- session is released in parallel within the deadline.
 const Config = require("./Config")
 const Edit = require("./Edit")
+const Import = require("./Import")
 const Migrate = require("./Migrate")
 const MockServices = require("./MockServices")
 const Open = require("./Open")
@@ -52,6 +53,9 @@ export type Options = {
 	--> - "copy": each profile starts as a copy of its live data (read once, never written), then lives in
 	-->   memory. For testing against real profiles without touching them.
 	studio: ("live" | "memory" | "copy")?,
+	--> Where a key's data comes from on its first load, when moving from another library (see Import
+	--> and `KeepBlox.importers`).
+	import: Import.Importer?,
 }
 
 export type LoadOptions = Open.LoadOptions
@@ -183,6 +187,7 @@ function Store.new(name: string, options: Options): Store
 				checkAccess()
 			end
 		end,
+		importer = options.import,
 	}
 
 	return {

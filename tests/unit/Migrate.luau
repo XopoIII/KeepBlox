@@ -158,6 +158,30 @@ Spec.test("Migrate: a save that breaks the schema is refused with its path", fun
 	Spec.equal(stored(world).Data.coins, 5)
 end)
 
+Spec.test("Migrate: a new player starts from the template as it is now, with no migration run on it", function()
+	const world = World.new(1)
+	const server = world:server({ name = "A" })
+	const store = KeepBlox.store("Profiles", {
+		template = { coins = 5 },
+		-- 1: coins were redenominated; the template already holds the new amount.
+		migrations = {
+			[1] = function(data: any)
+				data.coins *= 10
+			end,
+		},
+		services = server.services,
+	})
+	Sim.run(world.scheduler, "A", function()
+		const result = store:load("u_new")
+		assert(result.ok, "loaded")
+		Spec.equal(result.profile.Data, { coins = 5 })
+		result.profile:release()
+	end, 60)
+	const record = (world.backend:latest("Profiles/global", "u_new") :: any).value
+	Spec.equal(record.Data, { coins = 5 })
+	Spec.equal(record.MetaData.KeepBlox.schemaVersion, 1)
+end)
+
 Spec.test("Migrate: a store takes a template or a schema, not both", function()
 	Spec.throws(function()
 		KeepBlox.store("P", { template = {}, schema = SCHEMA })

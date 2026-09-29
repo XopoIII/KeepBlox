@@ -21,7 +21,7 @@ const Call = require("./Call")
 const Lock = require("./Lock")
 const Session = require("./Session")
 
-export type Failure = "cancelled" | "closing" | "timeout" | "foreign" | "outbid" | "inUse"
+export type Failure = "cancelled" | "closing" | "timeout" | "foreign" | "outbid" | "inUse" | "legacyLocked"
 
 export type Result = { ok: true, record: any, loadCount: number } | { ok: false, reason: Failure }
 
@@ -112,8 +112,8 @@ function Claim.open(
 			context.dataStore.UpdateAsync,
 			context.dataStore,
 			key,
-			function(value: any): any
-				const record, outcome = Lock.claim(value, context.identity, template, clock.time(), steal, mode)
+			function(value: any, info: any): any
+				const record, outcome = Lock.claim(value, context.identity, template, clock.time(), steal, mode, info)
 				claim = outcome
 				return record
 			end
@@ -134,6 +134,14 @@ function Claim.open(
 				return { ok = false, reason = "foreign" }
 			elseif outcome.kind == "outbid" then
 				return { ok = false, reason = "outbid" }
+			elseif outcome.kind == "legacyLocked" then
+				-- The library being imported from still holds the key: wait for its release.
+				if clock.now() - started + delay > config.loadTimeout then
+					return { ok = false, reason = "legacyLocked" }
+				end
+				clock.wait(delay)
+				delay = math.min(delay * 2, config.backoffMax)
+				continue
 			end
 
 			-- Busy: another session holds the key.

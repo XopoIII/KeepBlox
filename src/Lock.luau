@@ -29,6 +29,7 @@ export type Claim =
 	| { kind: "busy", owner: Owner }
 	| { kind: "outbid" }
 	| { kind: "foreign", value: any }
+	| { kind: "legacyLocked" }
 
 --> How a claim treats a key someone else holds.
 export type Mode = {
@@ -39,6 +40,18 @@ export type Mode = {
 	--> With `quiet`: take a held key only while its owner is still this session at this lease, which
 	--> the caller watched long enough to know it is dead.
 	expect: Expected?,
+	--> An importer's reader (see Import): a value that is not a profile is converted, not quarantined,
+	--> when the reader recognises it. A value the old library still holds is left alone.
+	adopt: ((value: any, info: any, now: number) -> { kind: string, data: any?, userIds: { number }? })?,
+	--> The importer's name, recorded in a profile made from imported data.
+	imported: string?,
+	--> The template is data imported from elsewhere (not a new player's defaults).
+	fromImport: boolean?,
+	--> UserIds for a profile made from data imported from elsewhere.
+	userIds: { number }?,
+	--> The schema version a new profile's data is at: the template is written for the current schema,
+	--> so no migration may run on it. Imported data gets none (it is from before every migration).
+	version: number?,
 }
 
 export type Expected = { guid: string, loadCount: number, lease: number? }
@@ -84,13 +97,32 @@ function Lock.claim(
 	template: { [any]: any },
 	now: number,
 	steal: boolean,
-	mode: Mode?
+	mode: Mode?,
+	info: any?
 ): (any?, Claim)
 	const kind = Record.classify(value)
 	if kind == "foreign" then
+		const adopt = mode and mode.adopt
+		const found = if adopt then adopt(value, info, now) else nil
+		if found and found.kind == "data" then
+			const record = Record.fresh(found.data, now, nil)
+			record.UserIds = table.clone(found.userIds or {})
+			Record.ours(record.MetaData).importedFrom = (mode :: Mode).imported
+			return record, take(record, identity, now)
+		elseif found and found.kind == "locked" then
+			return nil, { kind = "legacyLocked" }
+		end
 		return nil, { kind = "foreign", value = value }
 	end
 	const record = if kind == "profile" then value else Record.fresh(template, now, value and value.GlobalUpdates)
+	if kind ~= "profile" and mode then
+		if mode.fromImport then
+			Record.ours(record.MetaData).importedFrom = mode.imported
+			record.UserIds = table.clone(mode.userIds or {})
+		elseif mode.version then
+			Record.ours(record.MetaData).schemaVersion = mode.version
+		end
+	end
 	const meta = record.MetaData
 	const active = meta.ActiveSession
 	if active == nil or Record.isHere(active, identity) then

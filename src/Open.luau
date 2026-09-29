@@ -9,7 +9,9 @@
 --- load (a schema store does the same through its defaults). Existing values are never replaced.
 const Claim = require("./Claim")
 const Config = require("./Config")
+const Import = require("./Import")
 const Inbox = require("./Inbox")
+const Lock = require("./Lock")
 const Messages = require("./Messages")
 const Migrate = require("./Migrate")
 const Profile = require("./Profile")
@@ -52,6 +54,8 @@ export type State = {
 	closing: () -> boolean,
 	--> Runs before the first load: the Studio access check.
 	prepare: () -> (),
+	--> Where missing keys take their data from, when moving from another library.
+	importer: Import.Importer?,
 }
 
 -- How often a load waiting on this server's own release looks again.
@@ -111,16 +115,31 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 	const plan = state.plan
 	const context = table.clone(state.base)
 	context.identity = { placeId = services.placeId, jobId = services.jobId, guid = services.guid() }
+	const mode: Lock.Mode = {
+		force = options ~= nil and options.steal == true,
+		quiet = options ~= nil and options.quiet == true,
+		version = plan.version,
+	}
+	local template = state.template
+	const importer = state.importer
+	if importer then
+		const prepared = Import.prepare(context, key, importer, cancel)
+		if not prepared.ok then
+			state.opening[key] = nil
+			return { ok = false, reason = prepared.reason }
+		end
+		mode.imported = importer.name
+		-- An old value at this very key is converted inside the claim; one from elsewhere was read here.
+		mode.adopt = if importer.fetch == nil then importer.read else nil
+		if prepared.data ~= nil then
+			template = prepared.data
+			mode.fromImport = true
+			mode.userIds = prepared.userIds
+		end
+	end
 	const listener: Upkeep.Listener = { session = nil, connection = nil, done = false }
 	Upkeep.listen(services, context.identity.guid, listener)
-	const claim = Claim.open(
-		context,
-		state.name,
-		key,
-		state.template,
-		cancel,
-		if options then { force = options.steal == true, quiet = options.quiet == true } else nil
-	)
+	const claim = Claim.open(context, state.name, key, template, cancel, mode)
 	state.opening[key] = nil
 	if not claim.ok then
 		stopListening(listener)

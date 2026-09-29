@@ -65,3 +65,12 @@ Suphi [t/2425597](https://devforum.roblox.com/t/2425597) (`pN #m` is page N, pos
 | Want Studio play tests that never save | PStore p6 #113, DocS#65 | `studio = "memory"` | `Mock: studio = memory never touches live data` |
 | Want to test against real profiles without touching them | PStore p6 #113 | `studio = "copy"`: live data read once, unlocked, kept in memory | `Mock: studio = copy starts from the live data` |
 | Studio with API access writes a probe to a live key | PStore findings | the access check only reads | `Mock: Studio without API access falls back to memory` |
+
+## Migration
+
+| Complaint | Source | KeepBlox | Spec |
+|---|---|---|---|
+| Moving from ProfileService is blocked (scope removed) | PStore p5 #99, p8 #156 | ProfileStore and ProfileService records load as they are; `importers.*` take `scope` | `tests/scenario/Compat.luau`, `tests/unit/Import.luau` |
+| No way off DataStore2, DocumentService, Lapis, DataKeep or Suphi's module | DS2#147 | `KeepBlox.importers`: each key moves on its first load, the old value is only read, the old lock is honoured | `tests/unit/Import.luau` |
+| A failed read during a move starts the player from scratch | PStore p10 #195 | a failed read of the old store is retried until the load times out; nothing is written meanwhile | `Import: a failed read of the old store is retried` |
+| Migrations must be safe to write and test | DocS#90, DocS#91 | numbered migrations, `KeepBlox.migrate` for fixtures; a new player's template is never migrated; imported data runs every migration | `tests/unit/Migrate.luau` |
