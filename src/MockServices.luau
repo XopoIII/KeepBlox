@@ -6,6 +6,7 @@
 --- serializes them, so game code can never hold a reference into "stored" data. Nothing here ever
 --- reaches a live key. Each name keeps its own set of stores, so separate scratch sessions stay
 --- separate within one play test.
+const MockOrdered = require("./MockOrdered")
 const Record = require("./Record")
 const Services = require("./Services")
 
@@ -150,6 +151,20 @@ function MockServices.wrap(base: Services.Services, name: string, copyLive: bool
 				store(stores[id], base.clock, if copyLive then base.dataStores:GetDataStore(storeName, scope) else nil)
 		end
 		return handles[id]
+	end
+	const ordered: { [string]: Services.OrderedDataStore } = {}
+	function dataStores.GetOrderedDataStore(
+		_: Services.DataStoreService,
+		storeName: string,
+		scope: string?
+	): Services.OrderedDataStore
+		const id = `ordered:{storeName}/{scope or "global"}`
+		if not ordered[id] then
+			-- Kept beside the set's data stores, so a scratch set keeps its leaderboards too.
+			stores[id] = stores[id] or {}
+			ordered[id] = MockOrdered.new(stores[id] :: any)
+		end
+		return ordered[id]
 	end
 	function dataStores.GetRequestBudgetForRequestType(
 		_: Services.DataStoreService,

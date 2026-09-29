@@ -26,6 +26,7 @@ for file in "$@"; do
 
 	case "$file" in
 		tests/reference/*) continue ;;
+		bench/rivals/*) continue ;;
 	esac
 
 	lines=$(wc -l < "$file" | tr -d ' ')

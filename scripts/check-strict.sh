@@ -28,6 +28,7 @@ for file in "$@"; do
 
 	case "$file" in
 		tests/reference/*) continue ;;
+		bench/rivals/*) continue ;;
 	esac
 
 	if [ "$(head -1 "$file")" != "--!strict" ]; then

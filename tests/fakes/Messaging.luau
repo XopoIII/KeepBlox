@@ -35,6 +35,8 @@ export type Bus = {
 	partitioned: { [string]: boolean },
 	--> Servers whose SubscribeAsync never returns.
 	hangSubscribe: { [string]: boolean },
+	--> Messages each server published (the benchmarks read it).
+	read published: { [string]: number },
 	--> A server's handle.
 	handle: (self: Bus, server: string) -> Services.Messaging,
 	--> Disconnects every subscription of `server` (it crashed).
@@ -73,12 +75,14 @@ function Messaging.bus(scheduler: Scheduler.Scheduler, faults: Faults.Faults, ep
 		delay = { min = 0.5, max = 2 },
 		partitioned = {},
 		hangSubscribe = {},
+		published = {},
 
 		handle = function(self: Bus, server: string): Services.Messaging
 			const handle = {}
 
 			function handle.PublishAsync(_: Services.Messaging, topic: string, data: any)
 				checkTopic(topic)
+				self.published[server] = (self.published[server] or 0) + 1
 				if Encoding.size(data) > MESSAGE_LIMIT then
 					error(Errors.unmodelled(`a message over {MESSAGE_LIMIT} bytes`), 0)
 				end

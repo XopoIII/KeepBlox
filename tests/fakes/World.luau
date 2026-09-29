@@ -13,6 +13,7 @@ const Clock = require("./Clock")
 const DataStore = require("./DataStore")
 const Faults = require("./Faults")
 const Messaging = require("./Messaging")
+const Ordered = require("./Ordered")
 const Scheduler = require("./Scheduler")
 const Services = require("@keepblox/Services")
 
@@ -40,6 +41,8 @@ export type World = {
 	read backend: Backend.Backend,
 	read faults: Faults.Faults,
 	read bus: Messaging.Bus,
+	--> Every ordered data store's values, by store id ("<name>/<scope>").
+	read ordered: Ordered.Shared,
 	read epoch: number,
 	server: (self: World, options: ServerOptions) -> Server,
 }
@@ -60,6 +63,7 @@ function World.new(seed: number, epoch: number?): World
 		backend = Backend.new(),
 		faults = faults,
 		bus = Messaging.bus(scheduler, faults, start),
+		ordered = {},
 		epoch = start,
 
 		server = function(self: World, options: ServerOptions): Server
@@ -91,6 +95,26 @@ function World.new(seed: number, epoch: number?): World
 				if not handle then
 					handle = DataStore.new(context, id)
 					handles[id] = handle
+				end
+				return handle
+			end
+			const orderedHandles: { [string]: Services.OrderedDataStore } = {}
+			function dataStores.GetOrderedDataStore(
+				_: Services.DataStoreService,
+				store: string,
+				scope: string?
+			): Services.OrderedDataStore
+				const id = `{store}/{scope or "global"}`
+				local handle = orderedHandles[id]
+				if not handle then
+					handle = Ordered.new({
+						scheduler = scheduler,
+						faults = faults,
+						budget = budget,
+						server = name,
+						shared = self.ordered,
+					}, id)
+					orderedHandles[id] = handle
 				end
 				return handle
 			end

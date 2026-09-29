@@ -3,7 +3,8 @@
 ---
 --- Source: https://create.roblox.com/docs/cloud-services/data-stores/error-codes-and-limits
 --- - Per-server limits, per minute: StandardRead and StandardWrite 60 + players x 40, StandardList
----   5 + players x 2, StandardRemove 60 + players x 40. UpdateAsync "consumes from both the read and
+---   5 + players x 2, StandardRemove 60 + players x 40; OrderedRead 60 + players x 40, OrderedWrite and
+---   OrderedRemove 30 + players x 5, OrderedList 5 + players x 2. UpdateAsync "consumes from both the read and
 ---   write request budgets".
 --- - Over budget, a request waits in its queue; "Each queue has a limit of 30 requests. When the limit of
 ---   a queue is reached, requests fail with an error code in the 301-306 range".
@@ -18,6 +19,8 @@ type RequestType = Services.RequestType
 export type Budget = {
 	--> Players on this server; the rates scale with it.
 	players: number,
+	--> Requests spent so far, per type: what a library costs (the benchmarks read it).
+	read spent: { [RequestType]: number },
 	--> Whole requests of `requestType` that could go now.
 	available: (self: Budget, requestType: RequestType) -> number,
 	--> Takes one request from each of `types`, waiting in `queue` while any is short. Throws
@@ -34,6 +37,10 @@ const RATES: { [RequestType]: { base: number, perPlayer: number } } = {
 	StandardWrite = { base = 60, perPlayer = 40 },
 	StandardList = { base = 5, perPlayer = 2 },
 	StandardRemove = { base = 60, perPlayer = 40 },
+	OrderedRead = { base = 60, perPlayer = 40 },
+	OrderedWrite = { base = 30, perPlayer = 5 },
+	OrderedList = { base = 5, perPlayer = 2 },
+	OrderedRemove = { base = 30, perPlayer = 5 },
 }
 
 const Budget = {}
@@ -41,6 +48,7 @@ const Budget = {}
 function Budget.new(scheduler: Scheduler.Scheduler, players: number?): Budget
 	const tokens: { [RequestType]: number } = {}
 	const queues: { [string]: number } = {}
+	const spent: { [RequestType]: number } = {}
 	local refilledAt = scheduler.now
 
 	const function perMinute(self: Budget, requestType: RequestType): number
@@ -71,6 +79,7 @@ function Budget.new(scheduler: Scheduler.Scheduler, players: number?): Budget
 
 	const self: Budget = {
 		players = players or 0,
+		spent = spent,
 
 		available = function(budget: Budget, requestType: RequestType): number
 			refill(budget)
@@ -98,6 +107,7 @@ function Budget.new(scheduler: Scheduler.Scheduler, players: number?): Budget
 			end
 			for _, requestType in types do
 				tokens[requestType] -= 1
+				spent[requestType] = (spent[requestType] or 0) + 1
 			end
 		end,
 

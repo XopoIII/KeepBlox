@@ -20,3 +20,6 @@ globalTypes.d.luau
 
 # OS
 .DS_Store
+
+# Rival libraries the benchmarks download (bench/download.luau)
+bench/rivals/

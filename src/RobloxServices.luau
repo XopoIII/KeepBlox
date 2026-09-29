@@ -79,6 +79,14 @@ function RobloxServices.build(): Services.Services
 	function dataStores.GetDataStore(_: Services.DataStoreService, name: string, scope: string?): Services.DataStore
 		return wrapStore(dataStoreService:GetDataStore(name, scope))
 	end
+	function dataStores.GetOrderedDataStore(
+		_: Services.DataStoreService,
+		name: string,
+		scope: string?
+	): Services.OrderedDataStore
+		-- An OrderedDataStore already has the seam's shape, pages included: `{key, value}` entries.
+		return dataStoreService:GetOrderedDataStore(name, scope) :: any
+	end
 	function dataStores.GetRequestBudgetForRequestType(
 		_: Services.DataStoreService,
 		requestType: Services.RequestType

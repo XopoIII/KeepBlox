@@ -28,5 +28,5 @@ luneblox setup >/dev/null
 
 # The new type solver, as Roblox Studio runs it: without it, luau-lsp rejects `read` and `write`
 # property modifiers and checks against rules no game is checked with any more.
-luau-lsp analyze --flag:LuauSolverV2=true --defs globalTypes.d.luau --ignore "tests/reference/**" src tests bench
+luau-lsp analyze --flag:LuauSolverV2=true --defs globalTypes.d.luau --ignore "tests/reference/**" --ignore "bench/rivals/**" src tests bench
 echo "type-check: clean"

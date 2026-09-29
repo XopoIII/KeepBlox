@@ -6,7 +6,8 @@
 --- its steps of play there. So a save says exactly whose progress it holds, and a lost write shows up
 --- as a count that went back, even when other sessions played on meanwhile. Sessions report to the
 --- ledger (opening, opened, mutated, acked, ended); the backend reports every committed write.
---- Records are in ProfileStore's format, which KeepBlox keeps.
+--- Records are read through the adapter's `Format` (ProfileStore's record by default, which KeepBlox
+--- keeps), so the same checks hold any library to the same guarantees.
 ---
 --- Invariants (a breach is a violation, with the time and key):
 --- - `ack-lost`: a session opened with less of some tag than an acknowledged save held when the open
@@ -17,6 +18,7 @@
 ---
 --- Metrics (what the baseline is compared on): progress lost on reload, how long a replaced session
 --- stayed active beside its successor, and how long opening took.
+const Adapter = require("./Adapter")
 const Backend = require("@fakes/Backend")
 const Encoding = require("@fakes/Encoding")
 const Scheduler = require("@fakes/Scheduler")
@@ -34,6 +36,8 @@ export type Metrics = {
 	maxOpenSeconds: number,
 	opens: number,
 	failedOpens: number,
+	--> How long each successful open took, in order (the benchmarks take percentiles of it).
+	openSeconds: { number },
 }
 
 export type Ledger = {
@@ -48,7 +52,7 @@ export type Ledger = {
 	--> Every session of `server` ends at once (it crashed).
 	crashed: (self: Ledger, server: string) -> (),
 	--> The final check: what the store holds for every key against everything acknowledged.
-	finish: (self: Ledger, backend: Backend.Backend, store: string) -> (),
+	finish: (self: Ledger, backend: Backend.Backend, store: string, format: Adapter.Format?, world: any?) -> (),
 }
 
 type KeyState = {
@@ -83,6 +87,7 @@ function Ledger.new(scheduler: Scheduler.Scheduler, _jobOf: (server: string) -> 
 		maxOpenSeconds = 0,
 		opens = 0,
 		failedOpens = 0,
+		openSeconds = {},
 	}
 
 	const function state(key: string): KeyState
@@ -123,6 +128,7 @@ function Ledger.new(scheduler: Scheduler.Scheduler, _jobOf: (server: string) -> 
 			metrics.opens += 1
 			if opening then
 				metrics.maxOpenSeconds = math.max(metrics.maxOpenSeconds, scheduler.now - opening.at)
+				table.insert(metrics.openSeconds, scheduler.now - opening.at)
 				const tag, held, need = shortfall(opening.acked, loaded)
 				if tag then
 					violate("ack-lost", key, `{server} opened with {held} of {tag}, below the acknowledged {need}`)
@@ -169,10 +175,17 @@ function Ledger.new(scheduler: Scheduler.Scheduler, _jobOf: (server: string) -> 
 			end
 		end,
 
-		finish = function(_: Ledger, backend: Backend.Backend, store: string)
+		finish = function(_: Ledger, backend: Backend.Backend, store: string, format: Adapter.Format?, world: any?)
+			const shape = format or Adapter.PROFILE_STORE
 			for key, found in keys do
-				const latest = backend:latest(store, key)
-				const stored = if latest and latest.value then latest.value.Data.p else {}
+				local data: Adapter.Data? = nil
+				if shape.current then
+					data = shape.current(world, key)
+				else
+					const latest = backend:latest(store, key)
+					data = if latest and not latest.deleted then shape.data(latest.value) else nil
+				end
+				const stored = if data then data.p else {}
 				const tag, held, need = shortfall(found.acked, stored)
 				if tag then
 					violate("ack-lost", key, `the store ends with {held} of {tag}, below the acknowledged {need}`)
@@ -190,11 +203,14 @@ function Ledger.checkWrite(
 	ledger: Ledger,
 	scheduler: Scheduler.Scheduler,
 	jobOf: (server: string) -> string,
-	event: Backend.WriteEvent
+	event: Backend.WriteEvent,
+	format: Adapter.Format?
 )
+	const shape = format or Adapter.PROFILE_STORE
+	const readLock = shape.lock
 	const previous = event.previous
 	const version = event.version
-	if previous == nil or previous.deleted or version.deleted or event.writer == nil then
+	if readLock == nil or previous == nil or previous.deleted or version.deleted or event.writer == nil then
 		return
 	end
 	const before, after = previous.value, version.value
@@ -207,16 +223,15 @@ function Ledger.checkWrite(
 			{ invariant = invariant, at = scheduler.now, key = event.key, detail = detail }
 		)
 	end
-	if Encoding.encode(before.Data) ~= Encoding.encode(after.Data) then
-		const owner = before.MetaData and before.MetaData.ActiveSession
-		const job = jobOf(event.writer :: string)
-		if owner == nil or owner[2] ~= job then
-			const holder = if owner then tostring(owner[2]) else "nobody"
-			record("foreign-write", `{event.writer} changed Data while the lock was held by {holder}`)
+	const lockBefore, lockAfter = readLock(before), readLock(after)
+	if Encoding.encode(shape.data(before)) ~= Encoding.encode(shape.data(after)) then
+		const holder = lockBefore.job
+		if holder == nil or holder ~= jobOf(event.writer :: string) then
+			record("foreign-write", `{event.writer} changed Data while the lock was held by {holder or "nobody"}`)
 		end
 	end
-	const countBefore = before.MetaData and before.MetaData.SessionLoadCount or 0
-	const countAfter = after.MetaData and after.MetaData.SessionLoadCount or 0
+	const countBefore = lockBefore.loadCount or 0
+	const countAfter = lockAfter.loadCount or 0
 	if countAfter < countBefore then
 		record("load-count-backwards", `SessionLoadCount went from {countBefore} to {countAfter}`)
 	end

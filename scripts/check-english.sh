@@ -29,6 +29,7 @@ for file in "$@"; do
 	case "$file" in
 		# Vendored third-party code, and files that are not prose.
 		tests/reference/*) continue ;;
+		bench/rivals/*) continue ;;
 		*.lock | *.png | *.ico | *.rbxl | *.rbxm | *.rbxlx | *.rbxmx) continue ;;
 	esac
 

@@ -63,11 +63,47 @@ export type DataStore = {
 	GetVersionAsync: (self: DataStore, key: string, version: string) -> (any, KeyInfo?),
 }
 
---> The modern `Enum.DataStoreRequestType` values for standard data stores.
-export type RequestType = "StandardRead" | "StandardWrite" | "StandardList" | "StandardRemove"
+--> One entry of a sorted page: a key and its integer value.
+export type SortedEntry = { key: string, value: number }
+
+--> `DataStorePages` of `GetSortedAsync`.
+export type SortedPages = {
+	IsFinished: boolean,
+	GetCurrentPage: (self: SortedPages) -> { SortedEntry },
+	AdvanceToNextPageAsync: (self: SortedPages) -> (),
+}
+
+--> `OrderedDataStore`: an integer per key, readable in sorted pages (leaderboards).
+--> https://create.roblox.com/docs/reference/engine/classes/OrderedDataStore
+export type OrderedDataStore = {
+	GetAsync: (self: OrderedDataStore, key: string) -> number?,
+	SetAsync: (self: OrderedDataStore, key: string, value: number) -> (),
+	--> `transform` gets the current value (nil when absent) and returns the new one, or nil to cancel.
+	UpdateAsync: (self: OrderedDataStore, key: string, transform: (current: number?) -> number?) -> number?,
+	RemoveAsync: (self: OrderedDataStore, key: string) -> number?,
+	GetSortedAsync: (
+		self: OrderedDataStore,
+		ascending: boolean,
+		pageSize: number,
+		minValue: number?,
+		maxValue: number?
+	) -> SortedPages,
+}
+
+--> The modern `Enum.DataStoreRequestType` values: standard and ordered data stores.
+export type RequestType =
+	"StandardRead"
+	| "StandardWrite"
+	| "StandardList"
+	| "StandardRemove"
+	| "OrderedRead"
+	| "OrderedWrite"
+	| "OrderedList"
+	| "OrderedRemove"
 
 export type DataStoreService = {
 	GetDataStore: (self: DataStoreService, name: string, scope: string?) -> DataStore,
+	GetOrderedDataStore: (self: DataStoreService, name: string, scope: string?) -> OrderedDataStore,
 	GetRequestBudgetForRequestType: (self: DataStoreService, requestType: RequestType) -> number,
 }
 
