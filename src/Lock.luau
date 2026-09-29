@@ -73,6 +73,8 @@ export type Payload = {
 	receipts: { string }?,
 	--> The schema version `data` is at, stored with it.
 	schemaVersion: number?,
+	--> An open trade's journal, stored with `data` (see Trade); false clears it.
+	journal: any?,
 }
 
 const Lock = {}
@@ -191,6 +193,9 @@ function Lock.save(
 	end
 	if payload.schemaVersion ~= nil then
 		Record.ours(meta).schemaVersion = payload.schemaVersion
+	end
+	if payload.journal ~= nil then
+		Record.ours(meta).trade = if payload.journal == false then nil else payload.journal
 	end
 	if payload.userIds ~= nil then
 		value.UserIds = payload.userIds

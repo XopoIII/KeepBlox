@@ -73,6 +73,8 @@ export type Session = {
 	--> its snapshot will hold their changes, so a game calling `save` in a loop makes one write, not
 	--> a queue of them.
 	pending: Pending?,
+	--> The record holds a settled trade's journal: the next write that stores this data clears it.
+	clearJournal: boolean,
 }
 
 export type Pending = { done: boolean, stored: boolean, waiters: { thread } }
@@ -154,7 +156,7 @@ const function write(
 		-- A large profile writes less often, to stay inside the key's write throughput. Processed
 		-- messages do not wait: their removal must be written with their effect.
 		const spacing = encoded.size * 60 / context.config.writeBytesPerMinute
-		const urgent = next(consumed) ~= nil or newReceipt
+		const urgent = next(consumed) ~= nil or newReceipt or session.clearJournal
 		if not automatic or urgent or clock.now() - session.lastDataWrite >= spacing then
 			data = snapshot
 		end
@@ -167,6 +169,10 @@ const function write(
 		consumed = if data ~= nil then consumed else nil,
 		receipts = if data ~= nil then receipts else nil,
 		schemaVersion = if data ~= nil then context.plan.version else nil,
+		-- A settled trade's journal goes only with data that matches memory (see Trade).
+		journal = if session.clearJournal and (data ~= nil or (encoded and encoded.text == session.storedText))
+			then false
+			else nil,
 	}
 	local outcome: Lock.Save? = nil
 	const ok, err = Call.run(
@@ -189,6 +195,9 @@ const function write(
 	if result.kind == "lost" then
 		Session.finish(context, session, "lost")
 		return false
+	end
+	if payload.journal == false then
+		session.clearJournal = false
 	end
 	if data ~= nil and encoded then
 		session.storedText = encoded.text

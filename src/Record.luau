@@ -109,6 +109,8 @@ function Record.ours(meta: any): {
 	receipts: { string }?,
 	schemaVersion: number?,
 	importedFrom: string?,
+	--> An open trade (see Trade): its id and this profile's data from before it.
+	trade: { id: string, before: any }?,
 }
 	local state = meta.KeepBlox
 	if type(state) ~= "table" then

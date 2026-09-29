@@ -19,6 +19,7 @@ const Record = require("./Record")
 const Serial = require("./Serial")
 const Session = require("./Session")
 const Signal = require("./Signal")
+const Trade = require("./Trade")
 const Upkeep = require("./Upkeep")
 const Validate = require("./Validate")
 
@@ -146,8 +147,19 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 		return { ok = false, reason = claim.reason }
 	end
 	const record = claim.record
+	-- A trade its last server did not finish is settled before anything else (see Trade).
+	const journal = Record.ours(record.MetaData).trade
+	if journal then
+		const settled = Trade.recover(context, state.name, record)
+		if settled == nil then
+			Claim.giveBack(context, key, claim.loadCount)
+			stopListening(listener)
+			return { ok = false, reason = "timeout" }
+		end
+		record.Data = settled
+	end
 	-- The data as stored, before any migration: a profile that did not change is not written again.
-	const stored = Validate.check(record.Data, "Data", nil, Session.slicer(clock))
+	const stored = if journal then nil else Validate.check(record.Data, "Data", nil, Session.slicer(clock))
 	const migrated = Migrate.run(plan, record.Data, Migrate.stored(record))
 	if not migrated.ok then
 		-- Never hand out, or write back, data this server cannot make sense of.
@@ -200,6 +212,7 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 		storedReceipts = {},
 		listener = listener,
 		pending = nil :: Session.Pending?,
+		clearJournal = journal ~= nil,
 	}
 	listener.session = session
 	session.inbox:receive(Messages.list(record))
