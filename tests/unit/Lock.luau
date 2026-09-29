@@ -103,6 +103,19 @@ Spec.test("Lock: a session that no longer owns the key writes nothing", function
 	Spec.equal((lost :: any).owner, { 1, "job-B", "guid-B" })
 end)
 
+Spec.test("Lock: a quiet takeover lands only on the very lease it watched stand still", function()
+	const record = claimed(nil, THERE)
+	const function quiet(expect: Lock.Expected): string
+		const _, claim = Lock.claim(table.clone(record), HERE, TEMPLATE, 1100, false, { quiet = true, expect = expect })
+		return claim.kind
+	end
+	-- The owner renewed, is another session, or is another server since it was watched: left alone.
+	Spec.equal(quiet({ guid = "guid-B", loadCount = 1, lease = 0 }), "busy")
+	Spec.equal(quiet({ guid = "guid-B", loadCount = 2, lease = 1 }), "busy")
+	Spec.equal(quiet({ guid = "guid-C", loadCount = 1, lease = 1 }), "busy")
+	Spec.equal(quiet({ guid = "guid-B", loadCount = 1, lease = 1 }), "taken")
+end)
+
 Spec.test("Lock: disown frees the key only for the very load that holds it", function()
 	const record = claimed(nil, HERE)
 	-- Another load on the same server, another server, and a value that is not a profile: nothing.

@@ -89,6 +89,34 @@ Spec.test("Fencing: a claim that landed unanswered and was then given up leaves 
 	end
 end)
 
+Spec.test("Fencing: a key removed and claimed afresh elsewhere is never written by its old session", function()
+	-- The load count starts over on a removed key, so it alone cannot tell the sessions apart: the
+	-- server must match too (guarantee 2).
+	const world = World.new(6)
+	const a = KeepBlox.store("Profiles", { template = TEMPLATE, services = world:server({ name = "A" }).services })
+	const b = KeepBlox.store("Profiles", { template = TEMPLATE, services = world:server({ name = "B" }).services })
+	const eraser = world:server({ name = "C" }).services.dataStores:GetDataStore("Profiles")
+	local reason = "still open"
+	Sim.run(world.scheduler, "A", function()
+		const old = a:load("u_1")
+		assert(old.ok, "A loaded")
+		old.profile.onEnded:connect(function(why: string)
+			reason = why
+		end)
+		eraser:RemoveAsync("u_1")
+		const fresh = b:load("u_1")
+		assert(fresh.ok, `B loaded ({(fresh :: any).reason})`)
+		fresh.profile.Data.coins = 3
+		fresh.profile:save()
+		old.profile.Data.coins = 50
+		old.profile:save()
+	end, 30)
+	const record = (world.backend:latest("Profiles/global", "u_1") :: any).value
+	Spec.equal(record.MetaData.SessionLoadCount, 1, "the count started over")
+	Spec.equal(record.Data.coins, 3)
+	Spec.equal(reason, "lost")
+end)
+
 -- Writes a request straight into server A's entry, as a newcomer would.
 const function request(world: World.World, value: any)
 	const entry = world.memory.maps["sorted:KB_servers"]["job-A"]

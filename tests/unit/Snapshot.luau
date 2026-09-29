@@ -84,6 +84,21 @@ Spec.test("Snapshot: one older than the stored data is not used", function()
 	Spec.equal(reload(world, store(world, "B")).Data.coins, 9)
 end)
 
+Spec.test("Snapshot: one left by another session of the same server is not used", function()
+	const world = World.new(3)
+	const a = store(world, "A")
+	playThenCrash(world, a, 20)
+	crash(world, "A")
+	-- The dead server's entry holds a snapshot of this key from a session that is not the one holding it.
+	const snapshot = (world.memory.maps["sorted:KB_servers"]["job-A"] :: any).value.s["Profiles/u_1"]
+	snapshot.c -= 1
+	snapshot.q += 100
+	snapshot.d.coins = 999
+	const coins = reload(world, store(world, "B")).Data.coins
+	Spec.equal(coins, stored(world, "u_1").Data.coins)
+	Spec.truthy(coins ~= 999, "the other session's snapshot was used")
+end)
+
 Spec.test("Snapshot: a purchase granted into it is not granted again after the crash", function()
 	const world = World.new(3)
 	const a = store(world, "A")
