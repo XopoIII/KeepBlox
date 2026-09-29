@@ -1,0 +1,18 @@
+# Local agent notes and the work plan: never part of the repository
+.claude/
+
+# Build and tool output
+target/
+Packages/
+ServerPackages/
+DevPackages/
+sourcemap.json
+
+# Roblox place files
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+
+# OS
+.DS_Store
