@@ -74,3 +74,44 @@ Suphi [t/2425597](https://devforum.roblox.com/t/2425597) (`pN #m` is page N, pos
 | No way off DataStore2, DocumentService, Lapis, DataKeep or Suphi's module | DS2#147 | `KeepBlox.importers`: each key moves on its first load, the old value is only read, the old lock is honoured | `tests/unit/Import.luau` |
 | A failed read during a move starts the player from scratch | PStore p10 #195 | a failed read of the old store is retried until the load times out; nothing is written meanwhile | `Import: a failed read of the old store is retried` |
 | Migrations must be safe to write and test | DocS#90, DocS#91 | numbered migrations, `KeepBlox.migrate` for fixtures; a new player's template is never migrated; imported data runs every migration | `tests/unit/Migrate.luau` |
+
+## Features users keep asking for
+
+| Request | Source | KeepBlox | Spec |
+|---|---|---|---|
+| Leaderboards beside the profiles | PS#33, PStore p5 #87/#101 (declined there) | `leaderboards` option: chosen numbers mirrored to ordered data stores within the OrderedWrite budget; `store:leaderboard` reads the top, cached | `tests/unit/Boards.luau` |
+| Atomic trades between players | DocS#127, ProfileStore findings #9 | `store:trade(a, b, fn)`: both or neither, whatever dies when, via a trade record and journals | `tests/unit/Trade.luau` (a crash after every write, a lost answer, 40 seeds of failures) |
+| Shared, unlocked documents (guilds, clans, global keys) | Lapis#58, DocS#89, PStore p3 #55-59 | `KeepBlox.shared`: `update` in one UpdateAsync from any server, `watch` for changes | `tests/unit/Shared.luau` |
+| Compression for large profiles | PStore#7, DocS#112, PS#24 | `compress = { above = n }`, Zstandard through EncodingService; opt-in because ProfileStore cannot read it | `tests/unit/Codec.luau` |
+| Rollback to an old version | PStore p6 #108, DataKeep#4 | `versions`, `readVersion`, `restore` (refused while a server holds the key) | `tests/unit/Versions.luau` |
+| Saved / ended / error signals | PS#5, PS#11, DocS#107, Lapis#38 | `onSaving`, `onSaved`, `onEnded(reason)`, `store.onError` | `tests/unit/Store.luau` |
+| UserIds for GDPR | DS2#143, Lapis#21 | `addUserId` / `removeUserId`, kept through imports | `tests/unit/Import.luau` |
+| Read-only views that cannot corrupt live data | Lapis#44, DataKeep#22 | `readVersion` returns a copy; `load(key, { quiet = true })` never kicks | `tests/unit/Edit.luau` |
+
+## Types, testing, distribution
+
+| Complaint | Source | KeepBlox | Spec |
+|---|---|---|---|
+| Wrong or missing Luau types | PS#23, PStore p8 #162, DataKeep#31, Suphi p7 #124 | `--!strict` everywhere, checked with the new solver on every commit | `scripts/type-check.sh` |
+| roblox-ts declarations missing or stale | PStore#12 | `types/index.d.ts`, checked against the Luau API | `tests/unit/Typings.luau` |
+| Mock mode breaks or hangs | PS#34, PS#7, DataKeep#24 | `mock = true` / a scratch name: the same code over in-memory stores | `tests/unit/Mock.luau` |
+| No way to test shutdown | DocS#80 | `store:close()` does what BindToClose does | `Mock: a test can close a store as a shutdown would` |
+| No official Wally / pesde package | PS#25, PStore#21, PStore#10 | planned for the first release (M6) | none yet: open |
+
+## Not KeepBlox's problem, and why
+
+| Complaint | Source | Why it does not apply |
+|---|---|---|
+| Breaks under Deferred events | DS2#142 | KeepBlox connects to no engine signal except BindToClose; its own signals call listeners directly. |
+| MemoryStore throttling closes sessions | Suphi p7 #134, p11 #209 | KeepBlox's lock lives in the DataStore record; it uses no MemoryStore. |
+| SubscribeAsync hangs in Team Test | PStore p5 #93 | the hand-over subscription never holds up a load (`Upkeep.listen`). |
+| Lock scope differs between Studio and live | Suphi p7 #128 | the lock is part of the record; Studio without API access never touches a live key. |
+
+## Still open
+
+- Suphi's DataStore Module is not in the benchmarks yet: its source ships only as a Roblox asset, which needs
+  a signed-in download. Its importer is tested with values in its documented format.
+- KeepBlox renews every lease with a DataStore write every 15 s: about 240 reads and writes per player-hour,
+  against ProfileStore's 14 (bench/Benchmarks.md). That is the price of losing at most 15 s on a crash
+  (ProfileStore: 300 s) and is within 10% of the per-player budget, but it is the one number where rivals
+  spend less. A MemoryStore heartbeat (M8) is the plan to bring it down.
