@@ -8,8 +8,8 @@ new servers side by side during the rollout, and switch back.
 
 **Documentation: [xopoiii.github.io/KeepBlox](https://xopoiii.github.io/KeepBlox/)**
 
-> **Status: pre-alpha.** Everything below is proven in the simulator, against ProfileStore and five other
-> libraries. It has not run on live servers yet; do not ship it.
+> **Status: 0.1.0, the first release.** Everything below is proven in the simulator, against ProfileStore
+> and five other libraries. It has not yet run in a live game: try it in a test place first.
 
 ## Against the libraries games use today
 
