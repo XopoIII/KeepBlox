@@ -30,9 +30,11 @@ const Migrate = require("@self/Migrate")
 const Profile = require("@self/Profile")
 const Record = require("@self/Record")
 const Schema = require("@self/Schema")
+const Shared = require("@self/Shared")
 const Store = require("@self/Store")
 
 export type Store = Store.Store
+export type SharedStore = Shared.SharedStore
 export type Profile = Profile.Profile
 export type LoadResult = Store.LoadResult
 export type Config = Config.Config
@@ -44,6 +46,9 @@ KeepBlox.store = Store.new
 
 --> The protocol's default numbers.
 KeepBlox.defaults = Config.DEFAULT
+
+--> Opens the shared store `name`: documents no server owns, changed atomically by any (see Shared).
+KeepBlox.shared = Shared.new
 
 --> Builders for a store's `schema` (see Schema).
 KeepBlox.schema = Schema
