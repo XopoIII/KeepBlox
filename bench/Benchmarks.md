@@ -10,7 +10,7 @@ Worst case over seeds 1-20 for each scenario.
 
 | Library | Violations | Crash: progress lost (steps) | Longest stale owner (s) | Slowest open (s) | Failed opens | Library errors |
 |---|---|---|---|---|---|---|
-| KeepBlox | 0 | 211 | 0.0 | 15.6 | 0 of 2588 | 0 |
+| KeepBlox | 0 | 4 | 0.0 | 10.1 | 0 of 2578 | 0 |
 | ProfileStore | 0 | 287 | 244.5 | 46.6 | 20 of 2485 | 0 |
 | ProfileService | 0 | 29 | 0.0 | 65.8 | 27 of 2458 | 0 |
 | DocumentService | 0 | 0 (player locked out: 20 of 40 rejoins) | 0.0 | 15.9 | 389 of 2539 | 40 |
@@ -24,7 +24,7 @@ Requests per player per hour of play (20 players, one hour), and 50 players join
 
 | Library | Read | Write | Ordered read | Ordered write | Ordered list | Publishes | MemoryStore units | Join storm p50 / p99 / max (s) | Storm failures |
 |---|---|---|---|---|---|---|---|---|---|
-| KeepBlox | 14.0 | 14.0 | 0.0 | 0.0 | 0.0 | 0.0 | 45.2 | 0.1 / 0.2 / 0.2 | 0 of 50 |
+| KeepBlox | 13.1 | 13.1 | 0.0 | 0.0 | 0.0 | 0.0 | 45.2 | 0.1 / 0.2 / 0.2 | 0 of 50 |
 | ProfileStore | 13.6 | 13.6 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.1 / 0.2 / 0.2 | 0 of 50 |
 | ProfileService | 122.0 | 122.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 6.2 / 6.3 / 6.3 | 0 of 50 |
 | DocumentService | 25.9 | 25.9 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.1 / 0.2 / 0.2 | 0 of 50 |
@@ -40,13 +40,13 @@ Requests per player per hour of play (20 players, one hour), and 50 players join
 |---|---|---|---|---|---|---|---|
 | rejoin | 0 | 0.0 | 1.7 | 0 of 40 | - | none | 0 |
 | handoff | 0 | 0.0 | 4.5 | 0 of 40 | - | none | 0 |
-| crash | 211 | 0.0 | 12.4 | 0 of 40 | - | none | 0 |
+| crash | 4 | 0.0 | 10.0 | 0 of 40 | - | none | 0 |
 | partitioned | 0 | 0.0 | 4.5 | 0 of 40 | - | none | 0 |
 | thirdRequester | 0 | 0.0 | 8.2 | 0 of 60 | - | none | 0 |
 | shutdown | 0 | 0.0 | 0.5 | 0 of 1000 | 3.1 | none | 0 |
 | outage | 0 | 0.0 | 0.5 | 0 of 60 | - | none | 0 |
-| poison | 258 | 0.0 | 0.5 | 0 of 40 | - | none | 0 |
-| soup | 207 | 0.0 | 15.6 | 0 of 1268 | - | none | 0 |
+| poison | 204 | 0.0 | 0.5 | 0 of 40 | - | none | 0 |
+| soup | 5 | 0.0 | 10.1 | 0 of 1258 | - | none | 0 |
 
 ### ProfileStore
 
