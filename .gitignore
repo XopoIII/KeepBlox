@@ -7,6 +7,10 @@ Packages/
 ServerPackages/
 DevPackages/
 sourcemap.json
+build/
+
+# Roblox API type definitions, downloaded by scripts/type-check.sh
+globalTypes.d.luau
 
 # Roblox place files
 *.rbxl

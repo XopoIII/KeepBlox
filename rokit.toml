@@ -1,0 +1,15 @@
+# Tools managed by Rokit (https://github.com/rojo-rbx/rokit). Run `rokit install` after cloning.
+#
+# Every version is pinned exactly, to the latest stable release at the time it was added (2026-09-29).
+# When a pin is bumped, it goes to the latest stable release again, never to a prerelease.
+#
+# Tests and benchmarks run on LuneBlox, a Lune fork that runs the Luau version and fast flags Roblox
+# runs, so behaviour and timings measured here match live servers.
+
+[tools]
+rojo = "rojo-rbx/rojo@7.7.0"                # Studio sync, and sourcemaps for luau-lsp
+luneblox = "XopoIII/LuneBlox@0.10.10"       # Luau runtime for tests and benchmarks
+luau-lsp = "JohnnyMorganz/luau-lsp@1.70.1"  # `luau-lsp analyze` is the type gate
+selene = "Kampfkarren/selene@0.31.0"        # linter
+stylua = "JohnnyMorganz/StyLua@2.5.2"       # formatter
+lefthook = "evilmartians/lefthook@2.1.14"   # git hooks

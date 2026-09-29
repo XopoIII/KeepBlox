@@ -1,0 +1,11 @@
+# "roblox" builds on Luau and knows its string escapes (`\x`, `\u{}`); "luau+roblox" loses them.
+std = "roblox"
+
+# Vendored third-party code (ProfileStore, the conformance baseline) is not ours to lint.
+exclude = ["tests/reference/**"]
+
+[lints]
+empty_if = "warn"
+shadowing = "warn"
+multiple_statements = "warn"
+deprecated = "warn"
