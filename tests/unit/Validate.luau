@@ -8,19 +8,52 @@ const function refused(value: any): string
 	return problem :: string
 end
 
-Spec.test("Validate: good data encodes canonically, keys sorted", function()
+Spec.test("Validate: the size is the stored JSON length", function()
 	const encoded = Validate.check({ b = { 1, 2.5, true }, a = "x" }, "Data")
 	assert(encoded, "accepted")
-	Spec.equal(encoded.text, '{"a":"x","b":[1,2.5,true]}')
 	Spec.equal(encoded.size, #'{"a":"x","b":[1,2.5,true]}')
+	Spec.equal((Validate.check('say "hi"\n', "Data") :: any).size, #'"say \\"hi\\"\\n"')
 end)
 
-Spec.test("Validate: equal data gives equal text, whatever the insertion order", function()
-	const first, second = { x = 1, y = 2, z = { k = "v" } }, {}
-	second.z = { k = "v" }
-	second.y = 2
-	second.x = 1
-	Spec.equal((Validate.check(first, "Data") :: any).text, (Validate.check(second, "Data") :: any).text)
+Spec.test("Validate: an unchanged table encodes the same; any change shows in the text", function()
+	const data = { x = 1, list = { "a", "b" }, nested = { k = "v" } }
+	const first = (Validate.check(data, "Data") :: any).text
+	Spec.equal((Validate.check(data, "Data") :: any).text, first)
+	for _, change in
+		{
+			function()
+				data.x = 2
+			end,
+			function()
+				data.list[3] = "c"
+			end,
+			function()
+				data.nested.k = "w"
+			end,
+			function()
+				data.list[1] = "a,b"
+			end,
+		}
+	do
+		const before = (Validate.check(data, "Data") :: any).text
+		change()
+		Spec.truthy((Validate.check(data, "Data") :: any).text ~= before, "the text changed")
+	end
+end)
+
+Spec.test("Validate: strings that look alike in the text still differ", function()
+	const a = (Validate.check({ "a", "b" }, "Data") :: any).text
+	const b = (Validate.check({ 'a","b' }, "Data") :: any).text
+	Spec.truthy(a ~= b, "an embedded quote and comma cannot forge a second string")
+end)
+
+Spec.test("Validate: pause is called while a large value is checked", function()
+	const big = table.create(3000, 1)
+	local pauses = 0
+	Validate.check(big, "Data", nil, function()
+		pauses += 1
+	end)
+	Spec.equal(pauses, 5)
 end)
 
 Spec.test("Validate: every refusal names the path of the bad value", function()

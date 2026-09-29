@@ -6,7 +6,8 @@ KeepBlox keeps session-locked player profiles on DataStore. It reads and writes 
 ProfileStore and speaks its lock protocol, so a game can switch by changing one `require`, run old and
 new servers side by side during the rollout, and switch back.
 
-> **Status: pre-alpha.** The test harness is being built. Nothing here is ready for a live game yet.
+> **Status: pre-alpha.** The core works and is proven in the simulator against the ProfileStore
+> baseline (`tests/reference/BASELINE.md`). It has not run on live servers yet; do not ship it.
 
 ## What it promises
 

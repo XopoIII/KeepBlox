@@ -22,3 +22,11 @@ semantic versioning.
   - nine named scenarios, run over many seeds.
 - The vendored ProfileStore v1.0.3 as the baseline, with its measured weak spots in
   `tests/reference/BASELINE.md`.
+- The core library (`src/`):
+  - session locking in ProfileStore's format, with a lease-based takeover of dead owners;
+  - validation with the path of the bad value;
+  - a freeze of a session's data when the session is lost;
+  - load failures as typed results;
+  - parallel release on shutdown;
+  - an in-memory mode for Studio and scratch play tests.
+- Benchmarks with budgets for the frame cost of saving (`bench/`).

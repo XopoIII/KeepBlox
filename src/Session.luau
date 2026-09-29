@@ -18,6 +18,9 @@ const Serial = require("./Serial")
 const Services = require("./Services")
 const Validate = require("./Validate")
 
+-- The most CPU time one write spends before it lets a frame pass.
+const SLICE_SECONDS = 0.002
+
 export type Context = {
 	services: Services.Services,
 	config: Config.Config,
@@ -55,6 +58,17 @@ export type Session = {
 
 const Session = {}
 
+--> A `pause` for `Validate.check` that lets a frame pass after every `SLICE_SECONDS` of CPU time.
+function Session.slicer(clock: Services.Clock): () -> ()
+	local started = os.clock()
+	return function()
+		if os.clock() - started >= SLICE_SECONDS then
+			clock.wait()
+			started = os.clock()
+		end
+	end
+end
+
 --> Ends `session` for `reason`: it stops writing, its data is frozen, and the game is told.
 function Session.finish(context: Context, session: Session, reason: Profile.EndReason)
 	if not session.active then
@@ -88,7 +102,9 @@ const function write(
 		session.releasing = true
 		Profile.freeze(profile.Data)
 	end
-	const encoded, problem = Validate.check(profile.Data, "Data")
+	-- Copy at once (fast), then check the copy in slices, so a large profile never stalls a frame.
+	const snapshot = Record.copy(profile.Data)
+	const encoded, problem = Validate.check(snapshot, "Data", nil, Session.slicer(clock))
 	local data: any = nil
 	if encoded == nil then
 		if problem ~= session.lastProblem then
@@ -100,7 +116,7 @@ const function write(
 		-- A large profile writes less often, to stay inside the key's write throughput.
 		const spacing = encoded.size * 60 / context.config.writeBytesPerMinute
 		if not automatic or clock.now() - session.lastDataWrite >= spacing then
-			data = Record.copy(profile.Data)
+			data = snapshot
 		end
 	end
 	const payload: Lock.Payload = {

@@ -12,6 +12,7 @@
 --- session is released in parallel within the deadline.
 const Claim = require("./Claim")
 const Config = require("./Config")
+const MockServices = require("./MockServices")
 const Profile = require("./Profile")
 const Record = require("./Record")
 const Serial = require("./Serial")
@@ -27,6 +28,9 @@ export type Options = {
 	services: Services.Services?,
 	--> Overrides for `Config.DEFAULT`.
 	config: { [string]: number }?,
+	--> Keep profiles in memory, never in a live data store: `true`, or the name of a scratch set. In
+	--> Studio without API access this happens on its own, after a read-only check.
+	mock: (boolean | string)?,
 }
 
 export type LoadOptions = {
@@ -61,7 +65,12 @@ function Store.new(name: string, options: Options): Store
 	assert(type(options) == "table" and type(options.template) == "table", "KeepBlox: a store needs a template")
 	assert(Validate.check(options.template, "template"), "KeepBlox: the template must be storable")
 	const config = Config.resolve(options.config)
-	const services = options.services or require("./RobloxServices").build()
+	local services = options.services or require("./RobloxServices").build()
+	if options.mock then
+		services = MockServices.wrap(services, if type(options.mock) == "string" then options.mock else "scratch")
+	end
+	-- Studio without API access is found by a read on first load; a write would touch a live key.
+	local checked = options.mock ~= nil or not services.isStudio
 	const clock = services.clock
 	const template = Record.copy(options.template)
 	const onError: Signal.Signal<string, string> = Signal.new(clock.spawn)
@@ -157,6 +166,23 @@ function Store.new(name: string, options: Options): Store
 		end)
 	end
 
+	const checking = Serial.new(clock)
+	const function checkAccess()
+		checking:run(function()
+			if checked then
+				return
+			end
+			const ok, problem = pcall(base.dataStore.GetAsync, base.dataStore, "__KeepBlox_access_check", false)
+			if not ok and MockServices.isNoAccess(tostring(problem)) then
+				services = MockServices.wrap(services, "studio")
+				base.services = services
+				base.dataStore = services.dataStores:GetDataStore(name)
+				onError:fire("", "Studio has no API access: profiles are kept in memory, and nothing is saved")
+			end
+			checked = true
+		end)
+	end
+
 	return {
 		name = name,
 		onError = onError,
@@ -166,6 +192,9 @@ function Store.new(name: string, options: Options): Store
 				return { ok = false, reason = "open" }
 			end
 			opening[key] = true
+			if not checked then
+				checkAccess()
+			end
 			const context = table.clone(base)
 			context.identity = { placeId = services.placeId, jobId = services.jobId, guid = services.guid() }
 			const listener =
@@ -193,7 +222,7 @@ function Store.new(name: string, options: Options): Store
 					Session.release(context, session, "released")
 				end,
 			})
-			const encoded = Validate.check(record.Data, "Data")
+			const encoded = Validate.check(record.Data, "Data", nil, Session.slicer(clock))
 			session = {
 				key = key,
 				loadCount = claim.loadCount,
