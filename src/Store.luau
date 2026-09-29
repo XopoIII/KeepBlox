@@ -12,13 +12,17 @@
 --- session is released in parallel within the deadline.
 const Claim = require("./Claim")
 const Config = require("./Config")
+const Inbox = require("./Inbox")
+const Messages = require("./Messages")
 const MockServices = require("./MockServices")
 const Profile = require("./Profile")
 const Record = require("./Record")
+const Send = require("./Send")
 const Serial = require("./Serial")
 const Services = require("./Services")
 const Session = require("./Session")
 const Signal = require("./Signal")
+const Upkeep = require("./Upkeep")
 const Validate = require("./Validate")
 
 export type Options = {
@@ -50,6 +54,8 @@ export type Store = {
 	load: (self: Store, key: string, options: LoadOptions?) -> LoadResult,
 	--> The open profiles, by key.
 	profiles: (self: Store) -> { [string]: Profile.Profile },
+	--> Queues an offline message for `key`, open or not (see Send).
+	message: (self: Store, key: string, message: { [any]: any }) -> Send.Result,
 }
 
 const Store = {}
@@ -99,75 +105,19 @@ function Store.new(name: string, options: Options): Store
 		end,
 	}
 
-	const function budgetLeft(): boolean
-		const dataStores = services.dataStores
-		return dataStores:GetRequestBudgetForRequestType("StandardWrite") > 0
-			and dataStores:GetRequestBudgetForRequestType("StandardRead") > 0
-	end
-
-	clock.spawn(function()
-		while not closing do
-			clock.wait(1)
-			const now = clock.now()
-			for _, session in sessions do
-				if session.active and now >= session.nextRenew and not session.serial:busy() then
-					if not budgetLeft() then
-						break
-					end
-					session.nextRenew = now + config.renew
-					clock.spawn(Session.save, session.context, session, true)
-				end
-			end
-		end
-	end)
-
-	services.bindToClose(function()
+	const internals: Upkeep.Internals = {
+		context = function(): Session.Context
+			return base
+		end,
+		sessions = sessions,
+		closing = function(): boolean
+			return closing
+		end,
+	}
+	Upkeep.renew(internals)
+	Upkeep.shutdown(internals, function()
 		closing = true
-		local pending = 0
-		for _, session in sessions do
-			pending += 1
-			clock.spawn(function()
-				Session.release(session.context, session, "shutdown")
-				pending -= 1
-			end)
-		end
-		const started = clock.now()
-		while pending > 0 and clock.now() - started < config.shutdownDeadline do
-			clock.wait(0.1)
-		end
 	end)
-
-	-- Listens for hand-over requests to this session's GUID. It subscribes before the claim, so a
-	-- request that arrives right after the key is taken is not missed. The subscription can hang (as
-	-- in Team Test), so it never holds up the load.
-	const function listen(
-		guid: string,
-		target: { session: Session.Session?, connection: Services.Connection?, done: boolean }
-	)
-		clock.spawn(function()
-			const ok, connection = pcall(function()
-				return services.messaging:SubscribeAsync(`PS_{guid}`, function(message: Services.Message)
-					const data = message.Data
-					const session = target.session
-					if
-						session
-						and type(data) == "table"
-						and data.LoadCount == session.loadCount
-						and data.EndSession
-					then
-						Session.release(session.context, session, "handedOver")
-					end
-				end)
-			end)
-			if ok then
-				if target.done then
-					connection:Disconnect()
-				else
-					target.connection = connection
-				end
-			end
-		end)
-	end
 
 	const checking = Serial.new(clock)
 	const function checkAccess()
@@ -202,7 +152,7 @@ function Store.new(name: string, options: Options): Store
 			context.identity = { placeId = services.placeId, jobId = services.jobId, guid = services.guid() }
 			const listener =
 				{ session = nil :: Session.Session?, connection = nil :: Services.Connection?, done = false }
-			listen(context.identity.guid, listener)
+			Upkeep.listen(services, context.identity.guid, listener)
 			const claim = Claim.open(
 				context,
 				name,
@@ -231,6 +181,9 @@ function Store.new(name: string, options: Options): Store
 				release = function()
 					Session.release(context, session, "released")
 				end,
+				handle = function(handler: Inbox.Handler)
+					session.inbox:handle(handler)
+				end,
 			})
 			const encoded = Validate.check(record.Data, "Data", nil, Session.slicer(clock))
 			session = {
@@ -246,11 +199,21 @@ function Store.new(name: string, options: Options): Store
 				nextRenew = clock.now() + config.renew * (0.5 + offset(key) / 2),
 				serial = Serial.new(clock),
 				lastProblem = nil :: string?,
+				inbox = Inbox.new(clock, function()
+					session.saveSoon = true
+				end, function(message: string)
+					onError:fire(key, message)
+				end),
+				saveSoon = false,
 				listener = listener,
 			}
 			listener.session = session
+			session.inbox:receive(Messages.list(record))
 			sessions[key] = session
 			return { ok = true, profile = profile }
+		end,
+		message = function(_: Store, key: string, message: { [any]: any }): Send.Result
+			return Send.message(internals, key, message)
 		end,
 		profiles = function(_: Store): { [string]: Profile.Profile }
 			const open = {}

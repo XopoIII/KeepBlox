@@ -11,6 +11,7 @@
 --- hand-over or its release (the "poison" scenario), and the error names the value's path.
 const Call = require("./Call")
 const Config = require("./Config")
+const Inbox = require("./Inbox")
 const Lock = require("./Lock")
 const Profile = require("./Profile")
 const Record = require("./Record")
@@ -52,6 +53,10 @@ export type Session = {
 	serial: Serial.Serial,
 	--> The last validation problem reported, so it is not reported on every renewal.
 	lastProblem: string?,
+	--> The incoming messages and their handlers.
+	inbox: Inbox.Inbox,
+	--> Save at the next tick, not at the next renewal: a message was processed, or someone sent one.
+	saveSoon: boolean,
 	--> The hand-over subscription, set up before the claim; `done` once the session ended.
 	listener: { session: Session?, connection: Services.Connection?, done: boolean },
 }
@@ -75,6 +80,7 @@ function Session.finish(context: Context, session: Session, reason: Profile.EndR
 		return
 	end
 	session.active = false
+	session.inbox:close()
 	session.listener.done = true
 	if session.listener.connection then
 		session.listener.connection:Disconnect()
@@ -103,6 +109,8 @@ const function write(
 	end
 	-- Copy at once (fast), then check the copy in slices, so a large profile never stalls a frame.
 	const snapshot = Record.copy(profile.Data)
+	-- Taken at the same moment as the snapshot: the effects of these messages are in it.
+	const consumed = session.inbox:processed()
 	const encoded, problem = Validate.check(snapshot, "Data", nil, Session.slicer(clock))
 	local data: any = nil
 	if encoded == nil then
@@ -110,11 +118,12 @@ const function write(
 			session.lastProblem = problem
 			context.report(session.key, `not saved: {problem}`)
 		end
-	elseif encoded.text ~= session.storedText then
+	elseif encoded.text ~= session.storedText or next(consumed) ~= nil then
 		session.lastProblem = nil
-		-- A large profile writes less often, to stay inside the key's write throughput.
+		-- A large profile writes less often, to stay inside the key's write throughput. Processed
+		-- messages do not wait: their removal must be written with their effect.
 		const spacing = encoded.size * 60 / context.config.writeBytesPerMinute
-		if not automatic or clock.now() - session.lastDataWrite >= spacing then
+		if not automatic or next(consumed) ~= nil or clock.now() - session.lastDataWrite >= spacing then
 			data = snapshot
 		end
 	end
@@ -123,6 +132,7 @@ const function write(
 		userIds = table.clone(profile.UserIds),
 		robloxMetaData = Record.copy(profile.RobloxMetaData),
 		release = release,
+		consumed = if data ~= nil then consumed else nil,
 	}
 	local outcome: Lock.Save? = nil
 	const ok, err = Call.run(
@@ -151,6 +161,10 @@ const function write(
 		session.storedSize = encoded.size
 		session.lastDataWrite = clock.now()
 	end
+	if data ~= nil then
+		session.inbox:removed(consumed)
+	end
+	session.inbox:receive(result.messages)
 	profile.LastSavedData = Record.copy(result.record.Data)
 	profile.onSaved:fire(Record.copy(result.record.Data))
 	if release then

@@ -12,6 +12,7 @@
 ---
 --- A transform returns the record to write, or nil to write nothing, plus an outcome for the caller.
 --- The engine may run it more than once; the last run's outcome is the one that counts.
+const Messages = require("./Messages")
 const Record = require("./Record")
 
 export type Owner = {
@@ -28,7 +29,9 @@ export type Claim =
 	| { kind: "outbid" }
 	| { kind: "foreign", value: any }
 
-export type Save = { kind: "saved", handOver: boolean, record: any } | { kind: "lost", owner: Record.Session? }
+export type Save =
+	{ kind: "saved", handOver: boolean, record: any, messages: { Messages.Entry } }
+	| { kind: "lost", owner: Record.Session? }
 
 export type Payload = {
 	--> The data to store, or nil to keep what is stored (a lease renewal).
@@ -37,6 +40,8 @@ export type Payload = {
 	robloxMetaData: any?,
 	--> Clears ActiveSession: the session ends with this write.
 	release: boolean,
+	--> Messages processed into `data`, removed from the queue by this same write.
+	consumed: { [number]: boolean }?,
 }
 
 const Lock = {}
@@ -119,6 +124,9 @@ function Lock.save(
 	if payload.data ~= nil then
 		value.Data = payload.data
 	end
+	if payload.consumed ~= nil then
+		Messages.consume(value, payload.consumed)
+	end
 	if payload.userIds ~= nil then
 		value.UserIds = payload.userIds
 	end
@@ -135,7 +143,7 @@ function Lock.save(
 		meta.ActiveSession = nil
 	end
 	value.WasOverwritten = false
-	return value, { kind = "saved", handOver = handOver, record = value }
+	return value, { kind = "saved", handOver = handOver, record = value, messages = Messages.list(value) }
 end
 
 return Lock
