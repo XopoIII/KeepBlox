@@ -183,12 +183,12 @@ function Store.new(name: string, options: Options): Store
 			return closing
 		end,
 	}
-	Upkeep.renew(internals)
-	const beating = { ok = false }
+	const beating = { ok = false, sentAt = -math.huge }
 	base.beating = function(): boolean
 		return beating.ok
 	end
-	const beatOnce = Upkeep.beat(internals, beating)
+	const beatOnce, checkBeat = Upkeep.beat(internals, beating)
+	Upkeep.renew(internals, checkBeat)
 	const closeAll = Upkeep.shutdown(internals, function()
 		closing = true
 	end)

@@ -104,6 +104,14 @@ const function disown(context: Session.Context, key: string)
 	end)
 end
 
+-- `mode` for a steal on the word of the owner's beat: it lands only while the record vouches for the
+-- beat (see Lock).
+const function onBeat(mode: Lock.Mode?): Lock.Mode
+	const beat: Lock.Mode = if mode then table.clone(mode) else {}
+	beat.byBeat = true
+	return beat
+end
+
 --> Claims `key`, yielding until it is ours or the claim fails.
 function Claim.open(
 	context: Session.Context,
@@ -118,6 +126,8 @@ function Claim.open(
 	const started = clock.now()
 	local delay = config.backoffMin
 	local steal = false
+	-- The steal is on the word of the owner's beat.
+	local byBeat = false
 	local observed: Observed? = nil
 	-- A claim went unanswered, so it may hold the key: a failure must let go of it.
 	local unsure = false
@@ -145,7 +155,15 @@ function Claim.open(
 			context.dataStore,
 			key,
 			function(value: any, info: any): any
-				const record, outcome = Lock.claim(value, context.identity, template, clock.time(), steal, mode, info)
+				const record, outcome = Lock.claim(
+					value,
+					context.identity,
+					template,
+					clock.time(),
+					steal,
+					if steal and byBeat then onBeat(mode) else mode,
+					info
+				)
 				claim = outcome
 				return record
 			end
@@ -215,8 +233,9 @@ function Claim.open(
 							then owner.lastUpdate ~= nil and clock.time() - owner.lastUpdate > config.profileStoreDead
 							else now - current.since >= config.death
 				if dead then
-					mode =
-						{ quiet = true, expect = { guid = guid, loadCount = owner.loadCount, lease = owner.lease } } :: Lock.Mode
+					const expect: Lock.Expected =
+						{ guid = guid, loadCount = owner.loadCount, lease = owner.lease, byBeat = verdict == "dead" }
+					mode = { quiet = true, expect = expect } :: Lock.Mode
 					continue
 				elseif owner.lease == nil then
 					return { ok = false, reason = "inUse" }
@@ -244,6 +263,7 @@ function Claim.open(
 			const verdict = if owner.memory
 				then Lease.judge(context, tostring(owner.session[2]), key, current.beat, true)
 				else "unknown"
+			byBeat = verdict ~= "unknown"
 			if verdict == "dead" then
 				steal = true
 			elseif verdict ~= "unknown" then

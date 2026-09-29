@@ -58,9 +58,14 @@ export type Mode = {
 	--> The schema version a new profile's data is at: the template is written for the current schema,
 	--> so no migration may run on it. Imported data gets none (it is from before every migration).
 	version: number?,
+	--> A steal on the word of the owner's MemoryStore beat: it lands only while the record still says
+	--> the owner beats. An owner whose beats stop landing says otherwise first (see Upkeep.beat).
+	byBeat: boolean?,
 }
 
-export type Expected = { guid: string, loadCount: number, lease: number? }
+--> The owner a quiet claim watched long enough to know it is dead. `byBeat`: it was judged by its beat,
+--> which the record must still vouch for.
+export type Expected = { guid: string, loadCount: number, lease: number?, byBeat: boolean? }
 
 --> The session a claim took the key from (a server that died or was cut off): where its snapshots are.
 export type Previous = { jobId: string, loadCount: number, snap: number }
@@ -175,13 +180,16 @@ function Lock.claim(
 			and expect.guid == tostring(active[3])
 			and expect.loadCount == owner.loadCount
 			and expect.lease == owner.lease
+			and (not expect.byBeat or owner.memory)
 		then
 			return record, take(record, identity, now, mode)
 		end
 		return nil, { kind = "busy", owner = owner }
 	end
 	if steal then
-		if Record.isHere(request, identity) then
+		if mode and mode.byBeat and not owner.memory then
+			return nil, { kind = "busy", owner = owner }
+		elseif Record.isHere(request, identity) then
 			const claim = take(record, identity, now, mode)
 			return record, claim
 		end

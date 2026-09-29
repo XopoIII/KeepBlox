@@ -70,6 +70,24 @@ const MUTANTS: { Mutant } = {
 		breaks = "disown frees only the load that holds the key",
 	},
 	{
+		file = "src/Lock.luau",
+		from = "if mode and mode.byBeat and not owner.memory then",
+		to = "if false then",
+		breaks = "a steal on the beat's word needs the record to still vouch for the beat",
+	},
+	{
+		file = "src/Lock.luau",
+		from = "and (not expect.byBeat or owner.memory)",
+		to = "",
+		breaks = "a quiet takeover on the beat's word needs the record to still vouch for it",
+	},
+	{
+		file = "src/Upkeep.luau",
+		from = "return clock.now() - sentAt <= 1.5 * context.config.heartbeat",
+		to = "return true",
+		breaks = "an owner whose beats stop landing withdraws its beat before it could be judged dead",
+	},
+	{
 		file = "src/Claim.luau",
 		from = "\t\tif unsure then\n\t\t\tdisown(context, key)",
 		to = "\t\tif false then\n\t\t\tdisown(context, key)",

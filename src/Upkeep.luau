@@ -18,24 +18,40 @@ export type Listener = { session: Session.Session?, connection: Services.Connect
 const Upkeep = {}
 
 --> Beats this server's MemoryStore entry every `heartbeat` seconds, from the start (see Lease), and
---> hands over the sessions another server asked for there. `beating.ok` says whether the last beat
---> landed: only then may a new session tell newcomers to trust the beat. Returns one beat, for a load
---> that must not wait for the loop's next one.
-function Upkeep.beat(internals: Internals, beating: { ok: boolean }): () -> ()
+--> hands over the sessions another server asked for there. `beating.ok` says whether newcomers may
+--> trust the beat: only then does a session's record say so.
+---
+--> The trust is measured from when a beat was sent, not from when a call gives up (`callTimeout`): a
+--> newcomer judges a beat that stands still for two beats dead, so an owner whose beats stop landing
+--> withdraws the trust from its records after one and a half, before it could be taken for dead
+--> (PaxosLease Revisited, arXiv 2609.14640: the holder must give up first). A takeover on the beat's
+--> word lands only while the record still vouches for it (see Lock). Returns one beat, for a load
+--> that must not wait for the loop's next one, and the check that notices the trust run out while a
+--> beat hangs (the renewal loop runs it every second).
+function Upkeep.beat(internals: Internals, beating: { ok: boolean, sentAt: number }): (() -> (), () -> ())
 	const clock = internals.context().services.clock
+	const function trusted(context: Session.Context, sentAt: number): boolean
+		return clock.now() - sentAt <= 1.5 * context.config.heartbeat
+	end
 	const function once()
 		const context = internals.context()
 		if not Lease.available(context) then
 			return
 		end
+		const sentAt = clock.now()
 		const requested = Lease.beat(context, internals.sessions)
-		if requested ~= nil and not beating.ok then
+		-- A beat that landed too late to have been trusted still brings its requests, but no trust.
+		if requested ~= nil and trusted(context, sentAt) then
+			beating.sentAt = math.max(beating.sentAt, sentAt)
+		end
+		const landed = requested ~= nil and trusted(context, beating.sentAt)
+		if landed and not beating.ok then
 			-- The beat is back: sessions opened meanwhile tell newcomers so at their next write.
 			for _, session in internals.sessions do
 				session.saveSoon = true
 			end
 		end
-		beating.ok = requested ~= nil
+		beating.ok = landed
 		-- A profile no snapshot covers is written at `renewFallback`, so a crash loses no more than that.
 		const soonest = clock.now() + context.config.renewFallback
 		for _, session in internals.sessions do
@@ -61,16 +77,28 @@ function Upkeep.beat(internals: Internals, beating: { ok: boolean }): () -> ()
 			clock.wait(internals.context().config.heartbeat)
 		end
 	end)
-	return once
+	-- A beat that hangs holds up the loop above: its sessions tell newcomers at their next write.
+	const function check()
+		if beating.ok and not trusted(internals.context(), beating.sentAt) then
+			beating.ok = false
+			for _, session in internals.sessions do
+				session.snapshotted = false
+				session.saveSoon = true
+			end
+		end
+	end
+	return once, check
 end
 
 --> Renews every session every `renew` seconds, and saves soon the ones that asked for it. The loop
 --> waits while the server's data store budget is spent, so loads and releases are not starved.
-function Upkeep.renew(internals: Internals)
+--> `every` runs each second first (the beat's trust check).
+function Upkeep.renew(internals: Internals, every: () -> ())
 	const clock = internals.context().services.clock
 	clock.spawn(function()
 		while not internals.closing() do
 			clock.wait(1)
+			every()
 			const context = internals.context()
 			const dataStores = context.services.dataStores
 			const now = clock.now()
