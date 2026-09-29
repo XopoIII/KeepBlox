@@ -47,11 +47,12 @@ function Upkeep.renew(internals: Internals)
 end
 
 --> On shutdown, releases every session in parallel, and waits for them within the deadline.
---> `close` marks the store closing first, so no new load starts.
-function Upkeep.shutdown(internals: Internals, close: () -> ())
+--> `close` marks the store closing first, so no new load starts. Returns the same closing, for
+--> `store:close()` (tests, and games that close a store themselves).
+function Upkeep.shutdown(internals: Internals, close: () -> ()): () -> ()
 	const context = internals.context()
 	const clock = context.services.clock
-	context.services.bindToClose(function()
+	const function closeAll()
 		close()
 		local pending = 0
 		for _, session in internals.sessions do
@@ -65,7 +66,9 @@ function Upkeep.shutdown(internals: Internals, close: () -> ())
 		while pending > 0 and clock.now() - started < context.config.shutdownDeadline do
 			clock.wait(0.1)
 		end
-	end)
+	end
+	context.services.bindToClose(closeAll)
+	return closeAll
 end
 
 --> Listens on "PS_"..`guid` for requests to a session: `EndSession` hands it over, and a bare

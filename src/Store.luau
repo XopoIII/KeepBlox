@@ -91,6 +91,9 @@ export type Store = {
 	--> Edits a key, open here or nobody's, without kicking anyone (see Edit). "inUse" when a live server
 	--> holds it: send a message instead.
 	edit: (self: Store, key: string, edit: (data: any) -> (), options: Edit.Options?) -> Edit.Result,
+	--> Releases every open profile in parallel, as a server shutdown does, and refuses new loads.
+	--> Yields until done or `shutdownDeadline` passes. For tests, and for closing a store early.
+	close: (self: Store) -> (),
 	--> One change to two profiles open on this server, landing in both or neither (see Trade).
 	trade: (self: Store, keyA: string, keyB: string, change: (dataA: any, dataB: any) -> ()) -> Trade.Result,
 	--> The top of a leaderboard, `{key, value}` entries, highest first unless asked otherwise.
@@ -180,7 +183,7 @@ function Store.new(name: string, options: Options): Store
 		end,
 	}
 	Upkeep.renew(internals)
-	Upkeep.shutdown(internals, function()
+	const closeAll = Upkeep.shutdown(internals, function()
 		closing = true
 	end)
 
@@ -242,6 +245,9 @@ function Store.new(name: string, options: Options): Store
 		end,
 		receipts = function(_: Store, receiptOptions: Receipts.Options): (Receipts.Receipt) -> Receipts.Decision
 			return Receipts.handler(internals, receiptOptions)
+		end,
+		close = function(_: Store)
+			closeAll()
 		end,
 		trade = function(_: Store, keyA: string, keyB: string, change: (dataA: any, dataB: any) -> ()): Trade.Result
 			return Trade.run(name, sessions, keyA, keyB, change)

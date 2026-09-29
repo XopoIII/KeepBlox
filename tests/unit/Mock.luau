@@ -134,6 +134,31 @@ Spec.test("Mock: studio = copy starts from the live data, unlocked, and never wr
 	Spec.equal((world.backend:latest("Profiles/global", "u_1") :: any).value.Data.coins, 42)
 end)
 
+Spec.test("Mock: a test can close a store as a shutdown would (DocumentService#80)", function()
+	const world = World.new(1)
+	const server = world:server({ name = "A" })
+	const store = KeepBlox.store("Profiles", { template = { coins = 0 }, services = server.services, mock = "close" })
+	const reasons: { string } = {}
+	Sim.run(world.scheduler, "A", function()
+		for index = 1, 3 do
+			const result = store:load(`u_{index}`)
+			assert(result.ok, "loaded")
+			result.profile.Data.coins = index
+			result.profile.onEnded:connect(function(reason: string)
+				table.insert(reasons, reason)
+			end)
+		end
+		store:close()
+		Spec.equal(next(store:profiles()), nil, "every profile released")
+		Spec.equal(store:load("u_9"), { ok = false, reason = "closing" })
+	end, 60)
+	Spec.equal(reasons, { "shutdown", "shutdown", "shutdown" })
+	const again = KeepBlox.store("Profiles", { template = { coins = 0 }, services = server.services, mock = "close" })
+	Sim.run(world.scheduler, "A", function()
+		Spec.equal((again:load("u_2") :: any).profile.Data.coins, 2, "saved on close")
+	end, world.scheduler.now + 30)
+end)
+
 Spec.test("Mock: a studio mode other than live, memory or copy is refused", function()
 	Spec.throws(function()
 		KeepBlox.store("P", { template = {}, studio = "off" :: any })
