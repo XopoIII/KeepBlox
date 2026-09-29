@@ -102,7 +102,7 @@ Two rules:
 | `rokit install` | Installs the pinned toolchain (`rokit.toml`) |
 | `lefthook install` | Installs the git hooks |
 | `sh scripts/run-tests.sh` | Runs the suite on LuneBlox (`tests/Run.luau`) |
-| `luneblox run tests/Mutate --yes` | Mutation adequacy: every mutant must fail the suite (about 10 min; `-- Lock` for one file) |
+| `luneblox run tests/Mutate --yes` | Mutation adequacy: every mutant must fail the suite (about 16 min; `-- Lock` for one file) |
 | `sh scripts/type-check.sh` | `luau-lsp analyze` over `src`, `tests`, `bench` |
 | `selene src tests bench` | Lint |
 | `stylua --check src tests bench` | Format check (`stylua src tests bench` to fix) |

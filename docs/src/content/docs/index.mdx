@@ -122,12 +122,13 @@ The [quick start](/KeepBlox/getting-started/quick-start/) walks through a comple
 		[Purchases](/KeepBlox/guides/purchases/).
 	</Card>
 	<Card title="Schema and migrations" icon="setting">
-		Describe the data with `KeepBlox.schema`, and move old data forward with numbered migrations.
+		Describe the data with `KeepBlox.schema`, and move old data forward with numbered migrations. Give
+		them a way back and `writeVersion`, and a release can be rolled back without locking anyone out.
 		[Schema and migrations](/KeepBlox/guides/schema-and-migrations/).
 	</Card>
 	<Card title="Versions and rollback" icon="open-book">
-		List a key's past versions, read one, and restore it safely.
-		[Versions and rollback](/KeepBlox/guides/versions-and-rollback/).
+		List a key's past versions, read one, and restore it safely. A restore names the purchases it
+		took back, so none is lost quietly. [Versions and rollback](/KeepBlox/guides/versions-and-rollback/).
 	</Card>
 	<Card title="Compression" icon="rocket">
 		Profiles over a threshold are stored compressed, so data past the 4 MB limit still saves.
