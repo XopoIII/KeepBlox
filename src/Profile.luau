@@ -25,6 +25,12 @@ export type Profile = {
 	read key: string,
 	--> How many sessions this key has had, this one included.
 	read loadCount: number,
+	--> When the profile was first created, in Unix seconds (ProfileCreateTime).
+	read createdAt: number,
+	--> Fires right before each save takes its snapshot: the last chance to write into `Data`. `final` is
+	--> true for the release, with the reason it ends. A listener must not yield, or its later writes
+	--> miss the save.
+	read onSaving: Signal.Signal<boolean, EndReason?>,
 	--> Fires with a copy of the stored data after every successful save.
 	read onSaved: Signal.Signal<any>,
 	--> Fires once, when the session ends. `Data` is frozen by then.
@@ -71,6 +77,8 @@ function Profile.new(
 		RobloxMetaData = table.clone(record.RobloxMetaData or {}),
 		key = key,
 		loadCount = loadCount,
+		createdAt = record.MetaData and record.MetaData.ProfileCreateTime or 0,
+		onSaving = Signal.new(spawn),
 		onSaved = Signal.new(spawn),
 		onEnded = Signal.new(spawn),
 		isActive = function(_: Profile): boolean

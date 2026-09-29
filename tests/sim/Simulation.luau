@@ -45,7 +45,8 @@ export type Simulation = {
 	read world: World.World,
 	read scheduler: Scheduler.Scheduler,
 	read ledger: Ledger.Ledger,
-	server: (self: Simulation, name: string, options: World.ServerOptions?) -> ServerHandle,
+	--> A new server. `library` runs on it instead of the simulation's own, for mixed rollouts.
+	server: (self: Simulation, name: string, options: World.ServerOptions?, library: Adapter.Adapter?) -> ServerHandle,
 	run: (self: Simulation, seconds: number) -> (),
 	finish: (self: Simulation) -> Report,
 }
@@ -75,7 +76,13 @@ function Simulation.new(seed: number, adapter: Adapter.Adapter): Simulation
 		scheduler = scheduler,
 		ledger = ledger,
 
-		server = function(_: Simulation, name: string, options: World.ServerOptions?): ServerHandle
+		server = function(
+			_: Simulation,
+			name: string,
+			options: World.ServerOptions?,
+			libraryAdapter: Adapter.Adapter?
+		): ServerHandle
+			const chosen = libraryAdapter or adapter
 			const serverOptions: World.ServerOptions = { name = name }
 			if options then
 				serverOptions.players = options.players
@@ -94,7 +101,7 @@ function Simulation.new(seed: number, adapter: Adapter.Adapter): Simulation
 			local opens = 0
 
 			scheduler:spawn(function()
-				library = adapter.boot(env)
+				library = chosen.boot(env)
 			end, name)
 
 			const function play(key: string)

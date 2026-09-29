@@ -98,9 +98,8 @@ const function write(
 	end
 	const clock = context.services.clock
 	const profile = session.profile
-	if release then
-		session.releasing = true
-		Profile.freeze(profile.Data)
+	if not release then
+		profile.onSaving:fire(false, nil)
 	end
 	-- Copy at once (fast), then check the copy in slices, so a large profile never stalls a frame.
 	const snapshot = Record.copy(profile.Data)
@@ -177,6 +176,13 @@ end
 function Session.release(context: Context, session: Session, reason: Profile.EndReason)
 	const clock = context.services.clock
 	const config = context.config
+	if session.active and not session.releasing then
+		-- From here the game sees the profile as ended: it gets one last chance to write, then the
+		-- data freezes, so the final save holds every change the game made.
+		session.releasing = true
+		session.profile.onSaving:fire(true, reason)
+		Profile.freeze(session.profile.Data)
+	end
 	local delay = config.backoffMin
 	while session.active do
 		if session.serial:run(write, context, session, true, reason, false) or not session.active then

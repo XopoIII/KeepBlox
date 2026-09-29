@@ -36,6 +36,9 @@ export type Options = {
 export type LoadOptions = {
 	--> Polled while the load waits; true gives up (the player left).
 	cancel: (() -> boolean)?,
+	--> Take the key at once from whoever holds it, as ProfileStore's `Steal = true`. For recovering a
+	--> key stuck on a dead server by hand; a normal load never needs it.
+	steal: boolean?,
 }
 
 export type LoadResult = { ok: true, profile: Profile.Profile } | { ok: false, reason: Claim.Failure | "open" }
@@ -200,7 +203,14 @@ function Store.new(name: string, options: Options): Store
 			const listener =
 				{ session = nil :: Session.Session?, connection = nil :: Services.Connection?, done = false }
 			listen(context.identity.guid, listener)
-			const claim = Claim.open(context, name, key, template, loadOptions and loadOptions.cancel)
+			const claim = Claim.open(
+				context,
+				name,
+				key,
+				template,
+				loadOptions and loadOptions.cancel,
+				loadOptions ~= nil and loadOptions.steal == true
+			)
 			opening[key] = nil
 			if not claim.ok then
 				listener.done = true

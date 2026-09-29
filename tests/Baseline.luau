@@ -4,6 +4,7 @@
 ---     luneblox run tests/Baseline [seeds] [adapter]
 ---
 --- It is how the numbers in tests/reference/BASELINE.md were made; re-run it to refresh them.
+const CompatAdapter = require("@sim/CompatAdapter")
 const KeepBloxAdapter = require("@sim/KeepBloxAdapter")
 const NaiveAdapter = require("@sim/NaiveAdapter")
 const ProfileStoreAdapter = require("@sim/ProfileStoreAdapter")
@@ -12,7 +13,12 @@ const Scenarios = require("@sim/Scenarios")
 const process = require("@lune/process")
 
 const ORDER = { "rejoin", "handoff", "crash", "partitioned", "thirdRequester", "shutdown", "outage", "poison", "soup" }
-const ADAPTERS = { ProfileStore = ProfileStoreAdapter, Naive = NaiveAdapter, KeepBlox = KeepBloxAdapter.default }
+const ADAPTERS = {
+	ProfileStore = ProfileStoreAdapter,
+	Naive = NaiveAdapter,
+	KeepBlox = KeepBloxAdapter.default,
+	Compat = CompatAdapter,
+}
 
 Runtime.notice()
 const seeds = tonumber(process.args[1]) or 20
