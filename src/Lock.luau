@@ -5,6 +5,7 @@
 --- - `claim` takes a free key, or one this server already holds. It asks the owner of a held key to
 ---   hand it over by writing `ForceLoadSession`. With `steal`, it takes the key only if that request
 ---   is still ours (a third server asking since then wins, as in ProfileStore).
+--- - `force` takes the key from whoever holds it, at once (ProfileStore's `Steal = true`).
 --- - `save` writes only while `ActiveSession` is this server and `SessionLoadCount` is this session's.
 ---   Otherwise it writes nothing and reports the session lost. Every save bumps our lease and
 ---   `LastUpdate`, and reports another server's pending `ForceLoadSession`, so the owner hands over.
@@ -59,7 +60,8 @@ function Lock.claim(
 	identity: Record.Identity,
 	template: { [any]: any },
 	now: number,
-	steal: boolean
+	steal: boolean,
+	force: boolean?
 ): (any?, Claim)
 	const kind = Record.classify(value)
 	if kind == "foreign" then
@@ -75,6 +77,9 @@ function Lock.claim(
 
 	const ours = Record.ours(meta)
 	const request = meta.ForceLoadSession
+	if force then
+		return record, take(record, identity, now)
+	end
 	if steal then
 		if Record.isHere(request, identity) then
 			const claim = take(record, identity, now)

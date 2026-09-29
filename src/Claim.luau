@@ -86,7 +86,8 @@ function Claim.open(
 	storeName: string,
 	key: string,
 	template: { [any]: any },
-	cancel: (() -> boolean)?
+	cancel: (() -> boolean)?,
+	force: boolean?
 ): Result
 	const clock = context.services.clock
 	const config = context.config
@@ -112,7 +113,7 @@ function Claim.open(
 			context.dataStore,
 			key,
 			function(value: any): any
-				const record, outcome = Lock.claim(value, context.identity, template, clock.time(), steal)
+				const record, outcome = Lock.claim(value, context.identity, template, clock.time(), steal, force)
 				claim = outcome
 				return record
 			end

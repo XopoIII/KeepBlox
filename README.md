@@ -23,6 +23,19 @@ servers and random fault schedules:
 - Shutdown releases every profile within the deadline; no call retries forever.
 - Saving is spread across frames and respects the DataStore request budget.
 
+## Migrating from ProfileStore
+
+Change one line; the keys and their format stay as they are:
+
+```lua
+local ProfileStore = require(path.to.KeepBlox.Compat.ProfileStore)
+```
+
+ProfileStore and KeepBlox servers can run side by side during the rollout, and you can switch back.
+Where KeepBlox deliberately behaves differently (it never overwrites foreign data, it refuses bad data
+with its path, and it freezes a session's data when the session ends), `src/Compat/ProfileStore.luau`
+lists each difference.
+
 ## Development
 
 ```sh

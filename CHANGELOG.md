@@ -30,3 +30,6 @@ semantic versioning.
   - parallel release on shutdown;
   - an in-memory mode for Studio and scratch play tests.
 - Benchmarks with budgets for the frame cost of saving (`bench/`).
+- ProfileStore compatibility:
+  - mixed ProfileStore and KeepBlox servers keep every invariant in the harness (`tests/sim/Mixed.luau`);
+  - `Compat/ProfileStore` offers ProfileStore's API, so the migration is one `require`.
