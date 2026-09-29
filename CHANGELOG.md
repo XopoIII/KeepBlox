@@ -5,6 +5,27 @@ semantic versioning.
 
 ## Unreleased
 
+### Fixed
+
+- A hand-over request left in a server's MemoryStore entry no longer ends a later session of the same
+  key. A player hopping from A to B and back to A within one beat lost their new session on A. Requests
+  now name the owner's load count.
+- A load that gave up (cancelled, closing, timeout) after a claim whose answer was lost no longer
+  leaves its live server holding the key. Before, no other server could load the player while that
+  server lived.
+- `restore` brings back the restored version's schema version, so the migrations since then run on
+  it. Before, a renamed field came back as its default.
+- A live owner whose MemoryStore beats hang is no longer taken for dead by a quiet edit or a newcomer.
+  The owner withdraws its beat from its records first, and a takeover on the beat's word lands only
+  while the record still vouches for it.
+- The size estimate counts an empty table as 2 bytes, not 1.
+
+### Added
+
+- `tests/Mutate.luau`: mutation adequacy of the suite. 21 mutants, each a slip in code that keeps a
+  guarantee, must each fail the suite.
+- Differential fuzzing of the save check against the store's encoding.
+
 ## 0.1.0 - 2026-09-29
 
 ### Added
