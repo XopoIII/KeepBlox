@@ -168,7 +168,7 @@ function Simulation.new(seed: number, adapter: Adapter.Adapter): Simulation
 					scheduler:spawn(function()
 						const started = scheduler.now
 						local running = 0
-						for _, callback in env.closing do
+						for _, callback in server.closing do
 							running += 1
 							scheduler:resume(function()
 								callback()

@@ -22,8 +22,6 @@ export type Env = {
 	read globals: { [string]: any },
 	--> Everything the code printed or warned, in order.
 	read log: { string },
-	--> BindToClose callbacks registered so far.
-	read closing: { () -> () },
 	--> Runs a module's `source` in this server's environment, and returns what it returns. It must be
 	--> called from a thread of this server. Read the source first, outside any simulated thread, with
 	--> `RobloxEnv.read`.
@@ -48,7 +46,6 @@ function RobloxEnv.new(world: World.World, server: World.Server, options: Option
 	const clock = services.clock
 	const frame = if options and options.frame then options.frame else 0.1
 	const log: { string } = {}
-	const closing: { () -> () } = {}
 
 	const function wait(dt: number?): number
 		return clock.wait(if dt == nil or dt < frame then frame else dt)
@@ -187,7 +184,7 @@ function RobloxEnv.new(world: World.World, server: World.Server, options: Option
 			return byName[name] or error(`RobloxEnv: no fake for service {name}`, 2)
 		end,
 		BindToClose = function(_: any, callback: () -> ())
-			table.insert(closing, callback)
+			services.bindToClose(callback)
 		end,
 	}
 
@@ -239,7 +236,6 @@ function RobloxEnv.new(world: World.World, server: World.Server, options: Option
 		server = server,
 		globals = globals,
 		log = log,
-		closing = closing,
 		load = function(self: Env, source: string, name: string): any
 			const env = table.clone(self.globals)
 			env.script = { Name = name }

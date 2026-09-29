@@ -29,6 +29,8 @@ export type Server = {
 	read name: string,
 	read services: Services.Services,
 	read budget: Budget.Budget,
+	--> BindToClose callbacks registered on this server, in order.
+	read closing: { () -> () },
 	--> Stops the server where it stands: its threads are dropped and its subscriptions go dead.
 	crash: (self: Server) -> (),
 }
@@ -75,6 +77,7 @@ function World.new(seed: number, epoch: number?): World
 				epoch = start,
 			}
 			const handles: { [string]: Services.DataStore } = {}
+			const closing: { () -> () } = {}
 
 			const dataStores = {}
 			function dataStores.GetDataStore(
@@ -101,6 +104,7 @@ function World.new(seed: number, epoch: number?): World
 			return {
 				name = name,
 				budget = budget,
+				closing = closing,
 				services = {
 					dataStores = dataStores :: Services.DataStoreService,
 					messaging = self.bus:handle(name),
@@ -112,6 +116,20 @@ function World.new(seed: number, epoch: number?): World
 					}),
 					placeId = options.placeId or DEFAULT_PLACE_ID,
 					jobId = options.jobId or `job-{name}`,
+					isStudio = false,
+					bindToClose = function(callback: () -> ())
+						table.insert(closing, callback)
+					end,
+					guid = function(): string
+						const random = scheduler.random
+						return string.format(
+							"%08X-%08X-%08X-%08X",
+							random:nextU32(),
+							random:nextU32(),
+							random:nextU32(),
+							random:nextU32()
+						)
+					end,
 				},
 				crash = function(_: Server)
 					scheduler:crash(name)

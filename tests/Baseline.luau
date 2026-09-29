@@ -4,6 +4,7 @@
 ---     luneblox run tests/Baseline [seeds] [adapter]
 ---
 --- It is how the numbers in tests/reference/BASELINE.md were made; re-run it to refresh them.
+const KeepBloxAdapter = require("@sim/KeepBloxAdapter")
 const NaiveAdapter = require("@sim/NaiveAdapter")
 const ProfileStoreAdapter = require("@sim/ProfileStoreAdapter")
 const Runtime = require("./Runtime")
@@ -11,12 +12,12 @@ const Scenarios = require("@sim/Scenarios")
 const process = require("@lune/process")
 
 const ORDER = { "rejoin", "handoff", "crash", "partitioned", "thirdRequester", "shutdown", "outage", "poison", "soup" }
-const ADAPTERS = { ProfileStore = ProfileStoreAdapter, Naive = NaiveAdapter }
+const ADAPTERS = { ProfileStore = ProfileStoreAdapter, Naive = NaiveAdapter, KeepBlox = KeepBloxAdapter.default }
 
 Runtime.notice()
 const seeds = tonumber(process.args[1]) or 20
 const adapter = ADAPTERS[process.args[2] or "ProfileStore"]
-assert(adapter, "the adapter is ProfileStore or Naive")
+assert(adapter, "the adapter is ProfileStore, KeepBlox or Naive")
 
 print(`{adapter.name}, seeds 1-{seeds}, worst case per scenario:\n`)
 print(

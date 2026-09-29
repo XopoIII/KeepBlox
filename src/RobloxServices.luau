@@ -27,7 +27,7 @@ const function wrapStore(store: DataStore): Services.DataStore
 	): string
 		local options: DataStoreSetOptions? = nil
 		if metadata then
-			local built = Instance.new("DataStoreSetOptions")
+			const built = Instance.new("DataStoreSetOptions")
 			built:SetMetadata(metadata)
 			options = built
 		end
@@ -57,8 +57,8 @@ const function wrapStore(store: DataStore): Services.DataStore
 		maxDate: number?,
 		pageSize: number?
 	): Services.VersionPages
-		local direction = if ascending == false then Enum.SortDirection.Descending else Enum.SortDirection.Ascending
-		local pages = store:ListVersionsAsync(key, direction, minDate or 0, maxDate or 0, pageSize or 0)
+		const direction = if ascending == false then Enum.SortDirection.Descending else Enum.SortDirection.Ascending
+		const pages = store:ListVersionsAsync(key, direction, minDate or 0, maxDate or 0, pageSize or 0)
 		return pages :: any
 	end
 
@@ -98,7 +98,7 @@ function RobloxServices.build(): Services.Services
 		return messagingService:SubscribeAsync(topic, callback) :: any
 	end
 
-	local clock: Services.Clock = {
+	const clock: Services.Clock = {
 		now = os.clock,
 		time = function(): number
 			return os.time()
@@ -106,8 +106,8 @@ function RobloxServices.build(): Services.Services
 		wait = function(dt: number?): number
 			return task.wait(dt)
 		end,
-		spawn = function(fn: (...any) -> (), ...: any)
-			task.spawn(fn, ...)
+		spawn = function(target: thread | (...any) -> (), ...: any)
+			task.spawn(target :: any, ...)
 		end,
 	}
 
@@ -117,6 +117,13 @@ function RobloxServices.build(): Services.Services
 		clock = clock,
 		placeId = game.PlaceId,
 		jobId = game.JobId,
+		isStudio = game:GetService("RunService"):IsStudio(),
+		bindToClose = function(callback: () -> ())
+			game:BindToClose(callback)
+		end,
+		guid = function(): string
+			return game:GetService("HttpService"):GenerateGUID(false)
+		end,
 	}
 end
 
