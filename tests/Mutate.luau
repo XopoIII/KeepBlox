@@ -41,8 +41,8 @@ const MUTANTS: { Mutant } = {
 	},
 	{
 		file = "src/Lock.luau",
-		from = "\t\tif Record.isHere(request, identity) then\n\t\t\tconst claim = take(record, identity, now, mode)",
-		to = "\t\tif true then\n\t\t\tconst claim = take(record, identity, now, mode)",
+		from = "\t\telseif Record.isHere(request, identity) then\n\t\t\tconst claim = take(record, identity, now, mode)",
+		to = "\t\telseif true then\n\t\t\tconst claim = take(record, identity, now, mode)",
 		breaks = "a steal yields to a third server that asked since",
 	},
 	{
@@ -172,15 +172,23 @@ for _, arg in process.args do
 		only = arg
 	end
 end
-local survivors: { Mutant } = {}
+-- Every chosen mutant must still match its code before any runs, so a stale one fails in a second.
+const chosen: { [number]: Mutant } = {}
+for index, mutant in MUTANTS do
+	if only == nil or string.find(mutant.file, only :: string, 1, true) then
+		const occurrences = count(fs.readFile(mutant.file), mutant.from)
+		assert(occurrences == 1, `mutant {index} ({mutant.file}): its code occurs {occurrences} times, not once`)
+		chosen[index] = mutant
+	end
+end
+
+const survivors: { Mutant } = {}
 local ran = 0
 for index, mutant in MUTANTS do
-	if only and not string.find(mutant.file, only :: string, 1, true) then
+	if chosen[index] == nil then
 		continue
 	end
 	const original = fs.readFile(mutant.file)
-	const occurrences = count(original, mutant.from)
-	assert(occurrences == 1, `mutant {index} ({mutant.file}): its code occurs {occurrences} times, not once`)
 	const first, last = string.find(original, mutant.from, 1, true)
 	fs.writeFile(
 		mutant.file,
