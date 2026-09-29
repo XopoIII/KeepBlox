@@ -64,3 +64,30 @@ server's final save lands, which is the fast-rejoin problem the plan found in gg
 - **Partitioned:** a stale owner frozen within the lease period, not after minutes.
 - **Poison:** the bad value refused before the write, with its path. Earlier data keeps saving, and the
   release is never blocked.
+
+## KeepBlox, seeds 1-50, worst case per scenario
+
+Made with `luneblox run tests/Baseline 50 KeepBlox` (M2, default settings: renew 15 s, death 35 s).
+
+| Scenario | Progress lost (steps) | Stale owner (s) | Slowest open (s) | Failed opens | Shutdown (s) | Violations |
+|---|---|---|---|---|---|---|
+| rejoin | 0 | 0.0 | 1.3 | 0 of 100 | - | none |
+| handoff | 0 | 0.0 | 3.6 | 0 of 100 | - | none |
+| crash | 15 | 0.0 | 39.1 | 0 of 100 | - | none |
+| partitioned | 0 | 0.0 | 18.0 | 0 of 100 | - | none |
+| thirdRequester | 0 | 0.0 | 7.9 | 0 of 150 | - | none |
+| shutdown | 0 | 0.0 | 0.2 | 0 of 2500 | 3.1 | none |
+| outage | 0 | 0.0 | 0.2 | 0 of 150 | - | none |
+| poison | 214 | 0.0 | 0.2 | 0 of 100 | - | none |
+| soup | 15 | 0.0 | 39.1 | 215 of 3150 | - | none |
+
+| Weak spot | ProfileStore | KeepBlox |
+|---|---|---|
+| Play lost to a crash | up to 287 s | up to 15 s, one renewal |
+| Dead owner taken over | about 46 s | about 39 s: the lease is watched for 35 s |
+| Owner cut off from messaging | stale beside the new owner for up to 244 s | never stale; it hands over at its next renewal, within about 18 s |
+| One bad string | blocks every save and the release; the next server waits 46 s | refused with its path, the lease still renews, and the release goes through at once |
+
+In `poison`, the play after the bad string is still lost, because that data cannot be stored at all.
+What changes is that the game is told the path of the bad value when it happens, the last good save
+stays, and nothing else is held up.

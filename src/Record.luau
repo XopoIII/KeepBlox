@@ -1,0 +1,103 @@
+--!strict
+--- The stored record: ProfileStore's shape, so ProfileStore can read our keys and we can read its keys.
+---
+---     {
+---       Data = {...},
+---       MetaData = {
+---         ProfileCreateTime, SessionLoadCount, LastUpdate,        -- os.time() seconds
+---         ActiveSession = {PlaceId, JobId, GUID} | nil,
+---         ForceLoadSession = {PlaceId, JobId} | nil,
+---         MetaTags = {},
+---         KeepBlox = { lease, owner },                            -- ours, and only ours
+---       },
+---       GlobalUpdates = {lastIndex, {{index, message}, ...}},
+---       RobloxMetaData = {}, UserIds = {}, WasOverwritten = false,
+---     }
+---
+--- Our state lives under `MetaData.KeepBlox` and nowhere else. `lease` goes up by one on every write
+--- the owner makes, and `owner` is the GUID of the session that bumps it. A newcomer that sees the same
+--- lease for long enough knows the owner is dead, without reading anyone's clock.
+
+export type Session = { number | string } -- {PlaceId, JobId, GUID?}
+
+export type Identity = {
+	placeId: number,
+	jobId: string,
+	guid: string,
+}
+
+export type Kind = "profile" | "missing" | "messagesOnly" | "foreign"
+
+const Record = {}
+
+--> What a stored value is. Anything that is neither missing nor a ProfileStore-shaped record is
+--> foreign: the library quarantines it instead of overwriting it.
+function Record.classify(value: any): Kind
+	if value == nil then
+		return "missing"
+	elseif type(value) ~= "table" then
+		return "foreign"
+	elseif type(value.Data) == "table" and type(value.MetaData) == "table" and type(value.GlobalUpdates) == "table" then
+		return "profile"
+	elseif value.Data == nil and value.MetaData == nil and type(value.GlobalUpdates) == "table" then
+		return "messagesOnly"
+	end
+	return "foreign"
+end
+
+--> A deep copy; stored tables are never shared with the game's live data.
+function Record.copy(value: any): any
+	if type(value) ~= "table" then
+		if typeof(value) == "buffer" then
+			const result = buffer.create(buffer.len(value))
+			buffer.copy(result, 0, value)
+			return result
+		end
+		return value
+	end
+	const result = {}
+	for key, item in value do
+		result[key] = Record.copy(item)
+	end
+	return result
+end
+
+--> A new record for a key that holds nothing (or only messages), not yet owned by anyone.
+function Record.fresh(template: { [any]: any }, now: number, messages: any?): any
+	return {
+		Data = Record.copy(template),
+		MetaData = {
+			ProfileCreateTime = now,
+			SessionLoadCount = 0,
+			ActiveSession = nil,
+			ForceLoadSession = nil,
+			LastUpdate = now,
+			MetaTags = {},
+			KeepBlox = { lease = 0 },
+		},
+		GlobalUpdates = messages or { 0, {} },
+		RobloxMetaData = {},
+		UserIds = {},
+		WasOverwritten = false,
+	}
+end
+
+--> Whether a session tag names this server, as ProfileStore decides it: by PlaceId and JobId.
+function Record.isHere(tag: any, identity: Identity): boolean
+	return type(tag) == "table" and tag[1] == identity.placeId and tag[2] == identity.jobId
+end
+
+--> Our namespaced state in a record's MetaData, created if absent (a ProfileStore record has none).
+function Record.ours(meta: any): { lease: number, owner: string? }
+	local state = meta.KeepBlox
+	if type(state) ~= "table" then
+		state = { lease = 0 }
+		meta.KeepBlox = state
+	end
+	if type(state.lease) ~= "number" then
+		state.lease = 0
+	end
+	return state
+end
+
+return Record

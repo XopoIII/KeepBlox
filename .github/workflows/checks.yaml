@@ -38,3 +38,6 @@ jobs:
 
       - name: Tests
         run: sh scripts/run-tests.sh
+
+      - name: Benchmarks
+        run: sh scripts/run-bench.sh

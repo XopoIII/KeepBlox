@@ -35,3 +35,6 @@ pre-push:
   commands:
     tests:
       run: sh scripts/run-tests.sh
+    bench:
+      # Saving must never spike a frame: each benchmark has a budget (bench/Run.luau).
+      run: sh scripts/run-bench.sh

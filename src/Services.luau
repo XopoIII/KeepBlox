@@ -92,7 +92,8 @@ export type Clock = {
 	time: () -> number,
 	--> Yields for `dt` seconds (none: one frame's worth of yield); returns the time actually waited.
 	wait: (dt: number?) -> number,
-	spawn: (fn: (...any) -> (), ...any) -> (),
+	--> `task.spawn`: runs a function, or resumes a suspended thread, at once until it first yields.
+	spawn: (target: thread | (...any) -> (), ...any) -> (),
 }
 
 export type Services = {
@@ -101,6 +102,12 @@ export type Services = {
 	clock: Clock,
 	placeId: number,
 	jobId: string,
+	--> True in Studio. The library then never touches a live key unless API access is on.
+	isStudio: boolean,
+	--> `game:BindToClose`: `callback` runs, in its own thread, when the server shuts down.
+	bindToClose: (callback: () -> ()) -> (),
+	--> A new unique id (`HttpService:GenerateGUID(false)`): one per session, as ProfileStore uses.
+	guid: () -> string,
 }
 
 -- Types only: a module must still return one value.

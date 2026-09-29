@@ -47,8 +47,9 @@ function Clock.new(scheduler: Scheduler.Scheduler, options: Options): Services.C
 		wait = function(dt: number?): number
 			return scheduler:wait(dt)
 		end,
-		spawn = function(fn: (...any) -> (), ...: any)
-			scheduler:spawn(fn, group, ...)
+		-- As `task.spawn`: runs at once, up to the first yield.
+		spawn = function(target: thread | (...any) -> (), ...: any)
+			scheduler:resume(target, group, ...)
 		end,
 	}
 	return clock
