@@ -13,8 +13,10 @@ const Call = require("./Call")
 const Config = require("./Config")
 const Inbox = require("./Inbox")
 const Lock = require("./Lock")
+const Migrate = require("./Migrate")
 const Profile = require("./Profile")
 const Record = require("./Record")
+const Schema = require("./Schema")
 const Serial = require("./Serial")
 const Services = require("./Services")
 const Validate = require("./Validate")
@@ -31,6 +33,8 @@ export type Context = {
 	report: (key: string, message: string) -> (),
 	--> True once the server began shutting down.
 	closing: () -> boolean,
+	--> The schema and migrations the data follows.
+	plan: Migrate.Plan,
 	--> Called once when a session ends, so the store can forget it.
 	forget: (session: Session) -> (),
 }
@@ -122,7 +126,15 @@ const function write(
 			newReceipt = true
 		end
 	end
-	const encoded, problem = Validate.check(snapshot, "Data", nil, Session.slicer(clock))
+	local encoded, problem = Validate.check(snapshot, "Data", nil, Session.slicer(clock))
+	const schema = context.plan.schema
+	if encoded and schema and encoded.text ~= session.storedText then
+		-- Only changed data is checked against the schema; unchanged data passed already.
+		const broken = Schema.check(schema, snapshot)
+		if broken then
+			encoded, problem = nil, broken
+		end
+	end
 	local data: any = nil
 	if encoded == nil then
 		if problem ~= session.lastProblem then
@@ -146,6 +158,7 @@ const function write(
 		release = release,
 		consumed = if data ~= nil then consumed else nil,
 		receipts = if data ~= nil then receipts else nil,
+		schemaVersion = if data ~= nil then context.plan.version else nil,
 	}
 	local outcome: Lock.Save? = nil
 	const ok, err = Call.run(

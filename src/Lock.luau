@@ -44,6 +44,8 @@ export type Payload = {
 	consumed: { [number]: boolean }?,
 	--> Purchase receipt ids granted into `data`, stored by this same write.
 	receipts: { string }?,
+	--> The schema version `data` is at, stored with it.
+	schemaVersion: number?,
 }
 
 const Lock = {}
@@ -131,6 +133,9 @@ function Lock.save(
 	end
 	if payload.receipts ~= nil then
 		Record.ours(meta).receipts = payload.receipts
+	end
+	if payload.schemaVersion ~= nil then
+		Record.ours(meta).schemaVersion = payload.schemaVersion
 	end
 	if payload.userIds ~= nil then
 		value.UserIds = payload.userIds
