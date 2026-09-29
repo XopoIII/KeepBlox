@@ -12,6 +12,7 @@ const process = require("@lune/process")
 type Case = { adapter: any, importer: any }
 
 const CASES: { Case } = {
+	{ adapter = require("./adapters/SuphiAdapter"), importer = KeepBlox.importers.Suphi({ store = "Profiles" }) },
 	{
 		adapter = require("./adapters/DocumentServiceAdapter"),
 		importer = KeepBlox.importers.DocumentService({ store = "Profiles" }),

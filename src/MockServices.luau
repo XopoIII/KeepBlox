@@ -6,6 +6,7 @@
 --- serializes them, so game code can never hold a reference into "stored" data. Nothing here ever
 --- reaches a live key. Each name keeps its own set of stores, so separate scratch sessions stay
 --- separate within one play test.
+const MockMemory = require("./MockMemory")
 const MockOrdered = require("./MockOrdered")
 const Record = require("./Record")
 const Services = require("./Services")
@@ -201,6 +202,7 @@ function MockServices.wrap(base: Services.Services, name: string, copyLive: bool
 	const wrapped = table.clone(base)
 	wrapped.dataStores = dataStores :: Services.DataStoreService
 	wrapped.messaging = messaging :: Services.Messaging
+	wrapped.memory = MockMemory.new(base.clock)
 	return wrapped
 end
 

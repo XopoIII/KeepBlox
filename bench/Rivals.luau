@@ -34,6 +34,9 @@ const LIBRARIES: { [string]: () -> any } = {
 	DataStore2 = function(): any
 		return require("./adapters/DataStore2Adapter")
 	end,
+	Suphi = function(): any
+		return require("./adapters/SuphiAdapter")
+	end,
 }
 
 const seeds = tonumber(process.args[1]) or 20

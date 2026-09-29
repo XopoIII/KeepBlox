@@ -130,6 +130,8 @@ export type Clock = {
 	wait: (dt: number?) -> number,
 	--> `task.spawn`: runs a function, or resumes a suspended thread, at once until it first yields.
 	spawn: (target: thread | (...any) -> (), ...any) -> (),
+	--> `task.cancel`: a waiting thread never resumes.
+	cancel: (target: thread) -> (),
 }
 
 --> Serializing and compressing data, for a store that compresses large profiles.
@@ -142,9 +144,25 @@ export type Codec = {
 	decompress: (packed: buffer) -> string,
 }
 
+--> `MemoryStoreSortedMap`: small values that expire, shared by every server of the experience.
+--> https://create.roblox.com/docs/reference/engine/classes/MemoryStoreSortedMap
+export type MemoryMap = {
+	GetAsync: (self: MemoryMap, key: string) -> any,
+	--> `transform` gets the value (nil when absent or expired) and returns the new one, or nil to cancel;
+	--> it may run more than once. `expiration` is in seconds.
+	UpdateAsync: (self: MemoryMap, key: string, transform: (value: any) -> any, expiration: number) -> any,
+	RemoveAsync: (self: MemoryMap, key: string) -> (),
+}
+
+export type MemoryStores = {
+	GetSortedMap: (self: MemoryStores, name: string) -> MemoryMap,
+}
+
 export type Services = {
 	--> Serialization and compression; nil where there is none (a store cannot compress then).
 	codec: Codec?,
+	--> MemoryStoreService; nil where there is none (leases then live in the data store alone).
+	memory: MemoryStores?,
 	dataStores: DataStoreService,
 	messaging: Messaging,
 	clock: Clock,

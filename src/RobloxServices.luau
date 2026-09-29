@@ -117,6 +117,9 @@ function RobloxServices.build(): Services.Services
 		spawn = function(target: thread | (...any) -> (), ...: any)
 			task.spawn(target :: any, ...)
 		end,
+		cancel = function(target: thread)
+			task.cancel(target)
+		end,
 	}
 
 	const httpService = game:GetService("HttpService")
@@ -139,6 +142,8 @@ function RobloxServices.build(): Services.Services
 
 	return {
 		codec = codec,
+		-- MemoryStoreSortedMap already has the seam's shape (its transform's sort key is not used).
+		memory = game:GetService("MemoryStoreService") :: any,
 		dataStores = dataStores :: Services.DataStoreService,
 		messaging = messaging :: Services.Messaging,
 		clock = clock,

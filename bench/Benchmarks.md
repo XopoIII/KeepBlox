@@ -8,27 +8,29 @@ same players, the same faults, and the same seeds. See Methodology below.
 
 Worst case over seeds 1-20 for each scenario.
 
-| Library | Violations | Crash: progress lost (steps) | Crash: player locked out | Longest stale owner (s) | Slowest open (s) | Failed opens | Library errors |
-|---|---|---|---|---|---|---|---|
-| KeepBlox | 0 | 15 | 0 of 40 rejoins | 0.0 | 39.1 | 102 of 2578 | 0 |
-| ProfileStore | 0 | 287 | 0 of 40 rejoins | 244.5 | 46.6 | 116 of 2581 | 0 |
-| ProfileService | 0 | 29 | 0 of 40 rejoins | 0.0 | 65.8 | 141 of 2572 | 0 |
-| DocumentService | 0 | 0 | 20 of 40 rejoins | 0.0 | 15.9 | 442 of 2592 | 40 |
-| Lapis | 0 | 0 | 20 of 40 rejoins | 0.0 | 11.9 | 466 of 2585 | 0 |
-| DataStore2 | 61 | 287 | 0 of 40 rejoins | 900.2 | 0.6 | 0 of 2595 | 0 |
+| Library | Violations | Crash: progress lost (steps) | Longest stale owner (s) | Slowest open (s) | Failed opens | Library errors |
+|---|---|---|---|---|---|---|
+| KeepBlox | 0 | 15 | 0.0 | 12.3 | 0 of 2585 | 0 |
+| ProfileStore | 0 | 287 | 244.5 | 46.6 | 20 of 2485 | 0 |
+| ProfileService | 0 | 29 | 0.0 | 65.8 | 27 of 2458 | 0 |
+| DocumentService | 0 | 0 (player locked out: 20 of 40 rejoins) | 0.0 | 15.9 | 389 of 2539 | 40 |
+| Lapis | 0 | 0 (player locked out: 20 of 40 rejoins) | 0.0 | 11.9 | 374 of 2493 | 0 |
+| DataStore2 | 61 | 287 | 900.2 | 0.6 | 0 of 2595 | 0 |
+| Suphi | 1 | 0 (player locked out: 20 of 40 rejoins) | 0.0 | 0.5 | 355 of 2585 | 0 |
 
 ## Cost
 
 Requests per player per hour of play (20 players, one hour), and 50 players joining one server at once.
 
-| Library | Read | Write | Ordered read | Ordered write | Ordered list | Publishes | Join storm p50 / p99 / max (s) | Storm failures |
-|---|---|---|---|---|---|---|---|---|
-| KeepBlox | 242.8 | 242.8 | 0.0 | 0.0 | 0.0 | 0.0 | 0.1 / 0.2 / 0.2 | 0 of 50 |
-| ProfileStore | 13.6 | 13.6 | 0.0 | 0.0 | 0.0 | 0.0 | 0.1 / 0.2 / 0.2 | 0 of 50 |
-| ProfileService | 122.0 | 122.0 | 0.0 | 0.0 | 0.0 | 0.0 | 6.2 / 6.3 / 6.3 | 0 of 50 |
-| DocumentService | 25.9 | 25.9 | 0.0 | 0.0 | 0.0 | 0.0 | 0.1 / 0.2 / 0.2 | 0 of 50 |
-| Lapis | 14.0 | 14.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.3 / 0.3 / 0.3 | 0 of 50 |
-| DataStore2 | 0.0 | 1.0 | 0.0 | 1.0 | 1.0 | 0.0 | 0.3 / 0.3 / 0.3 | 0 of 50 |
+| Library | Read | Write | Ordered read | Ordered write | Ordered list | Publishes | MemoryStore units | Join storm p50 / p99 / max (s) | Storm failures |
+|---|---|---|---|---|---|---|---|---|---|
+| KeepBlox | 242.6 | 242.6 | 0.0 | 0.0 | 0.0 | 0.0 | 45.1 | 0.1 / 0.2 / 0.2 | 0 of 50 |
+| ProfileStore | 13.6 | 13.6 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.1 / 0.2 / 0.2 | 0 of 50 |
+| ProfileService | 122.0 | 122.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 6.2 / 6.3 / 6.3 | 0 of 50 |
+| DocumentService | 25.9 | 25.9 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.1 / 0.2 / 0.2 | 0 of 50 |
+| Lapis | 14.0 | 14.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.3 / 0.3 / 0.3 | 0 of 50 |
+| DataStore2 | 0.0 | 1.0 | 0.0 | 1.0 | 1.0 | 0.0 | 0.0 | 0.3 / 0.3 / 0.3 | 0 of 50 |
+| Suphi | 1.0 | 120.3 | 0.0 | 0.0 | 0.0 | 0.0 | 62.0 | 0.3 / 0.4 / 0.4 | 0 of 50 |
 
 ## Every scenario
 
@@ -36,15 +38,15 @@ Requests per player per hour of play (20 players, one hour), and 50 players join
 
 | Scenario | Progress lost (steps) | Stale owner (s) | Slowest open (s) | Failed opens | Shutdown (s) | Violations | Library errors |
 |---|---|---|---|---|---|---|---|
-| rejoin | 0 | 0.0 | 1.3 | 0 of 40 | - | none | 0 |
-| handoff | 0 | 0.0 | 3.6 | 0 of 40 | - | none | 0 |
-| crash | 15 | 0.0 | 39.1 | 0 of 40 | - | none | 0 |
-| partitioned | 0 | 0.0 | 18.0 | 0 of 40 | - | none | 0 |
-| thirdRequester | 0 | 0.0 | 7.9 | 0 of 60 | - | none | 0 |
+| rejoin | 0 | 0.0 | 1.7 | 0 of 40 | - | none | 0 |
+| handoff | 0 | 0.0 | 4.3 | 0 of 40 | - | none | 0 |
+| crash | 15 | 0.0 | 12.3 | 0 of 40 | - | none | 0 |
+| partitioned | 0 | 0.0 | 4.5 | 0 of 40 | - | none | 0 |
+| thirdRequester | 0 | 0.0 | 8.3 | 0 of 60 | - | none | 0 |
 | shutdown | 0 | 0.0 | 0.2 | 0 of 1000 | 3.1 | none | 0 |
 | outage | 0 | 0.0 | 0.2 | 0 of 60 | - | none | 0 |
 | poison | 214 | 0.0 | 0.2 | 0 of 40 | - | none | 0 |
-| soup | 15 | 0.0 | 39.1 | 102 of 1258 | - | none | 0 |
+| soup | 15 | 0.0 | 12.3 | 0 of 1265 | - | none | 0 |
 
 ### ProfileStore
 
@@ -58,7 +60,7 @@ Requests per player per hour of play (20 players, one hour), and 50 players join
 | shutdown | 0 | 0.0 | 0.2 | 0 of 1000 | 3.1 | none | 0 |
 | outage | 0 | 0.0 | 0.2 | 0 of 60 | - | none | 0 |
 | poison | 258 | 0.0 | 46.5 | 0 of 40 | - | none | 0 |
-| soup | 230 | 0.0 | 46.6 | 96 of 1261 | - | none | 0 |
+| soup | 230 | 0.0 | 46.6 | 0 of 1165 | - | none | 0 |
 
 ### ProfileService
 
@@ -72,7 +74,7 @@ Requests per player per hour of play (20 players, one hour), and 50 players join
 | shutdown | 0 | 0.0 | 7.3 | 0 of 1000 | 9.9 | none | 0 |
 | outage | 0 | 0.0 | 7.3 | 0 of 60 | - | none | 0 |
 | poison | 228 | 0.0 | 63.8 | 0 of 40 | - | none | 0 |
-| soup | 42 | 0.0 | 65.8 | 121 of 1252 | - | none | 0 |
+| soup | 42 | 0.0 | 65.8 | 7 of 1138 | - | none | 0 |
 
 ### DocumentService
 
@@ -86,7 +88,7 @@ Requests per player per hour of play (20 players, one hour), and 50 players join
 | shutdown | 0 | 0.0 | 0.2 | 0 of 1000 | 3.0 | none | 0 |
 | outage | 0 | 0.0 | 0.2 | 20 of 60 | - | none | 0 |
 | poison | 0 | 0.0 | 0.2 | 20 of 40 | - | none | 40 |
-| soup | 143 | 0.0 | 15.9 | 322 of 1272 | - | none | 0 |
+| soup | 143 | 0.0 | 15.9 | 269 of 1219 | - | none | 0 |
 
 ### Lapis
 
@@ -100,7 +102,7 @@ Requests per player per hour of play (20 players, one hour), and 50 players join
 | shutdown | 0 | 0.0 | 0.3 | 0 of 1000 | 3.1 | none | 0 |
 | outage | 0 | 0.0 | 0.3 | 20 of 60 | - | none | 0 |
 | poison | 0 | 0.0 | 0.3 | 20 of 40 | - | none | 0 |
-| soup | 0 | 0.0 | 0.3 | 346 of 1265 | - | none | 0 |
+| soup | 0 | 0.0 | 0.3 | 254 of 1173 | - | none | 0 |
 
 ### DataStore2
 
@@ -116,6 +118,20 @@ Requests per player per hour of play (20 players, one hour), and 50 players join
 | poison | 258 | 0.0 | 0.3 | 0 of 40 | - | none | 0 |
 | soup | 449 | 0.0 | 0.6 | 0 of 1275 | - | none | 0 |
 
+### Suphi
+
+| Scenario | Progress lost (steps) | Stale owner (s) | Slowest open (s) | Failed opens | Shutdown (s) | Violations | Library errors |
+|---|---|---|---|---|---|---|---|
+| rejoin | 0 | 0.0 | 0.4 | 5 of 40 | - | none | 0 |
+| handoff | 0 | 0.0 | 0.4 | 20 of 40 | - | none | 0 |
+| crash | 0 | 0.0 | 0.4 | 20 of 40 | - | ack-lost x1 | 0 |
+| partitioned | 0 | 0.0 | 0.4 | 20 of 40 | - | none | 0 |
+| thirdRequester | 0 | 0.0 | 0.4 | 40 of 60 | - | none | 0 |
+| shutdown | 0 | 0.0 | 0.5 | 0 of 1000 | 6.1 | none | 0 |
+| outage | 0 | 0.0 | 0.4 | 20 of 60 | - | none | 0 |
+| poison | 228 | 0.0 | 0.4 | 0 of 40 | - | none | 0 |
+| soup | 30 | 0.0 | 0.5 | 230 of 1265 | - | none | 0 |
+
 ## Versions
 
 - KeepBlox: this branch
@@ -124,6 +140,7 @@ Requests per player per hour of play (20 players, one hour), and 50 players join
 - DocumentService: 1.2.2
 - Lapis: 0.3.3
 - DataStore2: 1.4.0
+- Suphi: Creator Store 11671168253 (vendored, tests/reference/Suphi)
 
 ## Methodology
 
@@ -131,8 +148,8 @@ Requests per player per hour of play (20 players, one hour), and 50 players join
 `tests/sim/RobloxEnv`: `game`, `task`, `require`, the DataStore and MessagingService are fakes that copy
 the documented engine behaviour (each fake cites its Roblox doc page). Time is virtual and every service
 call is a yield point; the seed decides the interleaving, so any run replays exactly from its seed. The
-rival libraries are downloaded at exact pins by `bench/download.luau`; ProfileStore is vendored in
-`tests/reference`.
+rival libraries are downloaded at exact pins by `bench/download.luau`; ProfileStore and Suphi's DataStore
+Module (which ships only as a Roblox asset) are vendored in `tests/reference`.
 
 **One way to use each library.** Each adapter (`tests/sim/*Adapter.luau`, `bench/adapters/`) uses its
 library the way its own documentation tells a game to: load on join, release on leave, kick when the
@@ -157,12 +174,14 @@ value the store cannot hold (`poison`), and everything at once for many players 
 - *Stale owner*: how long a server kept a session active after another server had opened the same key.
   Trades and purchases made meanwhile are made on a copy that will be overwritten.
 - *Slowest open* and *failed opens*: how long a player waits for their data, and how many never get it.
+  An open whose player had already left is neither: it is not counted.
 - *Library errors*: errors the library threw into the game's threads.
 - *Requests per player-hour*: data store requests, by the budget they draw on, over an hour of play.
   The per-server budget (60 + 40 per player a minute for reads and writes) is shared by everything the
   game does, so a library that spends less leaves more to the game.
+- *MemoryStore units*: request units per player-hour against MemoryStore's own quota (1000 + 120 per
+  user a minute, experience-wide). KeepBlox's heartbeat and Suphi's lock live there.
 
 **What is not compared.** CPU time: the engine serializes values natively in Roblox, and in the
 simulator it does not, so a library's own CPU cost cannot be separated fairly. KeepBlox's own frame cost
-is in `bench/Run.luau`. Suphi's DataStore Module is not in the tables yet: its source ships only as a
-Roblox asset, which needs a signed-in download.
+is in `bench/Run.luau`.

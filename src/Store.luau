@@ -137,6 +137,7 @@ function Store.new(name: string, options: Options): Store
 	local closing = false
 
 	const base: Session.Context = {
+		storeName = name,
 		services = services,
 		config = config,
 		dataStore = services.dataStores:GetDataStore(name),
@@ -183,6 +184,11 @@ function Store.new(name: string, options: Options): Store
 		end,
 	}
 	Upkeep.renew(internals)
+	const beating = { ok = false }
+	base.beating = function(): boolean
+		return beating.ok
+	end
+	Upkeep.beat(internals, beating)
 	const closeAll = Upkeep.shutdown(internals, function()
 		closing = true
 	end)
@@ -223,6 +229,9 @@ function Store.new(name: string, options: Options): Store
 			end
 		end,
 		importer = options.import,
+		beating = function(): boolean
+			return beating.ok
+		end,
 	}
 
 	return {

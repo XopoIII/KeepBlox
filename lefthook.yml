@@ -10,12 +10,14 @@ pre-commit:
       # Vendored code keeps its upstream form; explicit file arguments bypass .styluaignore.
       exclude:
         - "tests/reference/*"
+        - "tests/reference/**/*"
       run: stylua --check {staged_files}
     lint:
       glob: "*.luau"
       # Mirrors selene.toml's exclude list: explicit file arguments bypass it.
       exclude:
         - "tests/reference/*"
+        - "tests/reference/**/*"
       run: selene {staged_files}
     types:
       glob: "*.luau"

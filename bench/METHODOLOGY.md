@@ -4,8 +4,8 @@
 `tests/sim/RobloxEnv`: `game`, `task`, `require`, the DataStore and MessagingService are fakes that copy
 the documented engine behaviour (each fake cites its Roblox doc page). Time is virtual and every service
 call is a yield point; the seed decides the interleaving, so any run replays exactly from its seed. The
-rival libraries are downloaded at exact pins by `bench/download.luau`; ProfileStore is vendored in
-`tests/reference`.
+rival libraries are downloaded at exact pins by `bench/download.luau`; ProfileStore and Suphi's DataStore
+Module (which ships only as a Roblox asset) are vendored in `tests/reference`.
 
 **One way to use each library.** Each adapter (`tests/sim/*Adapter.luau`, `bench/adapters/`) uses its
 library the way its own documentation tells a game to: load on join, release on leave, kick when the
@@ -30,12 +30,14 @@ value the store cannot hold (`poison`), and everything at once for many players 
 - *Stale owner*: how long a server kept a session active after another server had opened the same key.
   Trades and purchases made meanwhile are made on a copy that will be overwritten.
 - *Slowest open* and *failed opens*: how long a player waits for their data, and how many never get it.
+  An open whose player had already left is neither: it is not counted.
 - *Library errors*: errors the library threw into the game's threads.
 - *Requests per player-hour*: data store requests, by the budget they draw on, over an hour of play.
   The per-server budget (60 + 40 per player a minute for reads and writes) is shared by everything the
   game does, so a library that spends less leaves more to the game.
+- *MemoryStore units*: request units per player-hour against MemoryStore's own quota (1000 + 120 per
+  user a minute, experience-wide). KeepBlox's heartbeat and Suphi's lock live there.
 
 **What is not compared.** CPU time: the engine serializes values natively in Roblox, and in the
 simulator it does not, so a library's own CPU cost cannot be separated fairly. KeepBlox's own frame cost
-is in `bench/Run.luau`. Suphi's DataStore Module is not in the tables yet: its source ships only as a
-Roblox asset, which needs a signed-in download.
+is in `bench/Run.luau`.

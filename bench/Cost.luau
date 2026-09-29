@@ -18,6 +18,8 @@ export type HourCost = {
 	perPlayerHour: { [string]: number },
 	--> MessagingService publishes per player per hour.
 	publishes: number,
+	--> MemoryStore request units per player per hour (their own quota: 1000 + 120 per user a minute).
+	memory: number,
 	violations: number,
 	failures: number,
 }
@@ -51,6 +53,7 @@ function Cost.hour(adapter: Adapter.Adapter, seed: number): HourCost
 	return {
 		perPlayerHour = perPlayerHour,
 		publishes = (sim.world.bus.published.A or 0) / PLAYERS,
+		memory = (sim.world.memory.spent.A or 0) / PLAYERS,
 		violations = #report.violations,
 		failures = #report.failures,
 	}

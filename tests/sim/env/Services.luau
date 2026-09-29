@@ -212,6 +212,7 @@ function Env.build(
 		HttpService = httpService(world),
 		RunService = engine.RunService,
 		Players = playerList.service,
+		MemoryStoreService = server.memoryStores,
 		ServerStorage = instances.mount({ name = "ServerStorage", children = {} }),
 	},
 		playerList

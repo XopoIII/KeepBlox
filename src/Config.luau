@@ -27,6 +27,10 @@ export type Config = {
 	writeBytesPerMinute: number,
 	--> Seconds BindToClose waits for releases before it gives up (Roblox allows 30).
 	shutdownDeadline: number,
+	--> Seconds between an owner's MemoryStore beats (see Lease).
+	heartbeat: number,
+	--> Seconds a beat keeps the lease alive: a dead owner is known this long after its last beat.
+	leaseTtl: number,
 }
 
 const Config = {}
@@ -42,6 +46,8 @@ Config.DEFAULT = table.freeze({
 	backoffMax = 5,
 	writeBytesPerMinute = 3 * 1024 * 1024,
 	shutdownDeadline = 25,
+	heartbeat = 4,
+	leaseTtl = 12,
 } :: Config)
 
 --> The defaults with `overrides` applied. Refuses a death time that could mistake a slow owner for a
@@ -58,6 +64,7 @@ function Config.resolve(overrides: { [string]: any }?): Config
 	end
 	assert(config.death >= 2 * config.renew, "KeepBlox: death must be at least twice renew")
 	assert(config.backoffMin <= config.backoffMax, "KeepBlox: backoffMin must not exceed backoffMax")
+	assert(config.leaseTtl >= 2 * config.heartbeat, "KeepBlox: leaseTtl must be at least twice heartbeat")
 	return config
 end
 

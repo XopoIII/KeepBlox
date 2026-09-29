@@ -22,6 +22,10 @@ const LIBRARIES: { Entry } = {
 	{ adapter = require("./adapters/DocumentServiceAdapter"), version = Rival.version("DocumentService") },
 	{ adapter = require("./adapters/LapisAdapter"), version = Rival.version("Lapis") },
 	{ adapter = require("./adapters/DataStore2Adapter"), version = Rival.version("DataStore2") },
+	{
+		adapter = require("./adapters/SuphiAdapter"),
+		version = "Creator Store 11671168253 (vendored, tests/reference/Suphi)",
+	},
 }
 
 const seeds = tonumber(process.args[1]) or 20
@@ -55,9 +59,9 @@ line()
 line(`Worst case over seeds 1-{seeds} for each scenario.`)
 line()
 line(
-	"| Library | Violations | Crash: progress lost (steps) | Crash: player locked out | Longest stale owner (s) | Slowest open (s) | Failed opens | Library errors |"
+	"| Library | Violations | Crash: progress lost (steps) | Longest stale owner (s) | Slowest open (s) | Failed opens | Library errors |"
 )
-line("|---|---|---|---|---|---|---|---|")
+line("|---|---|---|---|---|---|---|")
 for _, row in rows do
 	local violations, stale, slowest, failed, total, errors = 0, 0, 0, 0, 0, 0
 	for _, soak in row.soaks do
@@ -69,10 +73,12 @@ for _, row in rows do
 		errors += #soak.failures
 	end
 	const crash = row.soaks.crash.metrics
+	-- A library that locks the player out after a crash loses nothing on paper: say so in the cell.
+	const lockedOut = if crash.failedOpens > 0
+		then ` (player locked out: {crash.failedOpens} of {crash.opens + crash.failedOpens} rejoins)`
+		else ""
 	line(
-		`| {row.name} | {violations} | {crash.maxProgressLost} | {crash.failedOpens} of {crash.opens + crash.failedOpens} rejoins | {fixed(
-			stale
-		)} | {fixed(slowest)} | {failed} of {total} | {errors} |`
+		`| {row.name} | {violations} | {crash.maxProgressLost}{lockedOut} | {fixed(stale)} | {fixed(slowest)} | {failed} of {total} | {errors} |`
 	)
 end
 line()
@@ -81,9 +87,9 @@ line()
 line("Requests per player per hour of play (20 players, one hour), and 50 players joining one server at once.")
 line()
 line(
-	"| Library | Read | Write | Ordered read | Ordered write | Ordered list | Publishes | Join storm p50 / p99 / max (s) | Storm failures |"
+	"| Library | Read | Write | Ordered read | Ordered write | Ordered list | Publishes | MemoryStore units | Join storm p50 / p99 / max (s) | Storm failures |"
 )
-line("|---|---|---|---|---|---|---|---|---|")
+line("|---|---|---|---|---|---|---|---|---|---|")
 for _, entry in LIBRARIES do
 	const hour = Cost.hour(entry.adapter, 1)
 	const storm = Cost.storm(entry.adapter, 1)
@@ -92,9 +98,9 @@ for _, entry in LIBRARIES do
 		table.insert(cells, fixed(hour.perPlayerHour[requestType] or 0))
 	end
 	line(
-		`| {entry.adapter.name} | {table.concat(cells, " | ")} | {fixed(hour.publishes)} | {fixed(storm.p50)} / {fixed(
-			storm.p99
-		)} / {fixed(storm.max)} | {storm.failed} of {storm.total} |`
+		`| {entry.adapter.name} | {table.concat(cells, " | ")} | {fixed(hour.publishes)} | {fixed(hour.memory)} | {fixed(
+			storm.p50
+		)} / {fixed(storm.p99)} / {fixed(storm.max)} | {storm.failed} of {storm.total} |`
 	)
 	print(`{entry.adapter.name}: cost done`)
 end

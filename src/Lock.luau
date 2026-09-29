@@ -22,6 +22,8 @@ export type Owner = {
 	lease: number?,
 	lastUpdate: number?,
 	loadCount: number,
+	--> The owner beats in MemoryStore (see Lease).
+	memory: boolean,
 }
 
 export type Claim =
@@ -49,6 +51,8 @@ export type Mode = {
 	fromImport: boolean?,
 	--> UserIds for a profile made from data imported from elsewhere.
 	userIds: { number }?,
+	--> This server beats in MemoryStore: the record says so, for newcomers (see Lease).
+	memory: boolean?,
 	--> The schema version a new profile's data is at: the template is written for the current schema,
 	--> so no migration may run on it. Imported data gets none (it is from before every migration).
 	version: number?,
@@ -75,11 +79,13 @@ export type Payload = {
 	schemaVersion: number?,
 	--> An open trade's journal, stored with `data` (see Trade); false clears it.
 	journal: any?,
+	--> Whether this server's MemoryStore beat can be trusted now (see Lease).
+	memory: boolean?,
 }
 
 const Lock = {}
 
-const function take(record: any, identity: Record.Identity, now: number): Claim
+const function take(record: any, identity: Record.Identity, now: number, mode: Mode?): Claim
 	const meta = record.MetaData
 	meta.ActiveSession = { identity.placeId, identity.jobId, identity.guid }
 	meta.ForceLoadSession = nil
@@ -88,6 +94,7 @@ const function take(record: any, identity: Record.Identity, now: number): Claim
 	const ours = Record.ours(meta)
 	ours.owner = identity.guid
 	ours.lease += 1
+	ours.memory = if mode and mode.memory then true else nil
 	record.WasOverwritten = false
 	return { kind = "taken", loadCount = meta.SessionLoadCount, record = record }
 end
@@ -110,7 +117,7 @@ function Lock.claim(
 			const record = Record.fresh(found.data, now, nil)
 			record.UserIds = table.clone(found.userIds or {})
 			Record.ours(record.MetaData).importedFrom = (mode :: Mode).imported
-			return record, take(record, identity, now)
+			return record, take(record, identity, now, mode)
 		elseif found and found.kind == "locked" then
 			return nil, { kind = "legacyLocked" }
 		end
@@ -128,7 +135,7 @@ function Lock.claim(
 	const meta = record.MetaData
 	const active = meta.ActiveSession
 	if active == nil or Record.isHere(active, identity) then
-		const claim = take(record, identity, now)
+		const claim = take(record, identity, now, mode)
 		return record, claim
 	end
 
@@ -139,9 +146,10 @@ function Lock.claim(
 		lease = if ours.owner ~= nil and ours.owner == active[3] then ours.lease else nil,
 		lastUpdate = meta.LastUpdate,
 		loadCount = meta.SessionLoadCount or 0,
+		memory = ours.memory == true and ours.owner == active[3],
 	}
 	if mode and mode.force then
-		return record, take(record, identity, now)
+		return record, take(record, identity, now, mode)
 	end
 	if mode and mode.quiet then
 		const expect = mode.expect
@@ -151,13 +159,13 @@ function Lock.claim(
 			and expect.loadCount == owner.loadCount
 			and expect.lease == owner.lease
 		then
-			return record, take(record, identity, now)
+			return record, take(record, identity, now, mode)
 		end
 		return nil, { kind = "busy", owner = owner }
 	end
 	if steal then
 		if Record.isHere(request, identity) then
-			const claim = take(record, identity, now)
+			const claim = take(record, identity, now, mode)
 			return record, claim
 		end
 		return nil, { kind = "outbid" }
@@ -193,6 +201,9 @@ function Lock.save(
 	end
 	if payload.schemaVersion ~= nil then
 		Record.ours(meta).schemaVersion = payload.schemaVersion
+	end
+	if payload.memory ~= nil then
+		Record.ours(meta).memory = if payload.memory then true else nil
 	end
 	if payload.journal ~= nil then
 		Record.ours(meta).trade = if payload.journal == false then nil else payload.journal

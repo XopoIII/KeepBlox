@@ -51,6 +51,9 @@ function Clock.new(scheduler: Scheduler.Scheduler, options: Options): Services.C
 		spawn = function(target: thread | (...any) -> (), ...: any)
 			scheduler:resume(target, group, ...)
 		end,
+		cancel = function(target: thread)
+			scheduler:cancel(target)
+		end,
 	}
 	return clock
 end

@@ -33,8 +33,8 @@ Spec.test("Complaints: 300 joins and leaves leave nothing behind (DataStore2#124
 	end, 3600)
 	Spec.equal(next(store:profiles()), nil, "no profile is left open")
 	Spec.equal(world.bus:connected("A"), 0, "no subscription is left connected")
-	-- The renewal loop is the one thread a store keeps.
-	Spec.equal(world.scheduler:count("A"), 1, "no thread is left behind")
+	-- The renewal loop and the MemoryStore heartbeat are the two threads a store keeps.
+	Spec.equal(world.scheduler:count("A"), 2, "no thread is left behind")
 	Spec.truthy(slowest < 2, `the last loads are as fast as the first (slowest {slowest} s)`)
 	Spec.equal(errors, {})
 end)

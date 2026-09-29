@@ -30,15 +30,21 @@ function Call.run(clock: Services.Clock, timeout: number, fn: (...any) -> ...any
 	clock.spawn(function()
 		wake(table.pack(pcall(fn, table.unpack(args, 1, args.n))))
 	end)
+	-- The deadline, cancelled once the call answers: no thread sleeps on for a call long done.
+	local deadline: thread? = nil
 	if not finished then
-		clock.spawn(function()
+		deadline = coroutine.create(function()
 			clock.wait(timeout)
 			wake(table.pack(false, "timeout"))
 		end)
+		clock.spawn(deadline :: thread)
 	end
 	if not finished then
 		waiting = true
 		coroutine.yield()
+	end
+	if deadline and coroutine.status(deadline) == "suspended" then
+		clock.cancel(deadline)
 	end
 	const outcome = results :: { any }
 	return table.unpack(outcome, 1, (outcome :: any).n)

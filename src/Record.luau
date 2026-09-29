@@ -111,6 +111,8 @@ function Record.ours(meta: any): {
 	importedFrom: string?,
 	--> An open trade (see Trade): its id and this profile's data from before it.
 	trade: { id: string, before: any }?,
+	--> The owner beats in MemoryStore (see Lease).
+	memory: boolean?,
 }
 	local state = meta.KeepBlox
 	if type(state) ~= "table" then

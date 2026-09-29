@@ -126,7 +126,7 @@ function Simulation.new(seed: number, adapter: Adapter.Adapter): Simulation
 					end,
 				})
 				if session == nil then
-					ledger:openFailed(key, name)
+					ledger:openFailed(key, name, not present[key])
 					return
 				end
 				ledger:opened(key, name, table.clone(session.data.p))

@@ -18,6 +18,7 @@
 --- A value that is not a profile is never overwritten: it is copied to "<store>__quarantine" and the
 --- load fails with "foreign".
 const Call = require("./Call")
+const Lease = require("./Lease")
 const Lock = require("./Lock")
 const Session = require("./Session")
 
@@ -33,6 +34,8 @@ type Observed = {
 	since: number,
 	--> When this server first asked this owner to hand over.
 	askedAt: number,
+	--> What this server has seen of the owner's MemoryStore beat (see Lease).
+	beat: Lease.Watch,
 }
 
 const Claim = {}
@@ -158,14 +161,32 @@ function Claim.open(
 					return { ok = false, reason = "inUse" }
 				end
 				if watch == nil then
-					watch =
-						{ guid = guid, loadCount = owner.loadCount, lease = owner.lease, since = now, askedAt = now }
+					watch = {
+						guid = guid,
+						loadCount = owner.loadCount,
+						lease = owner.lease,
+						since = now,
+						askedAt = now,
+						beat = { asked = false } :: Lease.Watch,
+					}
 					observed = watch
 				end
 				const current = watch :: Observed
-				const dead = if owner.lease == nil
-					then owner.lastUpdate ~= nil and clock.time() - owner.lastUpdate > config.profileStoreDead
-					else now - current.since >= config.death
+				-- A beat that goes on past its expiry is a live owner; one that stopped is a dead one.
+				const verdict = if owner.memory
+					then Lease.judge(context, tostring(owner.session[2]), key, current.beat, false)
+					else "unknown"
+				if
+					verdict == "alive"
+					and now - (current.beat.aliveSince :: number) > config.leaseTtl + config.heartbeat
+				then
+					return { ok = false, reason = "inUse" }
+				end
+				const dead = verdict == "dead"
+					or verdict == "unknown"
+						and if owner.lease == nil
+							then owner.lastUpdate ~= nil and clock.time() - owner.lastUpdate > config.profileStoreDead
+							else now - current.since >= config.death
 				if dead then
 					mode =
 						{ quiet = true, expect = { guid = guid, loadCount = owner.loadCount, lease = owner.lease } } :: Lock.Mode
@@ -177,7 +198,14 @@ function Claim.open(
 				delay = math.min(delay * 2, config.backoffMax)
 				continue
 			elseif watch == nil or watch.guid ~= guid or watch.loadCount ~= owner.loadCount then
-				watch = { guid = guid, loadCount = owner.loadCount, lease = owner.lease, since = now, askedAt = now }
+				watch = {
+					guid = guid,
+					loadCount = owner.loadCount,
+					lease = owner.lease,
+					since = now,
+					askedAt = now,
+					beat = { asked = false } :: Lease.Watch,
+				}
 				observed = watch
 				ask(context, owner)
 			elseif owner.lease ~= watch.lease then
@@ -185,7 +213,28 @@ function Claim.open(
 				watch.since = now
 			end
 			const current = watch :: Observed
-			if current.lease == nil then
+			-- The owner's MemoryStore beat, when it keeps one, decides (see Lease).
+			const verdict = if owner.memory
+				then Lease.judge(context, tostring(owner.session[2]), key, current.beat, true)
+				else "unknown"
+			if verdict == "dead" then
+				steal = true
+			elseif verdict ~= "unknown" then
+				-- Watching a beat: the data store is tried on its backoff, the beat every second between, so
+				-- its end is caught as it comes.
+				local waited = 0
+				while waited < math.min(delay, 2) and not context.closing() and not (cancel and cancel()) do
+					waited += clock.wait(1)
+					if Lease.judge(context, tostring(owner.session[2]), key, current.beat, true) == "dead" then
+						steal = true
+						break
+					end
+				end
+				if not steal then
+					delay = math.min(delay * 2, config.backoffMax)
+				end
+				continue
+			elseif current.lease == nil then
 				const stale = owner.lastUpdate ~= nil and clock.time() - owner.lastUpdate > config.profileStoreDead
 				steal = stale or now - current.askedAt >= config.profileStoreSteal
 			else

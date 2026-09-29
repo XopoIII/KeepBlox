@@ -13,6 +13,7 @@ const Clock = require("./Clock")
 const Codec = require("./Codec")
 const DataStore = require("./DataStore")
 const Faults = require("./Faults")
+const MemoryStore = require("./MemoryStore")
 const Messaging = require("./Messaging")
 const Ordered = require("./Ordered")
 const Scheduler = require("./Scheduler")
@@ -33,6 +34,8 @@ export type Server = {
 	read budget: Budget.Budget,
 	--> BindToClose callbacks registered on this server, in order.
 	read closing: { () -> () },
+	--> This server's MemoryStoreService (the fake shared by the world).
+	read memoryStores: any,
 	--> Stops the server where it stands: its threads are dropped and its subscriptions go dead.
 	crash: (self: Server) -> (),
 }
@@ -44,6 +47,8 @@ export type World = {
 	read bus: Messaging.Bus,
 	--> Every ordered data store's values, by store id ("<name>/<scope>").
 	read ordered: Ordered.Shared,
+	--> Every memory store structure of the experience.
+	read memory: MemoryStore.Shared,
 	read epoch: number,
 	server: (self: World, options: ServerOptions) -> Server,
 }
@@ -58,6 +63,14 @@ function World.new(seed: number, epoch: number?): World
 	const faults = Faults.new(scheduler.random)
 	const start = epoch or DEFAULT_EPOCH
 	const names: { [string]: boolean } = {}
+	const budgets: { Budget.Budget } = {}
+	const memory = MemoryStore.shared(function(): number
+		local total = 0
+		for _, budget in budgets do
+			total += budget.players
+		end
+		return total
+	end)
 
 	const world: World = {
 		scheduler = scheduler,
@@ -65,6 +78,7 @@ function World.new(seed: number, epoch: number?): World
 		faults = faults,
 		bus = Messaging.bus(scheduler, faults, start),
 		ordered = {},
+		memory = memory,
 		epoch = start,
 
 		server = function(self: World, options: ServerOptions): Server
@@ -73,6 +87,8 @@ function World.new(seed: number, epoch: number?): World
 			names[name] = true
 
 			const budget = Budget.new(scheduler, options.players)
+			table.insert(budgets, budget)
+			const memoryStores = MemoryStore.service(scheduler, faults, memory, name)
 			const context: DataStore.Context = {
 				scheduler = scheduler,
 				backend = self.backend,
@@ -130,8 +146,10 @@ function World.new(seed: number, epoch: number?): World
 				name = name,
 				budget = budget,
 				closing = closing,
+				memoryStores = memoryStores,
 				services = {
 					codec = Codec.new(),
+					memory = memoryStores,
 					dataStores = dataStores :: Services.DataStoreService,
 					messaging = self.bus:handle(name),
 					clock = Clock.new(scheduler, {

@@ -23,6 +23,8 @@ const Services = require("./Services")
 const Validate = require("./Validate")
 
 export type Context = {
+	--> The store's name (its data store).
+	storeName: string,
 	services: Services.Services,
 	config: Config.Config,
 	dataStore: Services.DataStore,
@@ -39,6 +41,8 @@ export type Context = {
 	stored: ((key: string, data: any, final: boolean) -> ())?,
 	--> Large profiles are stored compressed (see Codec).
 	compress: Codec.Options?,
+	--> This server's MemoryStore beat is landing (see Lease); every write tells newcomers so.
+	beating: (() -> boolean)?,
 }
 
 export type Session = {
@@ -164,6 +168,7 @@ const function write(
 		consumed = if data ~= nil then consumed else nil,
 		receipts = if data ~= nil then receipts else nil,
 		schemaVersion = if data ~= nil then context.plan.version else nil,
+		memory = context.beating ~= nil and context.beating(),
 		-- A settled trade's journal goes only with data that matches memory (see Trade).
 		journal = if session.clearJournal and (data ~= nil or (encoded and encoded.text == session.storedText))
 			then false

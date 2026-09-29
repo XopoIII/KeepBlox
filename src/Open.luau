@@ -58,6 +58,8 @@ export type State = {
 	prepare: () -> (),
 	--> Where missing keys take their data from, when moving from another library.
 	importer: Import.Importer?,
+	--> This server's MemoryStore beat landed last time (see Lease).
+	beating: () -> boolean,
 }
 
 -- How often a load waiting on this server's own release looks again.
@@ -141,6 +143,7 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 	end
 	const listener: Upkeep.Listener = { session = nil, connection = nil, done = false }
 	Upkeep.listen(services, context.identity.guid, listener)
+	mode.memory = state.beating()
 	const claim = Claim.open(context, state.name, key, template, cancel, mode)
 	state.opening[key] = nil
 	if not claim.ok then

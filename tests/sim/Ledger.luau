@@ -36,6 +36,8 @@ export type Metrics = {
 	maxOpenSeconds: number,
 	opens: number,
 	failedOpens: number,
+	--> Opens that ended because the player had already left: not a failure of the library.
+	cancelledOpens: number,
 	--> How long each successful open took, in order (the benchmarks take percentiles of it).
 	openSeconds: { number },
 }
@@ -45,7 +47,7 @@ export type Ledger = {
 	read metrics: Metrics,
 	opening: (self: Ledger, key: string, server: string) -> (),
 	opened: (self: Ledger, key: string, server: string, loaded: Counts) -> (),
-	openFailed: (self: Ledger, key: string, server: string) -> (),
+	openFailed: (self: Ledger, key: string, server: string, cancelled: boolean?) -> (),
 	mutated: (self: Ledger, key: string, tag: string, steps: number) -> (),
 	acked: (self: Ledger, key: string, saved: Counts) -> (),
 	ended: (self: Ledger, key: string, server: string) -> (),
@@ -87,6 +89,7 @@ function Ledger.new(scheduler: Scheduler.Scheduler, _jobOf: (server: string) -> 
 		maxOpenSeconds = 0,
 		opens = 0,
 		failedOpens = 0,
+		cancelledOpens = 0,
 		openSeconds = {},
 	}
 
@@ -145,9 +148,13 @@ function Ledger.new(scheduler: Scheduler.Scheduler, _jobOf: (server: string) -> 
 			found.active[server] = true
 		end,
 
-		openFailed = function(_: Ledger, key: string, server: string)
+		openFailed = function(_: Ledger, key: string, server: string, cancelled: boolean?)
 			state(key).openingSince[server] = nil
-			metrics.failedOpens += 1
+			if cancelled then
+				metrics.cancelledOpens += 1
+			else
+				metrics.failedOpens += 1
+			end
 		end,
 
 		mutated = function(_: Ledger, key: string, tag: string, steps: number)
