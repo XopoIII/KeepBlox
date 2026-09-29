@@ -85,6 +85,25 @@ function Claim.giveBack(context: Session.Context, key: string, loadCount: number
 	)
 end
 
+-- Lets go of `key` in the background if a claim of this load may have landed unanswered: a load that
+-- gives up must not leave its live server holding a key it never learnt it had.
+const function disown(context: Session.Context, key: string)
+	const clock = context.services.clock
+	clock.spawn(function()
+		pcall(
+			Call.run,
+			clock,
+			context.config.callTimeout,
+			context.dataStore.UpdateAsync,
+			context.dataStore,
+			key,
+			function(value: any): any
+				return Lock.disown(value, context.identity, clock.time())
+			end
+		)
+	end)
+end
+
 --> Claims `key`, yielding until it is ours or the claim fails.
 function Claim.open(
 	context: Session.Context,
@@ -100,14 +119,22 @@ function Claim.open(
 	local delay = config.backoffMin
 	local steal = false
 	local observed: Observed? = nil
+	-- A claim went unanswered, so it may hold the key: a failure must let go of it.
+	local unsure = false
+	const function fail(reason: Failure): Result
+		if unsure then
+			disown(context, key)
+		end
+		return { ok = false, reason = reason }
+	end
 
 	while true do
 		if context.closing() then
-			return { ok = false, reason = "closing" }
+			return fail("closing")
 		elseif cancel and cancel() then
-			return { ok = false, reason = "cancelled" }
+			return fail("cancelled")
 		elseif clock.now() - started > config.loadTimeout then
-			return { ok = false, reason = "timeout" }
+			return fail("timeout")
 		end
 
 		local claim: Lock.Claim? = nil
@@ -125,6 +152,7 @@ function Claim.open(
 		)
 
 		if not ok or claim == nil then
+			unsure = true
 			context.report(key, `load attempt failed: {err}`)
 		else
 			const outcome = claim :: Lock.Claim
@@ -142,7 +170,7 @@ function Claim.open(
 			elseif outcome.kind == "legacyLocked" then
 				-- The library being imported from still holds the key: wait for its release.
 				if clock.now() - started + delay > config.loadTimeout then
-					return { ok = false, reason = "legacyLocked" }
+					return fail("legacyLocked")
 				end
 				clock.wait(delay)
 				delay = math.min(delay * 2, config.backoffMax)
@@ -169,7 +197,7 @@ function Claim.open(
 						lease = owner.lease,
 						since = now,
 						askedAt = now,
-						beat = { asked = false } :: Lease.Watch,
+						beat = { asked = false, loadCount = owner.loadCount } :: Lease.Watch,
 					}
 					observed = watch
 				end
@@ -203,7 +231,7 @@ function Claim.open(
 					lease = owner.lease,
 					since = now,
 					askedAt = now,
-					beat = { asked = false } :: Lease.Watch,
+					beat = { asked = false, loadCount = owner.loadCount } :: Lease.Watch,
 				}
 				observed = watch
 				ask(context, owner)

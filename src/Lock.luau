@@ -10,6 +10,8 @@
 --- - `save` writes only while `ActiveSession` is this server and `SessionLoadCount` is this session's.
 ---   Otherwise it writes nothing and reports the session lost. Every save bumps our lease and
 ---   `LastUpdate`, and reports another server's pending `ForceLoadSession`, so the owner hands over.
+--- - `disown` lets go of a key a claim may have taken without learning it did (its answer was lost),
+---   and only if that very claim holds it.
 ---
 --- A transform returns the record to write, or nil to write nothing, plus an outcome for the caller.
 --- The engine may run it more than once; the last run's outcome is the one that counts.
@@ -243,6 +245,23 @@ function Lock.save(
 	end
 	value.WasOverwritten = false
 	return value, { kind = "saved", handOver = handOver, record = value, messages = Messages.list(value) }
+end
+
+--> The disown transform: frees the key if the load `identity` (its GUID) holds it, and writes nothing
+--> otherwise.
+function Lock.disown(value: any, identity: Record.Identity, now: number): any?
+	if Record.classify(value) ~= "profile" then
+		return nil
+	end
+	const meta = value.MetaData
+	const active = meta.ActiveSession
+	if not Record.isHere(active, identity) or active[3] ~= identity.guid then
+		return nil
+	end
+	meta.ActiveSession = nil
+	meta.LastUpdate = now
+	Record.ours(meta).lease += 1
+	return value
 end
 
 return Lock

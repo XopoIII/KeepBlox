@@ -43,9 +43,14 @@ function Upkeep.beat(internals: Internals, beating: { ok: boolean }): () -> ()
 				session.nextRenew = soonest
 			end
 		end
-		for _, key in requested or {} do
+		for key, fence in requested or {} do
 			const session = internals.sessions[key]
-			if session and session.active and not session.releasing then
+			if
+				session
+				and session.active
+				and not session.releasing
+				and (fence == true or fence == session.loadCount)
+			then
 				clock.spawn(Session.release, session.context, session, "handedOver")
 			end
 		end

@@ -7,6 +7,7 @@
 --- holds the key, so it never races a live session. Kick the player first.
 const Call = require("./Call")
 const Codec = require("./Codec")
+const Migrate = require("./Migrate")
 const Record = require("./Record")
 const Session = require("./Session")
 
@@ -64,8 +65,9 @@ function Versions.read(context: Session.Context, key: string, version: string): 
 	return if Record.classify(value) == "profile" then Codec.unpack(context.services.codec, value.Data) else nil
 end
 
---> Makes `version`'s data current for `key`. Everything else in the record (its lock, messages and
---> receipts) stays as it is now.
+--> Makes `version`'s data current for `key`, with the schema version it was stored at, so the
+--> migrations since then run on it at the next load. Everything else in the record (its lock, messages
+--> and receipts) stays as it is now.
 function Versions.restore(context: Session.Context, key: string, version: string): Restored
 	const old = context.dataStore:GetVersionAsync(key, version)
 	if Record.classify(old) ~= "profile" then
@@ -93,6 +95,8 @@ function Versions.restore(context: Session.Context, key: string, version: string
 				return nil
 			end
 			record.Data = Record.copy(old.Data)
+			const storedAt = Migrate.stored(old)
+			Record.ours(record.MetaData).schemaVersion = if storedAt > 0 then storedAt else nil
 			record.MetaData.LastUpdate = clock.time()
 			outcome = { ok = true } :: Restored
 			return record

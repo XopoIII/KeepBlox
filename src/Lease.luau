@@ -7,7 +7,9 @@
 --- seconds by each of its stores, and kept `snapshotTtl` seconds after the last beat:
 --- - `n` counts the beats. A newcomer that sees it stand still for two beats, or finds no entry, knows
 ---   the server died, and takes its keys; while it moves, the server lives.
---- - `r["<store>/<key>"]` are requests: the owner hands those keys over at its next beat.
+--- - `r["<store>/<key>"] = { g, c }` are requests: the owner hands those keys over at its next beat, if
+---   its session there is still the one the requester saw (load count `c`), so a request that outlives
+---   its session never ends the next one. A bare GUID (written by an older KeepBlox) is not fenced.
 --- - `s["<store>/<key>"] = { c, q, v, d, rc, m }` is a snapshot of one open profile whose data changed
 ---   since it was last stored: load count, snapshot number, schema version, data, receipt ids and the
 ---   messages already processed into it. Profiles over `snapshotBytes`, holding buffers, or in a trade
@@ -22,7 +24,19 @@ const Record = require("./Record")
 const Types = require("./Types")
 const Validate = require("./Validate")
 
-export type Watch = { asked: boolean, deadSince: number?, count: number?, countSince: number? }
+--> What a newcomer has seen of one owner's beat. `loadCount` is the owner's session it watches: the
+--> hand-over request it writes names it.
+export type Watch = {
+	asked: boolean,
+	loadCount: number,
+	deadSince: number?,
+	count: number?,
+	countSince: number?,
+}
+
+--> The keys a beat was asked to hand over, each with the load count of the session asked for (true for
+--> a request that names none).
+export type Requests = { [string]: number | true }
 
 export type Snapshot = { c: number, q: number, v: number, d: any, rc: { string }, m: { number } }
 
@@ -102,16 +116,16 @@ const function snapshots(
 end
 
 --> One beat of this server for the store of `context`: the count moves, this store's snapshots are
---> replaced, and its requests are taken out and returned (the store hands those sessions over). Each
---> session learns whether it is covered. Nil when the beat failed.
-function Lease.beat(context: Types.Context, sessions: { [string]: Types.Session }): { string }?
+--> replaced, and its requests are taken out and returned (the store hands over the sessions they
+--> name). Each session learns whether it is covered. Nil when the beat failed.
+function Lease.beat(context: Types.Context, sessions: { [string]: Types.Session }): Requests?
 	const store = map(context)
 	if store == nil then
 		return nil
 	end
 	const prefix = `{context.storeName}/`
 	const taken, covered = snapshots(context, sessions)
-	local requested: { string } = {}
+	local requested: Requests = {}
 	const ok = call(context, function(): any
 		return store:UpdateAsync(context.identity.jobId, function(current: any): any
 			requested = {}
@@ -119,7 +133,8 @@ function Lease.beat(context: Types.Context, sessions: { [string]: Types.Session 
 			const requests, kept = {}, {}
 			for id, requester in if type(entry.r) == "table" then entry.r else {} do
 				if string.sub(id, 1, #prefix) == prefix then
-					table.insert(requested, string.sub(id, #prefix + 1))
+					const fence = if type(requester) == "table" then tonumber(requester.c) else nil
+					requested[string.sub(id, #prefix + 1)] = fence or true
 				else
 					requests[id] = requester
 				end
@@ -142,8 +157,9 @@ function Lease.beat(context: Types.Context, sessions: { [string]: Types.Session 
 end
 
 --> The server `jobId`'s entry now (nil when it has none), or false when MemoryStore gave no answer.
---> With `ask`, a live server is also asked to hand `key` over.
-function Lease.read(context: Types.Context, jobId: string, key: string, ask: boolean): any
+--> With `ask`, a live server is also asked to hand `key` over, if its session there is still
+--> `loadCount`.
+function Lease.read(context: Types.Context, jobId: string, key: string, ask: boolean, loadCount: number?): any
 	const store = map(context)
 	if store == nil then
 		return false
@@ -160,7 +176,7 @@ function Lease.read(context: Types.Context, jobId: string, key: string, ask: boo
 				return nil
 			end
 			current.r = if type(current.r) == "table" then current.r else {}
-			current.r[`{context.storeName}/{key}`] = context.identity.guid
+			current.r[`{context.storeName}/{key}`] = { g = context.identity.guid, c = loadCount }
 			return current
 		end, context.config.snapshotTtl)
 	end)
@@ -174,7 +190,7 @@ end
 function Lease.judge(context: Types.Context, jobId: string, key: string, watch: Watch, ask: boolean): string
 	const clock = context.services.clock
 	const now = clock.now()
-	const entry = Lease.read(context, jobId, key, ask and not watch.asked)
+	const entry = Lease.read(context, jobId, key, ask and not watch.asked, watch.loadCount)
 	if entry == false then
 		return "unknown"
 	end

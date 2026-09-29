@@ -103,4 +103,17 @@ Spec.test("Lock: a session that no longer owns the key writes nothing", function
 	Spec.equal((lost :: any).owner, { 1, "job-B", "guid-B" })
 end)
 
+Spec.test("Lock: disown frees the key only for the very load that holds it", function()
+	const record = claimed(nil, HERE)
+	-- Another load on the same server, another server, and a value that is not a profile: nothing.
+	Spec.equal(Lock.disown(table.clone(record), { placeId = 1, jobId = "job-A", guid = "guid-A2" }, 1100), nil)
+	Spec.equal(Lock.disown(table.clone(record), THERE, 1100), nil)
+	Spec.equal(Lock.disown("text", HERE, 1100), nil)
+	const freed = Lock.disown(record, HERE, 1100)
+	Spec.equal(freed.MetaData.ActiveSession, nil)
+	Spec.equal(freed.MetaData.LastUpdate, 1100)
+	Spec.equal(freed.MetaData.KeepBlox, { lease = 2, owner = "guid-A" })
+	Spec.equal(Lock.disown(freed, HERE, 1200), nil)
+end)
+
 return nil
