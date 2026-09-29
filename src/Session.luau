@@ -37,6 +37,8 @@ export type Context = {
 	plan: Migrate.Plan,
 	--> Called once when a session ends, so the store can forget it.
 	forget: (session: Session) -> (),
+	--> Called after each save stored the data (`final` on the release): the leaderboards' mirror.
+	stored: ((key: string, data: any, final: boolean) -> ())?,
 }
 
 export type Session = {
@@ -202,6 +204,9 @@ const function write(
 	session.inbox:receive(result.messages)
 	profile.LastSavedData = Record.copy(result.record.Data)
 	profile.onSaved:fire(Record.copy(result.record.Data))
+	if context.stored then
+		context.stored(session.key, result.record.Data, release)
+	end
 	if release then
 		Session.finish(context, session, reason)
 	elseif result.handOver then

@@ -10,6 +10,7 @@
 --- interval. The write renews the lease and saves the data if it changed. The loop waits when the
 --- server's data store budget is spent, so loads and releases are not starved. On shutdown every
 --- session is released in parallel within the deadline.
+const Boards = require("./Boards")
 const Config = require("./Config")
 const Edit = require("./Edit")
 const Import = require("./Import")
@@ -56,6 +57,10 @@ export type Options = {
 	--> Where a key's data comes from on its first load, when moving from another library (see Import
 	--> and `KeepBlox.importers`).
 	import: Import.Importer?,
+	--> Leaderboards: a number read from each profile's data, mirrored to an ordered data store and read
+	--> back with `store:leaderboard` (see Boards).
+	leaderboards: { [string]: Boards.Board }?,
+	leaderboardOptions: Boards.Options?,
 }
 
 export type LoadOptions = Open.LoadOptions
@@ -81,6 +86,8 @@ export type Store = {
 	--> Edits a key, open here or nobody's, without kicking anyone (see Edit). "inUse" when a live server
 	--> holds it: send a message instead.
 	edit: (self: Store, key: string, edit: (data: any) -> (), options: Edit.Options?) -> Edit.Result,
+	--> The top of a leaderboard, `{key, value}` entries, highest first unless asked otherwise.
+	leaderboard: (self: Store, name: string, query: Boards.Query?) -> { Boards.Entry },
 }
 
 const Store = {}
@@ -137,6 +144,16 @@ function Store.new(name: string, options: Options): Store
 			end
 		end,
 	}
+	const boards = if options.leaderboards
+		then Boards.new(function(): Services.Services
+			return base.services
+		end, name, options.leaderboards, options.leaderboardOptions, base.report, config.callTimeout)
+		else nil
+	if boards then
+		base.stored = function(key: string, data: any, final: boolean)
+			boards:stored(key, data, final)
+		end
+	end
 
 	const internals: Upkeep.Internals = {
 		context = function(): Session.Context
@@ -210,6 +227,10 @@ function Store.new(name: string, options: Options): Store
 		end,
 		receipts = function(_: Store, receiptOptions: Receipts.Options): (Receipts.Receipt) -> Receipts.Decision
 			return Receipts.handler(internals, receiptOptions)
+		end,
+		leaderboard = function(_: Store, boardName: string, query: Boards.Query?): { Boards.Entry }
+			assert(boards, "KeepBlox: this store has no leaderboards")
+			return boards:top(boardName, query)
 		end,
 		edit = function(_: Store, key: string, edit: (data: any) -> (), editOptions: Edit.Options?): Edit.Result
 			return Edit.run(state, key, edit, editOptions)
