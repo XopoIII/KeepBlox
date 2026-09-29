@@ -71,6 +71,22 @@ call is a yield point, and the seed decides the interleaving, so a failing run r
 seed. `Clock` gives each virtual server its own skew and drift. Every fake behaviour cites the Roblox
 doc it copies; when a live check disagrees with a fake, the fake is fixed first.
 
+`tests/sim/` holds the simulation.
+- **`RobloxEnv`** gives each virtual server the engine globals, so unmodified Roblox code (the
+  vendored ProfileStore in `tests/reference/`) runs there. Each server loads its own copy of the module.
+- **`Simulation`** runs the servers, the players and the faults.
+- **`Ledger`** checks the invariants on every committed write.
+- **`Scenarios`** holds the named stories. `Scenarios.soak` runs one of them over many seeds.
+- **Adapters** put a library behind one shape, so the same scenarios drive ProfileStore (the baseline,
+  `tests/reference/BASELINE.md`) and KeepBlox.
+
+Two rules:
+- **No Lune async API inside a simulated thread.** Lune's `fs`, `net` and `task` yield to Lune's own
+  scheduler, which then resumes the thread outside the simulation. Read files beforehand
+  (`RobloxEnv.read`).
+- **A clean run proves nothing about the checker.** `NaiveAdapter` is a deliberately unsafe library,
+  and the ledger's specs must catch its breaches.
+
 ## Distribution (proposed, settled at M6)
 
 - **Packages:** pesde and Wally.

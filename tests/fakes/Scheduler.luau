@@ -34,8 +34,13 @@ export type Scheduler = {
 	--> The random source for fakes that need one (latency, faults), shared so one seed rules all.
 	read random: Prng.Prng,
 	--> Starts `fn(...)` as a new thread in `group`, or in the running thread's group. It first runs on
-	--> a later `step`, never inside this call. Returns the thread's id.
+	--> a later `step`, never inside this call (`task.defer`). Returns the thread's id.
 	spawn: (self: Scheduler, fn: (...any) -> (), group: string?, ...any) -> number,
+	--> Runs `fn` or resumes a thread at once, until it first yields (`task.spawn`, and the engine's
+	--> `coroutine.resume`). A thread it has not seen joins `group`, or the running thread's group.
+	--> Returns what `coroutine.resume` returns. A thread that yields without waiting is parked: only
+	--> another `resume` wakes it.
+	resume: (self: Scheduler, target: thread | (...any) -> (), group: string?, ...any) -> ...any,
 	--> Suspends the running thread for `dt` virtual seconds (0 is a pure yield). Returns the time slept.
 	wait: (self: Scheduler, dt: number?) -> number,
 	--> The group of the running thread, or nil outside any thread.
@@ -73,20 +78,70 @@ function Scheduler.new(seed: number): Scheduler
 		return earliest
 	end
 
-	const function spawn(self: Scheduler, fn: (...any) -> (), group: string?, ...: any): number
+	const byCo: { [thread]: Thread } = {}
+
+	const function track(co: thread, group: string?, wakeAt: number): Thread
 		const owner = group or (if current then current.group else nil)
-		assert(owner, "Scheduler:spawn outside a thread needs a group")
+		assert(owner, "a thread started outside any thread needs a group")
 		nextId += 1
-		table.insert(threads, {
+		const record: Thread = {
 			id = nextId,
 			group = owner,
-			wakeAt = self.now,
-			co = coroutine.create(fn),
-			args = { ... },
-			argc = select("#", ...),
+			wakeAt = wakeAt,
+			co = co,
+			args = {},
+			argc = 0,
 			started = false,
-		})
-		return nextId
+		}
+		table.insert(threads, record)
+		byCo[co] = record
+		return record
+	end
+
+	const function forget(record: Thread)
+		const index = table.find(threads, record)
+		if index then
+			table.remove(threads, index)
+		end
+		byCo[record.co] = nil
+	end
+
+	-- Resumes `record` with `record` as the running thread, and puts the previous one back after.
+	-- A thread that yields without `wait` leaves wakeAt at math.huge: it is parked.
+	const function resumeRecord(record: Thread, ...: any): ...any
+		const previous = current
+		current = record
+		record.wakeAt = math.huge
+		const results = table.pack(coroutine.resume(record.co, ...))
+		current = previous
+		if not results[1] then
+			table.insert(failures, { group = record.group, thread = record.id, message = tostring(results[2]) })
+			forget(record)
+		elseif coroutine.status(record.co) == "dead" then
+			forget(record)
+		end
+		return table.unpack(results, 1, results.n)
+	end
+
+	const function spawn(self: Scheduler, fn: (...any) -> (), group: string?, ...: any): number
+		const record = track(coroutine.create(fn), group, self.now)
+		record.args = { ... }
+		record.argc = select("#", ...)
+		return record.id
+	end
+
+	const function resume(_: Scheduler, target: thread | (...any) -> (), group: string?, ...: any): ...any
+		local record: Thread
+		if type(target) == "thread" then
+			record = byCo[target] or track(target, group, math.huge)
+		else
+			record = track(coroutine.create(target), group, math.huge)
+		end
+		if coroutine.status(record.co) ~= "suspended" then
+			return false, `cannot resume {coroutine.status(record.co)} coroutine`
+		end
+		record.started = true
+		return resumeRecord(record, ...)
 	end
 
 	const function wait(self: Scheduler, dt: number?): number
@@ -95,6 +150,7 @@ function Scheduler.new(seed: number): Scheduler
 		const delay = dt or 0
 		assert(delay >= 0, `Scheduler:wait needs a delay >= 0, got {delay}`)
 		const started = self.now
+		-- resumeRecord parked the thread before resuming it; waiting replaces that with a wake time.
 		running.wakeAt = self.now + delay
 		coroutine.yield()
 		return self.now - started
@@ -118,25 +174,11 @@ function Scheduler.new(seed: number): Scheduler
 		end
 		const chosen = due[random:integer(1, #due)]
 		self.now = earliest
-
-		current = chosen
-		local ok: boolean, message: any
 		if chosen.started then
-			ok, message = coroutine.resume(chosen.co)
+			resumeRecord(chosen)
 		else
 			chosen.started = true
-			ok, message = coroutine.resume(chosen.co, table.unpack(chosen.args, 1, chosen.argc))
-		end
-		current = nil
-
-		if not ok then
-			table.insert(failures, { group = chosen.group, thread = chosen.id, message = tostring(message) })
-		end
-		if not ok or coroutine.status(chosen.co) == "dead" then
-			const index = table.find(threads, chosen)
-			if index then
-				table.remove(threads, index)
-			end
+			resumeRecord(chosen, table.unpack(chosen.args, 1, chosen.argc))
 		end
 		return true
 	end
@@ -168,6 +210,7 @@ function Scheduler.new(seed: number): Scheduler
 		for _, thread in threads do
 			if thread.group == group then
 				dropped += 1
+				byCo[thread.co] = nil
 			else
 				table.insert(kept, thread)
 			end
@@ -192,6 +235,7 @@ function Scheduler.new(seed: number): Scheduler
 		failures = failures,
 		random = random,
 		spawn = spawn,
+		resume = resume,
 		wait = wait,
 		currentGroup = currentGroup,
 		step = step,

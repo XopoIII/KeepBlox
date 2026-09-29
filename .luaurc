@@ -8,6 +8,7 @@
   "aliases": {
     "lune": "~/.luneblox/.typedefs/0.10.11/",
     "keepblox": "./src",
-    "fakes": "./tests/fakes"
+    "fakes": "./tests/fakes",
+    "sim": "./tests/sim"
   }
 }

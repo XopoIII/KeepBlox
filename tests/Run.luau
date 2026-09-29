@@ -14,5 +14,8 @@ require("./unit/Encoding")
 require("./unit/DataStoreBasics")
 require("./unit/DataStoreUpdate")
 require("./unit/Messaging")
+require("./unit/ReferenceProfileStore")
+require("./unit/Ledger")
+require("./scenario/ProfileStoreBaseline")
 
 Spec.finish()
