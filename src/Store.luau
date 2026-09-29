@@ -39,8 +39,12 @@ export type Options = {
 	schema: Schema.Node?,
 	--> The schema version the data is at now; default: the highest migration.
 	version: number?,
-	--> Migrations `[n]`, each taking the data from version n - 1 to n (see Migrate).
-	migrations: { [number]: Migrate.Migration }?,
+	--> Migrations `[n]`, each taking the data from version n - 1 to n (see Migrate): a function, or
+	--> `{ up, down }`.
+	migrations: { read [number]: Migrate.Migration }?,
+	--> The version data is stored at; default: `version`. Below it, the release can be rolled back: the
+	--> data is stored turned down to this version, which the release before reads (see Migrate).
+	writeVersion: number?,
 	--> The engine services; the real ones by default. Tests pass fakes.
 	services: Services.Services?,
 	--> Overrides for `Config.DEFAULT`.
@@ -114,7 +118,9 @@ function Store.new(name: string, options: Options): Store
 		type(template) == "table" and Validate.check(template, "template"),
 		"KeepBlox: the template must be storable"
 	)
-	const plan = Migrate.plan(options.schema, options.version, options.migrations)
+	const plan = Migrate.plan(options.schema, options.version, options.migrations, options.writeVersion)
+	const storedTemplate, turned = Migrate.store(plan, Record.copy(template))
+	assert(turned == nil, `KeepBlox: the template cannot be stored at writeVersion: {turned}`)
 	const config = Config.resolve(options.config)
 	const studio = options.studio or "live"
 	assert(
@@ -213,6 +219,7 @@ function Store.new(name: string, options: Options): Store
 	const state: Open.State = {
 		name = name,
 		template = template,
+		storedTemplate = storedTemplate,
 		reconcile = options.reconcile ~= false,
 		plan = plan,
 		config = config,

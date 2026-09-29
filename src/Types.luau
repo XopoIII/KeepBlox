@@ -81,7 +81,16 @@ export type Session = {
 
 export type Pending = { done: boolean, stored: boolean, waiters: { thread } }
 
-export type Good = { text: string, size: number, data: any, consumed: { [number]: boolean }, receipts: { string } }
+--> The last snapshot that could be stored: `data` as stored (at the plan's `write` version), `play` as
+--> the game has it (at its `version`; the same table when the two are one).
+export type Good = {
+	text: string,
+	size: number,
+	data: any,
+	play: any,
+	consumed: { [number]: boolean },
+	receipts: { string },
+}
 
 -- Types only: a module must still return one value.
 return {}

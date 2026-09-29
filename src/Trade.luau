@@ -24,6 +24,7 @@
 --- those two profiles during the trade's round trips are undone with it.
 const Call = require("./Call")
 const Lock = require("./Lock")
+const Migrate = require("./Migrate")
 const Record = require("./Record")
 const Schema = require("./Schema")
 const Services = require("./Services")
@@ -81,8 +82,16 @@ end
 -- trade may still have to put back).
 const lostHere: { [Session.Session]: boolean } = setmetatable({}, { __mode = "k" }) :: any
 
+-- `data` and a journal's `before` are as stored (see `stored`), and go with the version they are at, so
+-- no migration runs on them twice.
 const function write(context: Session.Context, session: Session.Session, data: any?, journal: any): boolean
-	const payload: Lock.Payload = { data = data, release = false, journal = journal, snap = session.snapSeq }
+	const payload: Lock.Payload = {
+		data = data,
+		release = false,
+		journal = journal,
+		snap = session.snapSeq,
+		schemaVersion = if data ~= nil then context.plan.write else nil,
+	}
 	local lost = false
 	const ok = Call.run(
 		context.services.clock,
@@ -108,6 +117,11 @@ const function write(context: Session.Context, session: Session.Session, data: a
 		end
 	end
 	return ok and not lost
+end
+
+-- `data` as the data store stores it: a copy, at the plan's `write` version (see Migrate).
+const function stored(context: Session.Context, data: any): (any, string?)
+	return Migrate.store(context.plan, Record.copy(data))
 end
 
 -- Retries `decide` until it answers, the server closes, or `loadTimeout` passes.
@@ -164,6 +178,15 @@ const function inLanes(
 			return { ok = false, reason = "refused", message = refusal }
 		end
 	end
+	const storedA, refusedA = stored(context, afterA)
+	const storedB, refusedB = stored(context, afterB)
+	const keptA, refusedKeptA = stored(context, beforeA)
+	const keptB, refusedKeptB = stored(context, beforeB)
+	const turned = refusedA or refusedB or refusedKeptA or refusedKeptB
+	if turned then
+		undo()
+		return { ok = false, reason = "refused", message = turned }
+	end
 	const id = context.services.guid()
 	const trades = tradesStore(context, storeName)
 	const opened = Call.run(
@@ -184,9 +207,9 @@ const function inLanes(
 	end
 	-- A write that failed may still have landed ("a failed write does not always guarantee that the
 	-- backend write did not occur"), so a side counts as touched once its write was tried.
-	const wroteA = write(context, a, afterA, { id = id, before = beforeA })
+	const wroteA = write(context, a, storedA, { id = id, before = keptA })
 	const triedB = wroteA
-	const wroteB = triedB and write(b.context, b, afterB, { id = id, before = beforeB })
+	const wroteB = triedB and write(b.context, b, storedB, { id = id, before = keptB })
 	const outcome = settle(context, storeName, id, if wroteA and wroteB then "done" else "aborted", true)
 	if outcome == nil then
 		-- The server is closing and the outcome is still unknown (a "done" may have landed and failed to
@@ -207,10 +230,10 @@ const function inLanes(
 	undo()
 	if outcome == "aborted" then
 		-- Nothing may keep the change: put back what was written, journals cleared.
-		if not write(context, a, beforeA, false) then
+		if not write(context, a, keptA, false) then
 			a.clearJournal = true
 		end
-		if triedB and not write(b.context, b, beforeB, false) then
+		if triedB and not write(b.context, b, keptB, false) then
 			b.clearJournal = true
 		end
 	end

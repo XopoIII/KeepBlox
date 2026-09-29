@@ -12,6 +12,7 @@
 const Call = require("./Call")
 const Codec = require("./Codec")
 const Lock = require("./Lock")
+const Migrate = require("./Migrate")
 const Profile = require("./Profile")
 const Record = require("./Record")
 const Schema = require("./Schema")
@@ -68,11 +69,24 @@ const function write(
 			newReceipt = true
 		end
 	end
+	-- What is stored: the snapshot, or in a release that can be rolled back, the snapshot turned back to
+	-- the version it stores (see Migrate), checked against the schema first.
+	const plan = context.plan
+	const schema = plan.schema
+	local storable, turned = snapshot, nil :: string?
+	if plan.write < plan.version then
+		turned = if schema then Schema.check(schema, snapshot) else nil
+		if turned == nil then
+			storable, turned = Migrate.store(plan, Record.copy(snapshot))
+		end
+	end
 	-- A compressing store checks the size of what it stores (Codec), not of the data in memory.
 	local encoded, problem =
-		Validate.check(snapshot, "Data", if context.compress then math.huge else nil, Validate.slicer(clock))
-	const schema = context.plan.schema
-	if encoded and schema and encoded.text ~= session.storedText then
+		Validate.check(storable, "Data", if context.compress then math.huge else nil, Validate.slicer(clock))
+	if turned then
+		encoded, problem = nil, turned
+	end
+	if encoded and schema and plan.write == plan.version and encoded.text ~= session.storedText then
 		-- Only changed data is checked against the schema; unchanged data passed already.
 		const broken = Schema.check(schema, snapshot)
 		if broken then
@@ -89,7 +103,7 @@ const function write(
 		-- with the messages and receipts that were in it (see Lease).
 		const good = session.good
 		if good and good.text ~= session.storedText then
-			snapshot, consumed, receipts, data = good.data, good.consumed, good.receipts, good.data
+			snapshot, consumed, receipts, data = good.play, good.consumed, good.receipts, good.data
 			encoded = { text = good.text, size = good.size }
 		end
 	elseif encoded.text ~= session.storedText or next(consumed) ~= nil or newReceipt then
@@ -99,7 +113,7 @@ const function write(
 		const spacing = encoded.size * 60 / context.config.writeBytesPerMinute
 		const urgent = next(consumed) ~= nil or newReceipt or session.clearJournal
 		if not automatic or urgent or clock.now() - session.lastDataWrite >= spacing then
-			data, problem = Codec.pack(context.services.codec, context.compress, snapshot, encoded.size)
+			data, problem = Codec.pack(context.services.codec, context.compress, storable, encoded.size)
 			if problem and problem ~= session.lastProblem then
 				session.lastProblem = problem
 				context.report(session.key, `not saved: {problem}`)
@@ -113,7 +127,7 @@ const function write(
 		release = release,
 		consumed = if data ~= nil then consumed else nil,
 		receipts = if data ~= nil then receipts else nil,
-		schemaVersion = if data ~= nil then context.plan.version else nil,
+		schemaVersion = if data ~= nil then plan.write else nil,
 		memory = context.beating ~= nil and context.beating(),
 		snap = session.snapSeq,
 		-- A settled trade's journal goes only with data that matches memory (see Trade).

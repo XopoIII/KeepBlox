@@ -111,17 +111,49 @@ unchanged, `store.onError` says why, and the load fails with:
 
 | Reason | Cause |
 |---|---|
-| `"newerSchema"` | The data is at a version newer than this server knows. Old code never rewrites data it does not understand; this happens on old servers during a rollout. |
+| `"newerSchema"` | The data is at a version newer than this server knows. Old code never rewrites data it does not understand; this happens on old servers during a rollout, and after a rollback of a release without `writeVersion` (see below). |
 | `"migration"` | A migration threw an error. |
 | `"schema"` | The migrated data does not fit the schema. |
 
 ### New and imported data
 
 - **A new player is never migrated.** Their data comes from the template or schema as it is now, and is
-  stored at the current version.
+  stored at the current version (at `writeVersion`, turned back by `down`, when the store has one).
 - **Imported data is migrated from 0.** Data taken from another library with an importer is from before
   every migration, so all of them run on it
   ([Importing from other libraries](/KeepBlox/guides/importing-from-other-libraries/)).
+
+### A release you can roll back
+
+A release that raises the version writes data the release before it cannot read. If you roll it back,
+every player who played on it fails to load with `"newerSchema"` until you ship it again. To keep a
+rollback open, ship the change in two steps (expand, then contract):
+
+1. **Expand.** Give the new migration a way back, `{ up, down }`, and set `writeVersion` to the old
+   version. This release plays at the new version and reads data at either version. It stores data
+   turned back by `down`, so the release before it still reads everything it writes, including trades
+   and the crash snapshots in MemoryStore. You can roll this release back at any time.
+
+   ```lua
+   KeepBlox.store("Profiles", {
+       template = { gold = 0 },
+       migrations = {
+           [1] = {
+               up = function(data) data.gold, data.coins = data.coins, nil end,
+               down = function(data) data.coins, data.gold = data.gold, nil end,
+           },
+       },
+       writeVersion = 0,
+   })
+   ```
+
+2. **Contract.** Once no server runs the old release, ship the next one without `writeVersion` (or
+   with it raised). From then on data is stored at the new version, and a rollback to the expand
+   release is still safe, since that release reads it.
+
+`down` must undo `up` exactly, or a round trip through the old release changes the data. Test both
+directions with fixtures (see below). A store refuses a `writeVersion` whose migrations above it have
+no `down`, and a template that its `down` steps cannot turn back.
 
 ## Testing a migration
 
@@ -147,6 +179,16 @@ It returns `{ ok = true, data = data, changed = boolean }`, or
 `{ ok = false, reason = reason, message = text }` with the same reasons as a load. The input is copied,
 so a fixture can be reused. Keep one fixture from before and one from after each migration, and test
 each step.
+
+`KeepBlox.migrateDown(options, data, to)` runs the `down` steps on a copy of `data`, which is at the
+store's version, down to version `to`: what a store with `writeVersion = to` stores. It returns
+`{ ok = true, data = data }` or `{ ok = false, message = text }`. Check that each `down` undoes its `up`:
+
+```lua
+local down = KeepBlox.migrateDown(options, { gold = 50 }, 0)
+assert(down.ok and down.data.coins == 50)
+assert(KeepBlox.migrate(options, down.data, 0).data.gold == 50)
+```
 
 <Aside>
 The specs for this page are in `tests/unit/Migrate.luau` and `tests/unit/Schema.luau`, for example

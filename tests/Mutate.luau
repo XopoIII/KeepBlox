@@ -148,6 +148,36 @@ const MUTANTS: { Mutant } = {
 		breaks = "a restored version is migrated from its own schema version",
 	},
 	{
+		file = "src/Session.luau",
+		from = "schemaVersion = if data ~= nil then plan.write else nil,",
+		to = "schemaVersion = if data ~= nil then plan.version else nil,",
+		breaks = "a save stores the version its data is at (a release can be rolled back)",
+	},
+	{
+		file = "src/Session.luau",
+		from = "storable, turned = Migrate.store(plan, Record.copy(snapshot))",
+		to = "storable, turned = snapshot, nil",
+		breaks = "a release that can be rolled back stores its data turned down",
+	},
+	{
+		file = "src/Lease.luau",
+		from = "v = context.plan.write,",
+		to = "v = context.plan.version,",
+		breaks = "a snapshot is at the version this server stores",
+	},
+	{
+		file = "src/Trade.luau",
+		from = "schemaVersion = if data ~= nil then context.plan.write else nil,",
+		to = "schemaVersion = nil,",
+		breaks = "a trade stores the version its data is at (no migration runs twice)",
+	},
+	{
+		file = "src/Open.luau",
+		from = "version = plan.write,",
+		to = "version = plan.version,",
+		breaks = "a new profile is stored at the version this server stores",
+	},
+	{
 		file = "src/Versions.luau",
 		from = "if not table.find(before, id) then",
 		to = "if false then",

@@ -19,6 +19,8 @@ semantic versioning.
   The owner withdraws its beat from its records first, and a takeover on the beat's word lands only
   while the record still vouches for it.
 - The size estimate counts an empty table as 2 bytes, not 1.
+- A trade right after a migrating load stores the schema version with the migrated data. Before, the
+  record kept the old version, and the next load ran the migrations again on migrated data.
 
 ### Changed
 
@@ -31,6 +33,10 @@ semantic versioning.
 - `tests/Mutate.luau`: mutation adequacy of the suite. 21 mutants, each a slip in code that keeps a
   guarantee, must each fail the suite.
 - Differential fuzzing of the save check against the store's encoding.
+- Releases you can roll back. A migration may be `{ up, down }`, and a store's `writeVersion` stores
+  data at an older version: saves, trades, new profiles and MemoryStore snapshots alike. The release
+  before it then reads everything, so a rollback locks no player out. `KeepBlox.migrateDown` tests the
+  down steps on fixtures.
 - The Wally and pesde packages, `xopoiii/keepblox` (0.1.0 is published on both).
 
 ## 0.1.0 - 2026-09-29

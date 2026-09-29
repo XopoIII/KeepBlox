@@ -20,6 +20,7 @@
 --- live session early, never let two servers write (guarantee 2).
 const Call = require("./Call")
 const Codec = require("./Codec")
+const Migrate = require("./Migrate")
 const Record = require("./Record")
 const Types = require("./Types")
 const Validate = require("./Validate")
@@ -75,8 +76,14 @@ const function snapshots(
 		if not session.active or session.releasing or session.trading or session.storedSize > 4 * cap then
 			continue
 		end
-		const data = session.profile.Data
-		const encoded = Validate.check(data, "Data", cap)
+		const play = session.profile.Data
+		-- Stored as the data store would store it, at the version this server writes (see Migrate), so a
+		-- server of the release before can take it over too.
+		local data: any = play
+		if context.plan.write < context.plan.version then
+			data = Migrate.store(context.plan, Record.copy(play))
+		end
+		const encoded = if data == nil then nil else Validate.check(data, "Data", cap)
 		if encoded == nil or Codec.hasBuffer(data) then
 			continue
 		elseif encoded.text == session.storedText then
@@ -94,17 +101,19 @@ const function snapshots(
 		for index in processed do
 			table.insert(consumed, index)
 		end
+		const copied = Record.copy(data)
 		session.good = {
 			text = encoded.text,
 			size = encoded.size,
-			data = Record.copy(data),
+			data = copied,
+			play = if data == play then copied else Record.copy(play),
 			consumed = table.clone(processed),
 			receipts = table.clone(session.receipts),
 		}
 		taken[key] = {
 			c = session.loadCount,
 			q = session.snapSeq,
-			v = context.plan.version,
+			v = context.plan.write,
 			d = Record.copy(data),
 			rc = table.clone(session.receipts),
 			m = consumed,
