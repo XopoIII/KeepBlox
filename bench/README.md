@@ -12,8 +12,8 @@ Measured on an Apple M1, LuneBlox 0.10.12:
 | Profile | Size | Copy | Longest slice | Longest stretch | Budget (CI) | Total CPU |
 |---|---|---|---|---|---|---|
 | 10 KB | 8,090 B | 0.02 ms | 0.35 ms | 0.37 ms | 1.5 ms | 0.37 ms |
-| 100 KB | 82,151 B | 0.17 ms | 2.13 ms | 2.30 ms | 6 ms | 3.79 ms |
-| 1 MB | 841,594 B | 1.8 ms | 3.4 ms | 5.2 ms | 16 ms | 40 ms |
+| 100 KB | 82,151 B | 0.17 ms | 2.13 ms | 2.30 ms | 6 ms | 3.85 ms |
+| 1 MB | 841,594 B | 1.7 ms | 2.6 ms | 4.3 ms | 16 ms | 41 ms |
 
 The budgets leave room for slower CI machines. The copy is the one part that cannot be split: until it
 is done, the game could change the data mid-snapshot.

@@ -196,6 +196,12 @@ const MUTANTS: { Mutant } = {
 		breaks = "a copy shares no table with the data (a snapshot does not change after it is taken)",
 	},
 	{
+		file = "src/Validate.luau",
+		from = '\t\ttable.insert(state.chunks, table.concat(parts, ",", 1, state.count))\n\t\tstate.count = 0',
+		to = '\t\ttable.insert(state.chunks, table.concat(parts, ",", 1, state.count - 1))\n\t\tstate.count = 0',
+		breaks = "a large value's text keeps every part (its text decides whether it is written)",
+	},
+	{
 		file = "src/Versions.luau",
 		from = "if not table.find(before, id) then",
 		to = "if false then",

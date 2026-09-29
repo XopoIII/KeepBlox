@@ -28,8 +28,9 @@ semantic versioning.
   data no longer holds them and they stay granted, so the game must make them good; before, they were
   lost silently. The record notes the restore in `MetaData.KeepBlox.restored`.
 - The snapshot a save takes is copied about 3x faster (one engine clone per table): the one step of a
-  save that cannot be spread over frames. A 1 MB profile's longest frame stretch fell from 9.1 ms to
-  5.2 ms.
+  save that cannot be spread over frames. The check's text is also joined a chunk at a time inside the
+  sliced walk, not all at once at its end. A 1 MB profile's longest frame stretch fell from 9.1 ms to
+  4.3 ms.
 
 ### Added
 
