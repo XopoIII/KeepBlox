@@ -178,6 +178,12 @@ const MUTANTS: { Mutant } = {
 		breaks = "a new profile is stored at the version this server stores",
 	},
 	{
+		file = "src/Migrate.luau",
+		from = "back.ok and same(back.data, template),",
+		to = "true,",
+		breaks = "a down that does not undo its up is refused when the store is made",
+	},
+	{
 		file = "src/Versions.luau",
 		from = "if not table.find(before, id) then",
 		to = "if false then",

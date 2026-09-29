@@ -175,6 +175,22 @@ Spec.test("Releases: writeVersion is checked, and migrateDown runs the down step
 	Spec.throws(function()
 		KeepBlox.store("Profiles", { template = {}, migrations = WRAP, writeVersion = 2, mock = true })
 	end, "writeVersion 2 must be a whole number from 0 to version 1")
+	-- A down that does not undo its up (it drops the field) would change every player on a rollback.
+	Spec.throws(function()
+		KeepBlox.store("Profiles", {
+			template = { gold = 1 },
+			migrations = {
+				[1] = {
+					up = RENAME.up,
+					down = function(data: any)
+						data.gold = nil
+					end,
+				},
+			},
+			writeVersion = 0,
+			mock = true,
+		})
+	end, "the template does not come back through migrations 1..1 down and up")
 	const fixture = { gold = 4, stats = { wins = 1 } }
 	Spec.equal(KeepBlox.migrateDown(RELEASE_3, fixture, 1), { ok = true, data = { coins = 4, stats = { wins = 1 } } })
 	Spec.equal(

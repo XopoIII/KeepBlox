@@ -138,6 +138,40 @@ function Migrate.store(plan: Plan, data: any): (any, string?)
 	return current, nil
 end
 
+-- Whether two values are equal, deeply.
+const function same(a: any, b: any): boolean
+	if type(a) ~= "table" or type(b) ~= "table" then
+		return a == b or (typeof(a) == "buffer" and typeof(b) == "buffer" and buffer.tostring(a) == buffer.tostring(b))
+	end
+	for key, value in a do
+		if not same(value, b[key]) then
+			return false
+		end
+	end
+	for key in b do
+		if a[key] == nil then
+			return false
+		end
+	end
+	return true
+end
+
+--> The template as a new profile is stored: at `plan.write`. When that is below the plan's version, the
+--> template must come back unchanged through the down steps and up again, or the store is refused: a
+--> `down` that does not undo its `up` would change every player's data on a rollback.
+function Migrate.template(plan: Plan, template: any, copy: (any) -> any): any
+	const stored, problem = Migrate.store(plan, copy(template))
+	assert(problem == nil, `KeepBlox: the template cannot be stored at writeVersion: {problem}`)
+	if plan.write < plan.version then
+		const back = Migrate.run(plan, copy(stored), plan.write)
+		assert(
+			back.ok and same(back.data, template),
+			`KeepBlox: the template does not come back through migrations {plan.write + 1}..{plan.version} down and up`
+		)
+	end
+	return stored
+end
+
 --> Brings `data`, at the plan's version, down to `to` (a fixture's check of the down steps).
 function Migrate.down(plan: Plan, data: any, to: number): (any, string?)
 	assert(to == math.floor(to) and to >= 0 and to <= plan.version, `KeepBlox: {to} is outside 0..{plan.version}`)

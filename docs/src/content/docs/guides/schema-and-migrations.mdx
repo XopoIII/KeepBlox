@@ -153,7 +153,8 @@ rollback open, ship the change in two steps (expand, then contract):
 
 `down` must undo `up` exactly, or a round trip through the old release changes the data. Test both
 directions with fixtures (see below). A store refuses a `writeVersion` whose migrations above it have
-no `down`, and a template that its `down` steps cannot turn back.
+no `down`. It also runs the template down and back up when it is made, and refuses the store if the
+template does not come back unchanged.
 
 ## Testing a migration
 

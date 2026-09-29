@@ -119,8 +119,7 @@ function Store.new(name: string, options: Options): Store
 		"KeepBlox: the template must be storable"
 	)
 	const plan = Migrate.plan(options.schema, options.version, options.migrations, options.writeVersion)
-	const storedTemplate, turned = Migrate.store(plan, Record.copy(template))
-	assert(turned == nil, `KeepBlox: the template cannot be stored at writeVersion: {turned}`)
+	const storedTemplate = Migrate.template(plan, template, Record.copy)
 	const config = Config.resolve(options.config)
 	const studio = options.studio or "live"
 	assert(
