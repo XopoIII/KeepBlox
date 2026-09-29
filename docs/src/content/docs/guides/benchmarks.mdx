@@ -1,0 +1,20 @@
+---
+title: Benchmarks
+description: KeepBlox against ProfileStore, ProfileService, DocumentService, Lapis, DataStore2 and Suphi's DataStore Module, all run unmodified in the same simulator over the same seeds -- data safety, crash loss, load times and request cost.
+---
+
+Every library runs unmodified in the same simulator, against the same fakes of DataStore, MemoryStore,
+MessagingService and the engine, with the same players, faults and seeds. The table below is
+`bench/Benchmarks.md` as the last `luneblox run bench/Report 20` wrote it; the methodology at its end
+explains every column. To run it yourself:
+
+```sh
+luneblox run bench/download       # the rivals, at their pinned versions
+luneblox run bench/Report 20      # every scenario over seeds 1-20, then the cost
+```
+
+import Benchmarks from '../../../../../bench/Benchmarks.md';
+
+<div class="kb-imported">
+	<Benchmarks />
+</div>

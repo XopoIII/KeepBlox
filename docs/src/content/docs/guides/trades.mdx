@@ -1,0 +1,115 @@
+---
+title: Trades
+description: How store:trade changes two profiles in one step that lands in both or in neither, even when the server dies midway.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+A trade moves items or currency between two players. Saving the two profiles one after the other is
+not enough: a server that dies between the two writes leaves one player with both sides of the trade,
+or with neither. `store:trade` commits both profiles together, so the change lands in both or in
+neither.
+
+```lua
+const result = store:trade(`u_{a.UserId}`, `u_{b.UserId}`, function(dataA, dataB)
+	dataA.coins -= 100
+	dataB.coins += 100
+	table.insert(dataB.pets, table.remove(dataA.pets, index))
+end)
+
+if not result.ok then
+	warn(`trade failed: {result.reason} {result.message or ""}`)
+end
+```
+
+## Both profiles on this server
+
+Both keys must be open on the server that calls `trade`, since players trade with players they can
+see. A key that is not open here, or whose session has ended, fails at once with `"notHere"` and
+nothing is written. The two keys must differ; the same key twice is an error, as is a `change` that
+is not a function.
+
+## The change
+
+`change(dataA, dataB)` receives the two profiles' live `Data` tables and changes them in place, as
+any other game code does. KeepBlox copies both first. When `change` throws, both tables are put back
+to those copies and the result is `{ ok = false, reason = "error", message = ... }`.
+
+After `change` returns, both results are checked as a save checks them: every value must be storable,
+and a store with a schema checks the schema. A refusal puts both tables back and returns
+`"refused"`, with the message naming the path of the bad value.
+
+## The commit
+
+Each profile has one write lane, the queue its saves go through. The trade holds both lanes for its
+whole run, so no renewal or save of either profile slips in between its steps. Lanes are taken in key
+order, so two trades on overlapping profiles never wait on each other forever.
+
+<Steps>
+
+1. A trade record is created in the data store `"<store>__trades"`, under a new GUID, with the state
+   `"open"`, both keys and the time.
+
+2. Each profile is written with its changed data and a journal: the trade's id and that profile's
+   data from before the trade. The journal lives in the record's `MetaData.KeepBlox.trade`.
+
+3. The trade record goes from `"open"` to `"done"` in one `UpdateAsync`. This is the commit point:
+   once the record says `"done"`, the trade has happened.
+
+4. Each profile is written again with the journal cleared. If that write fails, the journal is
+   cleared by the profile's next write instead.
+
+</Steps>
+
+If either profile's write in step 2 did not land, step 3 moves the record to `"aborted"` instead, and
+both profiles are written back with their data from before and the journal cleared.
+
+A profile snapshot in MemoryStore (see [How it works](/KeepBlox/guides/how-it-works/)) is never taken
+of a profile in a trade, so no snapshot can hold a half-applied trade.
+
+## Recovery on load
+
+A server can die at any point in those steps. The profile it was writing then holds a journal. The
+next load of that key settles the trade before anything else, from the trade record:
+
+- a record still `"open"` (or missing) is moved to `"aborted"` in one `UpdateAsync`, so exactly one
+  outcome wins even when two servers settle the same trade at once;
+- `"done"` keeps the profile's data as stored;
+- `"aborted"` puts back the data from before, taken from the journal.
+
+The other profile of the trade settles the same way, from the same record, and reaches the same
+outcome. The load retries the trade record with backoff; if it cannot learn the outcome within
+`loadTimeout`, it gives the key back and fails with `"timeout"`, so the player can rejoin and try
+again. It never guesses.
+
+## What an aborted trade undoes
+
+A trade that is not committed puts both profiles' `Data` back to what it was before `change` ran, in
+place, so references the game holds into `Data` stay valid. That includes changes the game made to
+those two profiles while the trade's data store calls were in flight: they are undone with it.
+
+<Aside type="caution">
+Do not change either profile's `Data` from other code while `trade` yields. Such changes are kept only
+if the trade commits.
+</Aside>
+
+A session that a trade write found owned by another server ends with the reason `"lost"` once the
+trade returns. Its data is frozen then, as for any lost session (see
+[Profile](/KeepBlox/reference/profile/)).
+
+## Result reasons
+
+`store:trade` returns `{ ok = true }` or `{ ok = false, reason = ..., message = ... }`.
+
+| Reason | When | What was written |
+|---|---|---|
+| `"notHere"` | A key is not open on this server, or its session has ended. | Nothing. |
+| `"error"` | `change` threw. `message` holds the error. | Nothing; both profiles are put back. |
+| `"refused"` | A changed profile cannot be stored, or breaks the schema. `message` names the path. | Nothing; both profiles are put back. |
+| `"lost"` | A profile's session ended or started releasing before the trade began, or a profile's write in step 2 did not land (the key was owned elsewhere, or the call failed). | The trade is aborted; both profiles are put back. |
+| `"failed"` | The trade record could not be created; or both writes landed but the record ended `"aborted"`; or the server is closing and the outcome is still unknown. | Put back, except in the last case: then the journals stay, and each profile settles the trade when it next loads. |
+
+Only `{ ok = true }` means the trade happened. Give the items in the game's UI after that, not before.
+
+See also [Messages and edits](/KeepBlox/guides/messages-and-edits/) for changing a profile that is not
+open on this server.

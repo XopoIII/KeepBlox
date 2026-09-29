@@ -52,6 +52,11 @@ export type Scheduler = {
 	run: (self: Scheduler, untilTime: number?) -> number,
 	--> Drops every thread of `group` at its current yield point. Returns how many were dropped.
 	crash: (self: Scheduler, group: string) -> number,
+	--> Forgets `co` (`task.cancel`, `coroutine.close`): it never wakes again.
+	cancel: (self: Scheduler, co: thread) -> (),
+	--> `coroutine.wrap` over the scheduler: each call resumes one thread as `resume` does, and an error
+	--> goes to the caller instead of the failure list.
+	wrap: (self: Scheduler, fn: (...any) -> ...any) -> (...any) -> ...any,
 	--> How many threads are alive (parked ones included), in `group` or in total.
 	count: (self: Scheduler, group: string?) -> number,
 }
@@ -108,14 +113,17 @@ function Scheduler.new(seed: number): Scheduler
 
 	-- Resumes `record` with `record` as the running thread, and puts the previous one back after.
 	-- A thread that yields without `wait` leaves wakeAt at math.huge: it is parked.
-	const function resumeRecord(record: Thread, ...: any): ...any
+	const function resumeRecord(record: Thread, quiet: boolean, ...: any): ...any
 		const previous = current
 		current = record
 		record.wakeAt = math.huge
 		const results = table.pack(coroutine.resume(record.co, ...))
 		current = previous
 		if not results[1] then
-			table.insert(failures, { group = record.group, thread = record.id, message = tostring(results[2]) })
+			-- A quiet resume hands the error to its caller (`coroutine.wrap`), who decides.
+			if not quiet then
+				table.insert(failures, { group = record.group, thread = record.id, message = tostring(results[2]) })
+			end
 			forget(record)
 		elseif coroutine.status(record.co) == "dead" then
 			forget(record)
@@ -141,7 +149,7 @@ function Scheduler.new(seed: number): Scheduler
 			return false, `cannot resume {coroutine.status(record.co)} coroutine`
 		end
 		record.started = true
-		return resumeRecord(record, ...)
+		return resumeRecord(record, false, ...)
 	end
 
 	const function wait(self: Scheduler, dt: number?): number
@@ -175,10 +183,10 @@ function Scheduler.new(seed: number): Scheduler
 		const chosen = due[random:integer(1, #due)]
 		self.now = earliest
 		if chosen.started then
-			resumeRecord(chosen)
+			resumeRecord(chosen, false)
 		else
 			chosen.started = true
-			resumeRecord(chosen, table.unpack(chosen.args, 1, chosen.argc))
+			resumeRecord(chosen, false, table.unpack(chosen.args, 1, chosen.argc))
 		end
 		return true
 	end
@@ -219,6 +227,29 @@ function Scheduler.new(seed: number): Scheduler
 		return dropped
 	end
 
+	const function cancel(_: Scheduler, co: thread)
+		const record = byCo[co]
+		if record then
+			forget(record)
+		end
+	end
+
+	const function wrap(_: Scheduler, fn: (...any) -> ...any): (...any) -> ...any
+		const co = coroutine.create(fn)
+		return function(...: any): ...any
+			if coroutine.status(co) ~= "suspended" then
+				error(`cannot resume {coroutine.status(co)} coroutine`, 2)
+			end
+			const record = byCo[co] or track(co, nil, math.huge)
+			record.started = true
+			const results = table.pack(resumeRecord(record, true, ...))
+			if not results[1] then
+				error(results[2], 0)
+			end
+			return table.unpack(results, 2, results.n)
+		end
+	end
+
 	const function count(_: Scheduler, group: string?): number
 		local total = 0
 		for _, thread in threads do
@@ -241,6 +272,8 @@ function Scheduler.new(seed: number): Scheduler
 		step = step,
 		run = run,
 		crash = crash,
+		cancel = cancel,
+		wrap = wrap,
 		count = count,
 	}
 end

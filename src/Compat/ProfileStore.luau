@@ -15,7 +15,8 @@
 --- - Data that cannot be stored (NaN, bad UTF-8, cycles, too large) is refused with its path through
 ---   `OnError`, instead of failing every save silently.
 --- - When a session ends, `Data` is frozen: late writes fail loudly instead of being lost quietly.
---- - The owner saves every renewal (15 s, only if changed), not every 300 s. `AUTO_SAVE_PERIOD`,
+--- - The owner saves on KeepBlox's schedule (a MemoryStore snapshot every beat, the data store every
+---   `renew`), not every 300 s. `AUTO_SAVE_PERIOD`,
 ---   `LOAD_REPEAT_PERIOD` and `FIRST_LOAD_REPEAT` are accepted by `SetConstant` but have no effect.
 --- - `KeyInfo` is nil. `MessageHandler` works on active profiles only, not in view mode.
 --- - A full message queue refuses `MessageAsync` (false) instead of dropping the oldest message.
@@ -107,6 +108,8 @@ function Compat.withServices(given: Services.Services?): any
 					services = base,
 					config = Config.resolve(overrides) :: any,
 					mock = if mock then `ProfileStore.Mock/{storeName}` else nil,
+					-- ProfileStore fills from the template only when the game calls Reconcile.
+					reconcile = false,
 				})
 				created.onError:connect(function(key: string, message: string)
 					noteError(message, storeName, key)

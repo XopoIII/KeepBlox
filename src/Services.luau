@@ -63,11 +63,47 @@ export type DataStore = {
 	GetVersionAsync: (self: DataStore, key: string, version: string) -> (any, KeyInfo?),
 }
 
---> The modern `Enum.DataStoreRequestType` values for standard data stores.
-export type RequestType = "StandardRead" | "StandardWrite" | "StandardList" | "StandardRemove"
+--> One entry of a sorted page: a key and its integer value.
+export type SortedEntry = { key: string, value: number }
+
+--> `DataStorePages` of `GetSortedAsync`.
+export type SortedPages = {
+	IsFinished: boolean,
+	GetCurrentPage: (self: SortedPages) -> { SortedEntry },
+	AdvanceToNextPageAsync: (self: SortedPages) -> (),
+}
+
+--> `OrderedDataStore`: an integer per key, readable in sorted pages (leaderboards).
+--> https://create.roblox.com/docs/reference/engine/classes/OrderedDataStore
+export type OrderedDataStore = {
+	GetAsync: (self: OrderedDataStore, key: string) -> number?,
+	SetAsync: (self: OrderedDataStore, key: string, value: number) -> (),
+	--> `transform` gets the current value (nil when absent) and returns the new one, or nil to cancel.
+	UpdateAsync: (self: OrderedDataStore, key: string, transform: (current: number?) -> number?) -> number?,
+	RemoveAsync: (self: OrderedDataStore, key: string) -> number?,
+	GetSortedAsync: (
+		self: OrderedDataStore,
+		ascending: boolean,
+		pageSize: number,
+		minValue: number?,
+		maxValue: number?
+	) -> SortedPages,
+}
+
+--> The modern `Enum.DataStoreRequestType` values: standard and ordered data stores.
+export type RequestType =
+	"StandardRead"
+	| "StandardWrite"
+	| "StandardList"
+	| "StandardRemove"
+	| "OrderedRead"
+	| "OrderedWrite"
+	| "OrderedList"
+	| "OrderedRemove"
 
 export type DataStoreService = {
 	GetDataStore: (self: DataStoreService, name: string, scope: string?) -> DataStore,
+	GetOrderedDataStore: (self: DataStoreService, name: string, scope: string?) -> OrderedDataStore,
 	GetRequestBudgetForRequestType: (self: DataStoreService, requestType: RequestType) -> number,
 }
 
@@ -94,9 +130,39 @@ export type Clock = {
 	wait: (dt: number?) -> number,
 	--> `task.spawn`: runs a function, or resumes a suspended thread, at once until it first yields.
 	spawn: (target: thread | (...any) -> (), ...any) -> (),
+	--> `task.cancel`: a waiting thread never resumes.
+	cancel: (target: thread) -> (),
+}
+
+--> Serializing and compressing data, for a store that compresses large profiles.
+export type Codec = {
+	--> JSON text of a storable value (`HttpService:JSONEncode`), and back (`JSONDecode`).
+	encode: (value: any) -> string,
+	decode: (text: string) -> any,
+	--> Zstandard (`EncodingService:CompressBuffer`), and back (`DecompressBuffer`).
+	compress: (text: string) -> buffer,
+	decompress: (packed: buffer) -> string,
+}
+
+--> `MemoryStoreSortedMap`: small values that expire, shared by every server of the experience.
+--> https://create.roblox.com/docs/reference/engine/classes/MemoryStoreSortedMap
+export type MemoryMap = {
+	GetAsync: (self: MemoryMap, key: string) -> any,
+	--> `transform` gets the value (nil when absent or expired) and returns the new one, or nil to cancel;
+	--> it may run more than once. `expiration` is in seconds.
+	UpdateAsync: (self: MemoryMap, key: string, transform: (value: any) -> any, expiration: number) -> any,
+	RemoveAsync: (self: MemoryMap, key: string) -> (),
+}
+
+export type MemoryStores = {
+	GetSortedMap: (self: MemoryStores, name: string) -> MemoryMap,
 }
 
 export type Services = {
+	--> Serialization and compression; nil where there is none (a store cannot compress then).
+	codec: Codec?,
+	--> MemoryStoreService; nil where there is none (leases then live in the data store alone).
+	memory: MemoryStores?,
 	dataStores: DataStoreService,
 	messaging: Messaging,
 	clock: Clock,

@@ -1,0 +1,173 @@
+---
+title: How it works
+description: The lock, the MemoryStore heartbeat and its snapshots, renewals and the request budget, frame-sliced saving, and what happens on a crash, a partition and a shutdown.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This page explains the protocol behind a store: how a server takes a key, keeps it, gives it up, and
+how another server knows when the owner is gone. The numbers are the defaults in `src/Config.luau`;
+[Config reference](/KeepBlox/reference/config/) lists every setting.
+
+## The record
+
+A key holds ProfileStore's record, so either library can read it:
+
+```lua
+{
+	Data = { ... },
+	MetaData = {
+		ProfileCreateTime = ..., SessionLoadCount = ..., LastUpdate = ...,
+		ActiveSession = { PlaceId, JobId, GUID }, -- or nil
+		ForceLoadSession = { PlaceId, JobId }, -- or nil
+		MetaTags = {},
+		KeepBlox = { lease = ..., owner = ... }, -- KeepBlox's own state, and nowhere else
+	},
+	GlobalUpdates = { lastIndex, { { index, message }, ... } },
+	RobloxMetaData = {}, UserIds = {}, WasOverwritten = false,
+}
+```
+
+`MetaData.KeepBlox.lease` goes up by one on every write the owner makes. A newcomer that sees the same
+lease for long enough knows the owner stopped writing, without reading anyone's clock. ProfileStore
+keeps `MetaData.KeepBlox` when it rewrites a key.
+
+## The lock
+
+Every lock decision is an `UpdateAsync` transform that reads only the stored record. It holds however
+calls from different servers interleave, and whatever any server's clock says.
+
+A load claims a key in four steps (`src/Claim.luau`):
+
+1. **Claim.** A missing key becomes a new record this session owns. A free key, or one this server
+   already holds, is taken at once. `SessionLoadCount` goes up by one.
+2. **Ask.** A key another session holds gets this server's `ForceLoadSession`. The owner is also sent
+   the message ProfileStore sends, `{ LoadCount, EndSession = true }` on the topic `"PS_" .. GUID`. A
+   live KeepBlox owner saves and hands over within a second of the message.
+3. **Wait.** The key is polled with a backoff from `backoffMin` (1 s) to `backoffMax` (5 s).
+4. **Take over**, if the owner is gone. The takeover succeeds only while this server's request is still
+   the latest. A third server that asked since then wins, and this load fails with `"outbid"`.
+
+A value that is not a profile is never overwritten. It is copied to `<store>__quarantine`, and the load
+fails with `"foreign"`.
+
+Every write the owner makes goes through the same kind of transform (`src/Lock.luau`). It writes only
+while `ActiveSession` is this server and `SessionLoadCount` is this session's. A write that finds
+anything else writes nothing and ends the session as `"lost"`: the data freezes and `onEnded` fires.
+
+## The server heartbeat
+
+Beside the lock in the data store, every server keeps one entry in a MemoryStore sorted map,
+`KB_servers[<JobId>] = { n, r, s }`, rewritten every `heartbeat` (4 s) by each of its stores
+(`src/Lease.luau`):
+
+- `n` counts the beats. While it moves, the server lives. A newcomer that sees it stand still for two
+  beats, or finds no entry at two looks half a beat apart, knows the server died and takes its keys.
+  That is how a crashed server is known dead within about 10 seconds.
+- `r` holds hand-over requests, keyed `"<store>/<key>"`. The owner hands those keys over at its next
+  beat. This carries requests when MessagingService is down.
+- `s` holds snapshots of open profiles whose data changed since it was last stored.
+
+A record written while its server beats says so, so a newcomer knows to trust the beat. One entry holds
+all of a server's profiles, so the cost is one MemoryStore call per beat per store.
+
+The data store transform still decides who may write. A wrong verdict from the heartbeat can at worst end
+a live session early; it can never let two servers write.
+
+When the beat cannot be read (MemoryStore is down, or the owner is a ProfileStore server), the older
+rules apply:
+
+- a KeepBlox owner is dead when its lease has not moved for `death` (605 s), measured by the newcomer's
+  own clock;
+- a ProfileStore owner is taken over by ProfileStore's own rules: `profileStoreSteal` (40 s) after the
+  first request, or when its `LastUpdate` is `profileStoreDead` (630 s) old.
+
+## Snapshots
+
+Each beat carries a snapshot of every open profile up to `snapshotBytes` (1000 bytes) whose data
+changed since it was stored: its load count, a snapshot number, its schema version, the data, the
+receipt ids granted into it, and the messages already processed into it. The entry outlives the last
+beat by `snapshotTtl` (900 s).
+
+When a newcomer takes over a key from a dead server, it reads that server's snapshot of the key
+(`src/Recover.luau`). If the snapshot is newer than the stored data, it is written at once, in one
+lock-guarded write, together with its receipts and processed messages, so neither is granted or
+processed again. If that write fails, the snapshot is not used: a few seconds of play are lost rather
+than a purchase granted twice.
+
+A profile gets no snapshot when it is over the size, holds buffers, or is in a trade. Such a profile is
+written every `renewFallback` (30 s) instead, and that is the most play a crash can lose for it.
+
+## Renewals and the request budget
+
+Every open session is written every `renew` (300 s). The write renews the lease and saves the data if
+it changed; unchanged data is not written again. Sessions are spread over the interval by a hash of
+their key, so a full server does not write all at once.
+
+A 300-second renewal would lose up to five minutes on a crash without the snapshots. With them, `renew`
+sets the data store cost (about 13 reads and 13 writes per player-hour in the benchmark), not the loss.
+A session its last beat did not cover renews at `renewFallback` instead.
+
+The renewal loop runs once a second (`src/Upkeep.luau`). Before it starts a write, it checks the
+server's `StandardWrite` and `StandardRead` budgets; while either is spent, it waits. Loads and releases
+are not starved by background renewals.
+
+Some saves do not wait for the renewal:
+
+- `profile:save()`, a purchase and a trade write at once;
+- a processed offline message, or a message someone sent to this profile, makes the session save within
+  a second.
+
+Repeated `save` calls join the one waiting in line, so a game calling `save` in a loop makes a few
+writes, not a queue of them.
+
+A large profile saves less often, to stay inside the key's write throughput: at most
+`writeBytesPerMinute` (3 MB) a minute.
+
+## Saving across frames
+
+A write starts by copying `profile.Data` (fast). The copy is then checked and encoded in slices
+(`src/Validate.luau`): after every 2 ms of CPU time, the check yields and lets a frame pass. A large
+profile is checked over several frames and never stalls one. The encoding is compiled natively; it also
+tells whether the data changed since the last save, so an unchanged profile is not written.
+
+## Hand-over
+
+When another server asks for the key, the owner makes a final save that also clears `ActiveSession`,
+and the session ends with `"handedOver"`. The owner learns of the request in one of three ways:
+
+1. the `EndSession` message on `"PS_" .. GUID`, within a second;
+2. the request in its MemoryStore entry, at its next beat (4 s);
+3. the `ForceLoadSession` in the record, at its next write.
+
+The newcomer's next poll finds the key free and takes it with the saved data.
+
+## Crash
+
+A crashed server stops beating. The newcomer asks it to hand over, watches its beat, and after two
+beats with no movement takes the key. It then stores the dead server's newer snapshot, if there is one.
+In the benchmark's crash scenario, the slowest open took 10.0 s and the most play lost was 4 steps.
+
+If MemoryStore is down too, the lease rule takes over: the key is taken once its lease has not moved for
+`death` (605 s). Every write before the crash was acknowledged, so nothing acknowledged is lost; the play
+since the last write is.
+
+## Partition
+
+A server cut off from MessagingService still beats in MemoryStore, so it sees the request in its entry
+and hands over at its next beat, with a final save. If MemoryStore is unreachable as well, it sees the
+`ForceLoadSession` in the record at its next write, which comes every `renewFallback` (30 s) when no
+beat lands. A server whose write finds the key already taken ends the session as `"lost"`, and its data
+freezes, so trades and purchases stop on the stale copy.
+
+## Shutdown
+
+Each store binds to `BindToClose`. On shutdown it marks itself closing, so new loads fail with
+`"closing"`, then releases every open profile in parallel and waits for them at most
+`shutdownDeadline` (25 s; Roblox allows 30). Each release retries with a backoff until it is stored,
+the key turns out to be owned elsewhere, or the deadline passes.
+
+<Aside>
+Every behaviour on this page is covered by a spec. [Guarantees](/KeepBlox/guides/guarantees/) names
+them.
+</Aside>

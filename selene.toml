@@ -2,7 +2,7 @@
 std = "roblox"
 
 # Vendored third-party code (ProfileStore, the conformance baseline) is not ours to lint.
-exclude = ["tests/reference/**"]
+exclude = ["tests/reference/**", "bench/rivals/**"]
 
 [lints]
 empty_if = "warn"

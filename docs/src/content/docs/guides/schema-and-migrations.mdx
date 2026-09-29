@@ -1,0 +1,155 @@
+---
+title: Schema and migrations
+description: Describe a profile's data with KeepBlox.schema, move old data forward with numbered migrations, and test each migration with fixtures.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A store takes either a `template` or a `schema`, not both. A template is a plain table of starting
+data. A schema also describes types, bounds and defaults, and every save is checked against it.
+
+## Template stores
+
+```lua
+local store = KeepBlox.store("Profiles", {
+	template = { coins = 0, settings = { music = true }, inventory = {} },
+})
+```
+
+A new profile starts from a copy of the template. On every load, keys the stored data lacks are filled
+with copies from the template, deeply: a new field inside `settings` reaches every old profile the next
+time it loads. Existing values are never replaced, and keys the template does not name are kept.
+
+Pass `reconcile = false` to turn the fill off (the ProfileStore shim does, because ProfileStore fills only
+when the game calls `Reconcile`).
+
+## Schema stores
+
+`KeepBlox.schema` holds the builders:
+
+```lua
+local S = KeepBlox.schema
+
+local schema = S.record({
+	coins = S.number({ default = 0, min = 0, integer = true }),
+	name = S.string({ default = "", maxLength = 20 }),
+	inventory = S.array(S.record({
+		id = S.string(),
+		level = S.number({ default = 1, min = 1 }),
+	}), { max = 500 }),
+	settings = S.record({ music = S.boolean({ default = true }) }),
+	pets = S.map(S.record({ kind = S.enum({ "cat", "dog" }, { default = "cat" }) })),
+	banned = S.optional(S.boolean()),
+})
+
+local store = KeepBlox.store("Profiles", { schema = schema })
+```
+
+| Builder | Options | Default when not given |
+|---|---|---|
+| `S.number(options)` | `default`, `min`, `max`, `integer` | `0` |
+| `S.string(options)` | `default`, `maxLength` (bytes) | `""` |
+| `S.boolean(options)` | `default` | `false` |
+| `S.buffer(options)` | `default`, `maxLength` | an empty buffer |
+| `S.enum(values, options)` | `default` | the first value |
+| `S.record(fields, options)` | `open = true` allows fields the schema does not name | each field's default |
+| `S.array(item, options)` | `max` items | `{}` |
+| `S.map(item, options)` | `max` entries; keys are strings | `{}` |
+| `S.optional(item)` | | nil (absent) |
+| `S.any(options)` | `default`; the value is not checked | nil |
+
+The schema does three things:
+
+- **New profiles** start from its defaults.
+- **On load**, missing fields get their defaults, deeply.
+- **Before every save**, changed data is checked. A value that breaks a rule is refused, and
+  `store.onError` names its path, for example `Data.coins: -5 is below the minimum 0`. The last good
+  save stays.
+
+Records are strict: a field the schema does not name is an error, unless the record is `open`. A default
+that breaks its own rules is refused when the schema is built, so a bad schema fails at startup, not in
+a player's session.
+
+## Migrations
+
+When the shape of the data changes, add a numbered migration. Migration `n` takes the data from version
+`n - 1` to version `n`:
+
+```lua
+local store = KeepBlox.store("Profiles", {
+	schema = schemaV2, -- the shape after migration 2
+	version = 2,
+	migrations = {
+		[1] = function(data)
+			data.coins = data.gold
+			data.gold = nil
+		end,
+		[2] = function(data)
+			return { stats = data } -- a migration may return a new table
+		end,
+	},
+})
+```
+
+The schema describes the data as it is after the last migration: here, `schemaV2` is a record with a `stats` field.
+
+- A record stores the schema version its data is at, in `MetaData.KeepBlox.schemaVersion`. Records
+  without one, ProfileStore's included, are at version 0.
+- On load, every migration above the stored version runs in order. Then missing fields get their
+  defaults, and the result is checked against the schema.
+- The migrated data is written at the first renewal, with its new version.
+- `version` defaults to the highest migration. Migrations must be numbered 1 to `version` with no gaps;
+  the store checks that when it is made.
+
+Migrations work on template stores too. There the schema check is skipped, and the template fill runs
+after the migrations.
+
+### When a load refuses the data
+
+A load never hands out, or writes back, data this server cannot make sense of. The key is given back
+unchanged, `store.onError` says why, and the load fails with:
+
+| Reason | Cause |
+|---|---|
+| `"newerSchema"` | The data is at a version newer than this server knows. Old code never rewrites data it does not understand; this happens on old servers during a rollout. |
+| `"migration"` | A migration threw an error. |
+| `"schema"` | The migrated data does not fit the schema. |
+
+### New and imported data
+
+- **A new player is never migrated.** Their data comes from the template or schema as it is now, and is
+  stored at the current version.
+- **Imported data is migrated from 0.** Data taken from another library with an importer is from before
+  every migration, so all of them run on it
+  ([Importing from other libraries](/KeepBlox/guides/importing-from-other-libraries/)).
+
+## Testing a migration
+
+`KeepBlox.migrate(options, data, from)` runs a store's migrations, defaults and schema check on a copy of
+`data` stored at version `from`, exactly as a load does. Pass it the same `schema`, `version` and
+`migrations` as the store:
+
+```lua
+local migrations = {
+	[1] = function(data)
+		data.coins = data.gold
+		data.gold = nil
+	end,
+}
+local options = { version = 1, migrations = migrations }
+
+local outcome = KeepBlox.migrate(options, { gold = 50 }, 0)
+assert(outcome.ok, outcome.message)
+assert(outcome.data.coins == 50 and outcome.data.gold == nil)
+```
+
+It returns `{ ok = true, data = data, changed = boolean }`, or
+`{ ok = false, reason = reason, message = text }` with the same reasons as a load. The input is copied,
+so a fixture can be reused. Keep one fixture from before and one from after each migration, and test
+each step.
+
+<Aside>
+The specs for this page are in `tests/unit/Migrate.luau` and `tests/unit/Schema.luau`, for example
+"Migrate: a new player starts from the template as it is now, with no migration run on it" and
+"Schema: every rule names the path of the value that breaks it".
+</Aside>

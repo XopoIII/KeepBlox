@@ -1,0 +1,203 @@
+---
+title: Guarantees
+description: Every promise KeepBlox makes about player data, and the spec in the repository that proves each one.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+KeepBlox makes a short list of promises. Each one is checked by specs in the repository: unit specs in
+`tests/unit/`, and scenario specs in `tests/scenario/` that run many virtual servers with random fault
+schedules in the simulator. A promise without a spec is not listed here.
+
+Each spec below is named by its file and its exact title. Run them all with `sh scripts/run-tests.sh`.
+
+## How the checking works
+
+The simulator (`tests/sim/`) runs whole servers in virtual time: players join, play, leave and rejoin,
+servers crash, MessagingService drops messages, and the data store fails for minutes. The seed decides
+the interleaving, so a failing run replays exactly from its seed.
+
+The **ledger** (`tests/sim/Ledger.luau`) watches every write the fake data store commits and checks
+three invariants on each one:
+
+- `ack-lost`: a save the library acknowledged is later missing.
+- `foreign-write`: `Data` changed in a write by a server that did not hold the lock.
+- `load-count-backwards`: `MetaData.SessionLoadCount` went down.
+
+A clean run proves nothing about the checker itself. So the ledger has its own specs, which feed it a
+deliberately unsafe library and require it to catch each breach:
+
+- `tests/unit/Ledger.luau`: "Ledger: two servers saving one key without a lock are caught"
+- `tests/unit/Ledger.luau`: "Ledger: a stale session overwriting newer saved progress is caught"
+- `tests/unit/Ledger.luau`: "Ledger: a load count that goes down is caught"
+- `tests/unit/Ledger.luau`: "Ledger: the owner's own save is not a foreign write"
+
+## One writer per key
+
+Only the server that holds the lock can write a profile. Every write is an `UpdateAsync` transform that
+decides from the stored record alone: it writes only while `ActiveSession` is this server and
+`SessionLoadCount` is this session's. Otherwise it writes nothing, and the session ends as lost.
+
+- `tests/unit/Lock.luau`: "Lock: a session that no longer owns the key writes nothing"
+- `tests/scenario/KeepBlox.luau`: "KeepBlox: hand-overs lose nothing and leave no stale owner"
+- `tests/scenario/KeepBlox.luau`: "KeepBlox: random play with crashes keeps every invariant"
+
+## An acknowledged save is never lost
+
+When `profile:save()` returns `true`, or a release finishes, that data is in the store, and no later
+write from any server replaces it with older data.
+
+- `tests/unit/Store.luau`: "Store: load, change, save, release"
+- `tests/unit/Complaints.luau`: "Complaints: an autosave in flight never re-locks a released key (DocumentService#119)"
+- `tests/scenario/KeepBlox.luau`: "KeepBlox: hand-overs lose nothing and leave no stale owner"
+- `tests/scenario/KeepBlox.luau`: "KeepBlox: random play with crashes keeps every invariant"
+
+## The load count never goes backwards
+
+Every claim raises `MetaData.SessionLoadCount` by one, and a stale session cannot write it back down.
+This is the ledger's `load-count-backwards` invariant, checked on every committed write of every
+scenario.
+
+- `tests/unit/Ledger.luau`: "Ledger: a load count that goes down is caught"
+- `tests/scenario/KeepBlox.luau`: "KeepBlox: random play with crashes keeps every invariant"
+
+## A failed load never writes data
+
+A load that fails, or gives up, leaves the stored data as it was. A key it already claimed is given
+back unchanged. A failed read is never mistaken for a new player.
+
+- `tests/unit/Store.luau`: "Store: a cancelled load gives the key back"
+- `tests/unit/Complaints.luau`: "Complaints: a load after shutdown began is refused and writes nothing (DataStore2#126, Lapis#37)"
+- `tests/unit/Complaints.luau`: "Complaints: a load in flight when shutdown begins gives the key back (Lapis#30)"
+- `tests/unit/Complaints.luau`: "Complaints: a failed read never loads the template over saved data (ProfileStore p10 #195)"
+- `tests/unit/Migrate.luau`: "Migrate: data from a newer version is refused, the key let go, nothing written"
+- `tests/unit/Migrate.luau`: "Migrate: a failing migration refuses the load and leaves the data as it was"
+- `tests/unit/Import.luau`: "Import: an old lock that never goes fails the load, and nothing is written"
+- `tests/unit/Import.luau`: "Import: a failed read of the old store is retried, never taken for a new player"
+
+## Foreign data is quarantined, never overwritten
+
+A key holding something that is not a profile is not replaced by the template. Its value is copied to
+the data store `<store>__quarantine`, the load fails with `"foreign"`, and `store.onError` reports it.
+
+- `tests/unit/Lock.luau`: "Lock: a foreign value is never overwritten"
+- `tests/unit/Store.luau`: "Store: a value that is not a profile is quarantined, never overwritten"
+
+## A lost session freezes its data
+
+When a session ends for any reason, `profile.Data` is frozen, deeply. Code that keeps writing to it
+errors instead of changing a copy nobody will save. This matters most when another server took the key:
+trades and purchases must stop on the stale copy.
+
+- `tests/unit/Store.luau`: "Store: after the session ends, its data is frozen"
+- `tests/unit/Trade.luau`: "Trade: a profile lost to another server aborts the trade; the other side is put back"
+- `tests/scenario/KeepBlox.luau`: "KeepBlox: an owner cut off from messaging hands over at its next renewal (baseline: 244 s stale)"
+- `tests/unit/Lease.luau`: "Lease: an owner cut off from MessagingService hands over at its next beat, with a final save"
+
+## Bad data is refused with its path
+
+A data store rejects a whole write for one bad value. KeepBlox checks the data before every write and
+refuses NaN and infinities, strings and keys that are not valid UTF-8, mixed or holey tables, cycles,
+engine types, and values over the 4 MB limit. The error names the path, such as
+`Data.inventory[12].name: string is not valid UTF-8`. The lease is still renewed, and the release still
+goes through. When the data turns bad, the last snapshot that could be stored is what gets stored.
+
+- `tests/unit/Validate.luau`: "Validate: every refusal names the path of the bad value"
+- `tests/unit/Validate.luau`: "Validate: a cycle is refused, a shared table is not"
+- `tests/unit/Validate.luau`: "Validate: the size limit is exact and configurable"
+- `tests/unit/Store.luau`: "Store: bad data is refused with its path, and the release still goes through"
+- `tests/unit/Snapshot.luau`: "Snapshot: when the data turns unstorable, the last good snapshot is what gets stored"
+- `tests/unit/Migrate.luau`: "Migrate: a save that breaks the schema is refused with its path"
+- `tests/scenario/KeepBlox.luau`: "KeepBlox: bad data never blocks the release (baseline: the next server waits 46 s)"
+
+## Offline messages are handled exactly once
+
+A message leaves the queue only in the same write that stores what its handler did. Until that write
+lands it stays queued, so a crash redelivers it, and the effect still lands once.
+
+- `tests/unit/Messages.luau`: "Messages: a crash before the save redelivers the message; its effect lands once"
+- `tests/unit/Messages.luau`: "Messages: a handler that yields cannot let a second handler take the same message"
+- `tests/unit/Messages.luau`: "Messages: a full queue refuses, and nothing already queued is dropped"
+- `tests/unit/Snapshot.luau`: "Snapshot: a message processed into it is not processed again after the crash"
+- `tests/scenario/Compat.luau`: "Compat: messages cross between the libraries, both ways, handled once"
+
+## Purchases are granted once and never lost
+
+The grant and the receipt id are stored by the same write, and the purchase is reported granted only
+after that write succeeded. See [Purchases](/KeepBlox/guides/purchases/).
+
+- `tests/unit/Receipts.luau`: "Receipts: granted into the data, stored with its id, then reported granted"
+- `tests/unit/Receipts.luau`: "Receipts: a failed save is not reported granted, and the retry does not grant again"
+- `tests/unit/Receipts.luau`: "Receipts: a crash before the save loses the grant with its id; the next session grants once"
+- `tests/unit/Receipts.luau`: "Receipts: data that cannot be stored means the purchase is not granted"
+- `tests/unit/Snapshot.luau`: "Snapshot: a purchase granted into it is not granted again after the crash"
+
+## Shutdown finishes within the deadline
+
+On shutdown every store refuses new loads and releases all of its profiles in parallel. It waits at
+most `shutdownDeadline` seconds (25 by default; Roblox allows 30).
+
+- `tests/unit/Store.luau`: "Store: shutdown releases every profile in parallel"
+- `tests/scenario/KeepBlox.luau`: "KeepBlox: shutdown with 50 players on a slow data store fits the deadline"
+- `tests/unit/Complaints.luau`: "Complaints: a game BindToClose that spends the budget does not cost saves (ProfileStore p5 #104)"
+
+## No call waits forever
+
+Every data store call has a deadline (`callTimeout`, 20 seconds), and every load has one in all
+(`loadTimeout`, 120 seconds). A load that cannot finish returns `"timeout"`; it does not hang.
+
+- `tests/unit/Store.luau`: "Store: a load that cannot finish fails with a timeout instead of hanging"
+- `tests/unit/Import.luau`: "Import: an old lock that never goes fails the load, and nothing is written"
+
+## Saving never stalls a frame
+
+Before a write, the data is copied at once, then checked and encoded in slices: after every 2 ms of CPU
+time the check lets a frame pass. A large profile is checked over several frames. The frame cost is
+measured in `bench/Run.luau`.
+
+- `tests/unit/Validate.luau`: "Validate: pause is called while a large value is checked"
+
+## The request budget is respected
+
+The renewal loop stops starting writes while the server's read or write budget is spent, so loads and
+releases are not starved. A profile whose data did not change is not written again.
+
+- `tests/unit/Complaints.luau`: "Complaints: a game BindToClose that spends the budget does not cost saves (ProfileStore p5 #104)"
+- `tests/unit/Store.luau`: "Store: unchanged data is not written again; changed data is, on the renewal"
+- `tests/unit/Complaints.luau`: "Complaints: a save loop becomes a few writes, not an endless queue (Lapis#41)"
+
+## A crash loses about one beat of play
+
+Every server beats in MemoryStore every 4 seconds, and the beat carries a snapshot of each profile up
+to `snapshotBytes` (1000 bytes) whose data changed since it was stored. A newcomer that takes over from
+a dead server stores that snapshot first. A profile too large for a snapshot is written every
+`renewFallback` (30 seconds) instead, so that is the most it can lose. In the benchmark, a crash lost 4
+steps of play at worst, against 287 for ProfileStore.
+
+- `tests/unit/Snapshot.luau`: "Snapshot: a crash loses about one beat of play, not a renewal"
+- `tests/unit/Snapshot.luau`: "Snapshot: one older than the stored data is not used"
+- `tests/unit/Snapshot.luau`: "Snapshot: a profile too large for one is written every renewFallback instead"
+- `tests/unit/Lease.luau`: "Lease: a crashed owner is taken over within its beat's expiry, not the lease's 35 s"
+- `tests/unit/Lease.luau`: "Lease: with MemoryStore down, the lease rule still takes over a crashed owner, safely"
+- `tests/scenario/KeepBlox.luau`: "KeepBlox: a crash loses at most one renewal interval (baseline: 287 s)"
+
+## ProfileStore compatibility
+
+KeepBlox reads and writes ProfileStore's records and speaks its lock protocol. Sessions hand over
+between the two libraries in both directions, a rolling migration with crashes keeps every invariant,
+and game code written for ProfileStore runs unchanged on the compatibility layer.
+
+- `tests/scenario/Compat.luau`: "Compat: a session hands over between the libraries, both ways, losing nothing"
+- `tests/scenario/Compat.luau`: "Compat: a crashed owner of either library is taken over by ProfileStore's rules"
+- `tests/scenario/Compat.luau`: "Compat: a rolling migration with crashes keeps every invariant"
+- `tests/scenario/Compat.luau`: "Compat: ProfileStore keeps our MetaData.KeepBlox when it rewrites a key"
+- `tests/scenario/Compat.luau`: "Compat: a ProfileService-era lock (no GUID) is honoured, and taken over by ProfileStore's rules"
+- `tests/unit/CompatProfileStore.luau`: "Compat API: game code written for ProfileStore runs every scenario unchanged"
+
+<Aside>
+The same scenarios run against the vendored ProfileStore 1.0.3 in
+`tests/scenario/ProfileStoreBaseline.luau`, so every comparison on these pages is measured, not
+estimated. The [benchmarks](/KeepBlox/guides/benchmarks/) extend that to six libraries. The problems
+users of other libraries report, each with the spec that answers it, are on
+[What users of other libraries run into](/KeepBlox/guides/other-libraries/).
+</Aside>

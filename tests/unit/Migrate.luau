@@ -72,7 +72,13 @@ const function setup(options: any?): (World.World, World.Server, KeepBlox.Store,
 	const world = World.new(1)
 	const server = world:server({ name = "A" })
 	const store =
-		KeepBlox.store("Profiles", options or { schema = SCHEMA, migrations = MIGRATIONS, services = server.services })
+		-- Migrated data is written at the first renewal: 15 s here, not the default 300.
+		KeepBlox.store("Profiles", options or {
+			schema = SCHEMA,
+			migrations = MIGRATIONS,
+			services = server.services,
+			config = { renew = 15, death = 35 },
+		})
 	const errors = {}
 	store.onError:connect(function(_: string, message: string)
 		table.insert(errors, message)
@@ -99,7 +105,7 @@ Spec.test("Migrate: a ProfileStore record with no version is migrated on load an
 		const result = store:load("u_1")
 		assert(result.ok, "loaded")
 		Spec.equal(result.profile.Data, { coins = 7, stats = { wins = 2, losses = 1 } })
-		world.scheduler:wait(20)
+		world.scheduler:wait(31)
 		Spec.equal(stored(world).Data, { coins = 7, stats = { wins = 2, losses = 1 } })
 		Spec.equal(stored(world).MetaData.KeepBlox.schemaVersion, 2)
 		result.profile:release()
@@ -156,6 +162,30 @@ Spec.test("Migrate: a save that breaks the schema is refused with its path", fun
 	end, 60)
 	Spec.equal(errors, { "not saved: Data.coins: -1 is below the minimum 0" })
 	Spec.equal(stored(world).Data.coins, 5)
+end)
+
+Spec.test("Migrate: a new player starts from the template as it is now, with no migration run on it", function()
+	const world = World.new(1)
+	const server = world:server({ name = "A" })
+	const store = KeepBlox.store("Profiles", {
+		template = { coins = 5 },
+		-- 1: coins were redenominated; the template already holds the new amount.
+		migrations = {
+			[1] = function(data: any)
+				data.coins *= 10
+			end,
+		},
+		services = server.services,
+	})
+	Sim.run(world.scheduler, "A", function()
+		const result = store:load("u_new")
+		assert(result.ok, "loaded")
+		Spec.equal(result.profile.Data, { coins = 5 })
+		result.profile:release()
+	end, 60)
+	const record = (world.backend:latest("Profiles/global", "u_new") :: any).value
+	Spec.equal(record.Data, { coins = 5 })
+	Spec.equal(record.MetaData.KeepBlox.schemaVersion, 1)
 end)
 
 Spec.test("Migrate: a store takes a template or a schema, not both", function()

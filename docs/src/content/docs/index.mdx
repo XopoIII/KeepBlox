@@ -1,0 +1,143 @@
+---
+title: KeepBlox
+description: Session-locked player profiles on Roblox DataStore that lose nothing, fail loudly, and never stutter a frame.
+template: splash
+hero:
+  tagline: Player data for Roblox that loses nothing, fails loudly, and never stutters a frame. It reads and writes ProfileStore's records, so you can switch with one require and switch back.
+  actions:
+    - text: Install
+      link: /KeepBlox/getting-started/installation/
+      icon: right-arrow
+      variant: primary
+    - text: Benchmarks
+      link: /KeepBlox/guides/benchmarks/
+      icon: document
+      variant: secondary
+    - text: GitHub
+      link: https://github.com/XopoIII/KeepBlox
+      icon: external
+      variant: minimal
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="First release">
+KeepBlox 0.1.0 is the first release. It is proven in the simulator against ProfileStore and five other
+libraries, but it has not yet run in a live game: try it in a test place first.
+</Aside>
+
+## What it is
+
+KeepBlox keeps session-locked player profiles on DataStore. Only one server can write a profile at a
+time, and a server that loses the session stops writing at once.
+
+It stores the same record format as ProfileStore and speaks the same lock protocol. That gives you three
+things:
+
+- **Switch with one require.** `KeepBlox.Compat.ProfileStore` is ProfileStore's API over KeepBlox. Keys
+  stay where they are, in the same format.
+- **Mixed servers.** Old ProfileStore servers and new KeepBlox servers can run side by side during a
+  rollout. A session hands over between them in both directions.
+- **Switch back.** A key KeepBlox wrote is still a ProfileStore record.
+
+See [Migrating from ProfileStore](/KeepBlox/guides/migrating-from-profilestore/) for the details.
+
+## The numbers
+
+Every library below ran unmodified in the same simulator, over seeds 1-20, with the same players and
+faults. The worst case over all seeds is shown. The [benchmarks page](/KeepBlox/guides/benchmarks/) has
+every scenario and the methodology.
+
+| | KeepBlox | ProfileStore | ProfileService |
+|---|---|---|---|
+| Invariant violations | 0 | 0 | 0 |
+| Progress a server crash loses (steps of play) | 4 | 287 | 29 |
+| Data store reads per player-hour | 13.1 | 13.6 | 122.0 |
+| Data store writes per player-hour | 13.1 | 13.6 | 122.0 |
+| Slowest open after a crash (s) | 10.0 | 46.6 | 63.7 |
+
+A crashed KeepBlox server is known dead within about 10 seconds: every server beats in MemoryStore every
+4 seconds, and a beat that stands still for two beats means the server is gone. The same beat carries a
+snapshot of each small profile, so a crash loses about one beat of play instead of an autosave interval.
+[How it works](/KeepBlox/guides/how-it-works/) explains the mechanism.
+
+## A first look
+
+```lua
+local Players = game:GetService("Players")
+local ServerScriptService = game:GetService("ServerScriptService")
+local KeepBlox = require(ServerScriptService.KeepBlox)
+
+local store = KeepBlox.store("Profiles", { template = { coins = 0 } })
+
+Players.PlayerAdded:Connect(function(player)
+	local result = store:load(`u_{player.UserId}`, {
+		cancel = function()
+			return player.Parent == nil
+		end,
+	})
+	if not result.ok then
+		player:Kick(`Your data could not be loaded ({result.reason}). Please rejoin.`)
+		return
+	end
+	result.profile.Data.coins += 10 -- change it in place; KeepBlox saves it
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	local profile = store:profiles()[`u_{player.UserId}`]
+	if profile then
+		profile:release()
+	end
+end)
+```
+
+The [quick start](/KeepBlox/getting-started/quick-start/) walks through a complete setup.
+
+## What else it does
+
+<CardGrid>
+	<Card title="Offline messages and edits" icon="pencil">
+		Send a gift to a player who is offline with `store:message`; it is handled exactly once. Edit a
+		key from a support tool with `store:edit`, without kicking anyone.
+		[Messages and edits](/KeepBlox/guides/messages-and-edits/).
+	</Card>
+	<Card title="Trades" icon="random">
+		`store:trade` changes two profiles open on the same server together: both or neither.
+		[Trades](/KeepBlox/guides/trades/).
+	</Card>
+	<Card title="Shared documents" icon="document">
+		`KeepBlox.shared` holds documents no server owns, changed atomically by any server.
+		[Shared documents](/KeepBlox/guides/shared-documents/).
+	</Card>
+	<Card title="Leaderboards" icon="list-format">
+		A number read from each profile, mirrored to an ordered data store and read back with
+		`store:leaderboard`. [Leaderboards](/KeepBlox/guides/leaderboards/).
+	</Card>
+	<Card title="Importers" icon="puzzle">
+		Move from DocumentService, Lapis, DataKeep, DataStore2 or Suphi's DataStore Module, one key at a
+		time on its first load. [Importing](/KeepBlox/guides/importing-from-other-libraries/).
+	</Card>
+	<Card title="Purchases" icon="approve-check">
+		`KeepBlox.processReceipt` grants a developer product once and never loses it.
+		[Purchases](/KeepBlox/guides/purchases/).
+	</Card>
+	<Card title="Schema and migrations" icon="setting">
+		Describe the data with `KeepBlox.schema`, and move old data forward with numbered migrations.
+		[Schema and migrations](/KeepBlox/guides/schema-and-migrations/).
+	</Card>
+	<Card title="Versions and rollback" icon="open-book">
+		List a key's past versions, read one, and restore it safely.
+		[Versions and rollback](/KeepBlox/guides/versions-and-rollback/).
+	</Card>
+	<Card title="Compression" icon="rocket">
+		Profiles over a threshold are stored compressed, so data past the 4 MB limit still saves.
+		[Large profiles](/KeepBlox/guides/large-profiles/).
+	</Card>
+	<Card title="Studio modes" icon="laptop">
+		Play tests use the live store, memory only, or a read-only copy of live data.
+		[Studio and testing](/KeepBlox/guides/studio-and-testing/).
+	</Card>
+</CardGrid>
+
+Every promise KeepBlox makes is checked by a spec in the repository.
+[Guarantees](/KeepBlox/guides/guarantees/) lists each one with the spec that proves it.

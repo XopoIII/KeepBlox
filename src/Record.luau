@@ -62,6 +62,21 @@ function Record.copy(value: any): any
 	return result
 end
 
+--> Fills string keys missing from `target` with copies from `template`, recursively into tables both
+--> hold (ProfileStore's Reconcile). Existing values are never replaced, and array items are left alone.
+function Record.reconcile(target: { [any]: any }, template: { [any]: any })
+	for key, value in template do
+		if type(key) == "string" then
+			const current = target[key]
+			if current == nil then
+				target[key] = Record.copy(value)
+			elseif type(current) == "table" and type(value) == "table" and not table.isfrozen(current) then
+				Record.reconcile(current, value)
+			end
+		end
+	end
+end
+
 --> A new record for a key that holds nothing (or only messages), not yet owned by anyone.
 function Record.fresh(template: { [any]: any }, now: number, messages: any?): any
 	return {
@@ -88,7 +103,19 @@ function Record.isHere(tag: any, identity: Identity): boolean
 end
 
 --> Our namespaced state in a record's MetaData, created if absent (a ProfileStore record has none).
-function Record.ours(meta: any): { lease: number, owner: string?, receipts: { string }?, schemaVersion: number? }
+function Record.ours(meta: any): {
+	lease: number,
+	owner: string?,
+	receipts: { string }?,
+	schemaVersion: number?,
+	importedFrom: string?,
+	--> An open trade (see Trade): its id and this profile's data from before it.
+	trade: { id: string, before: any }?,
+	--> The owner beats in MemoryStore (see Lease).
+	memory: boolean?,
+	--> The owner's latest MemoryStore snapshot number when this data was stored (see Lease).
+	snap: number?,
+}
 	local state = meta.KeepBlox
 	if type(state) ~= "table" then
 		state = { lease = 0 }

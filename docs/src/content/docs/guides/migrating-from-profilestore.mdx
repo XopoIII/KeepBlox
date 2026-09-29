@@ -1,0 +1,151 @@
+---
+title: Migrating from ProfileStore
+description: Switch a ProfileStore game to KeepBlox by changing one require, run both during the rollout, switch back if needed, and move to the native API later.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+KeepBlox reads and writes the same records as ProfileStore and speaks its lock protocol. Your keys stay
+where they are, in the same format. Nothing is converted, and nothing needs converting back.
+
+## Change one require
+
+`KeepBlox.Compat.ProfileStore` is ProfileStore's API over KeepBlox. Replace the require and leave the
+rest of the game as it is:
+
+```lua
+-- Before:
+-- local ProfileStore = require(ServerScriptService.ProfileStore)
+local ProfileStore = require(ServerScriptService.KeepBlox.Compat.ProfileStore)
+
+local PlayerStore = ProfileStore.New("PlayerStore", TEMPLATE)
+
+Players.PlayerAdded:Connect(function(player)
+	local profile = PlayerStore:StartSessionAsync(`{player.UserId}`, {
+		Cancel = function()
+			return player.Parent ~= Players
+		end,
+	})
+	-- ... the rest of your ProfileStore code, unchanged
+end)
+```
+
+The shim covers `New`, `StartSessionAsync`, `GetAsync`, `RemoveAsync`, `MessageAsync`, `VersionQuery`,
+`Mock`, `SetConstant`, `IsClosing`, `IsCriticalState`, `OnError`, `OnOverwrite` and `OnCriticalToggle`,
+and on profiles `Data`, `LastSavedData`, `EndSession`, `Save`, `Reconcile`, `IsActive`, `AddUserId`,
+`RemoveUserId`, `MessageHandler`, `SetAsync` (on view profiles), `OnSave`, `OnLastSave`,
+`OnSessionEnd` and `OnAfterSave`.
+
+A spec runs game code written for ProfileStore through every simulator scenario on the shim
+(`tests/unit/CompatProfileStore.luau`).
+
+## Where KeepBlox deliberately differs
+
+The shim never imitates a ProfileStore bug. Where KeepBlox's guarantee and ProfileStore's behaviour
+disagree, the guarantee wins (`src/Compat/ProfileStore.luau` lists each case):
+
+- **Foreign values are quarantined.** A key holding something that is not a profile is copied to
+  `<store>__quarantine`, and `StartSessionAsync` returns nil. It is not overwritten with the template.
+  `OnOverwrite` never fires; `OnError` reports it.
+- **Bad data is refused with its path.** Data a data store cannot hold (NaN, bad UTF-8, cycles, too
+  large) is reported through `OnError` with the path of the bad value, instead of failing every save
+  silently.
+- **Ended sessions freeze their data.** When a session ends, `Data` is frozen. Late writes error instead
+  of being lost quietly.
+- **Saving follows KeepBlox's schedule.** `AUTO_SAVE_PERIOD`, `LOAD_REPEAT_PERIOD` and
+  `FIRST_LOAD_REPEAT` are accepted by `SetConstant` but have no effect. KeepBlox writes changed data
+  at each renewal and snapshots it in MemoryStore every beat
+  ([How it works](/KeepBlox/guides/how-it-works/)).
+- **`KeyInfo` is nil.** `MessageHandler` works on active profiles only, not on view profiles.
+- **A full message queue refuses.** `MessageAsync` returns false instead of dropping the oldest message.
+
+`SESSION_STEAL`, `ASSUME_DEAD` and `START_SESSION_TIMEOUT` map to KeepBlox's `profileStoreSteal`,
+`profileStoreDead` and `loadTimeout`. The `CRITICAL_STATE_*` and `MAX_MESSAGE_QUEUE` constants are
+accepted and have no effect.
+
+## Rolling out with mixed servers
+
+Old servers keep running ProfileStore while new servers run KeepBlox. A player moving between them is
+handed over like any other move:
+
+- A KeepBlox server asking for a key a ProfileStore server holds sends ProfileStore's own hand-over
+  message and waits by ProfileStore's rules: it takes the key `profileStoreSteal` (40 s) after its first
+  request, or at once when the owner's `LastUpdate` is `profileStoreDead` (630 s) old.
+- A ProfileStore server asking for a key a KeepBlox server holds gets it the same way it would from
+  another ProfileStore server.
+- Offline messages cross between the libraries in both directions, and each is handled once.
+- ProfileStore keeps KeepBlox's `MetaData.KeepBlox` when it rewrites a key.
+
+These are proven by the specs in `tests/scenario/Compat.luau`, including "Compat: a rolling migration
+with crashes keeps every invariant".
+
+<Steps>
+
+1. Ship the version with the new require. Use "Migrate to latest update" in the Creator Hub, or let old
+   servers close on their own.
+2. Watch `OnError` (or `store.onError` on the native API) during the rollout.
+3. Keep compression off until every server runs KeepBlox (see below).
+
+</Steps>
+
+## Switching back
+
+Put the old require back and ship. Every key KeepBlox wrote is still a ProfileStore record, and the two
+libraries can again run side by side while the old version rolls out.
+
+Two features break this, because ProfileStore cannot read what they write:
+
+- **Compression** (`compress` on a native store) stores large profiles as a compressed buffer. Turn it
+  on only once every server runs KeepBlox. KeepBlox reads both forms, so you can turn it off again
+  later, and each profile is stored plain at its next save.
+- **Schema versions** are kept in `MetaData.KeepBlox.schemaVersion`. ProfileStore ignores them, so its
+  servers see the migrated data, not the old shape.
+
+## ProfileService records
+
+ProfileService stored the same record shape, and KeepBlox reads it as it is:
+
+- Keys written by ProfileService load as they are. No importer is needed.
+- A ProfileService-era lock (a session with no GUID) is honoured and taken over by ProfileStore's
+  rules. One that is long dead is taken over at once.
+- ProfileService's older message entries, `{index, version, locked, message}`, are read by their last
+  element.
+
+The native API reads them too: open a store with the same name and a template.
+
+## Moving to the native API
+
+The shim is a translation layer. When you are ready, the native API gives you typed load results, end
+reasons, trades, receipts and schemas. It uses the same keys and records, so you can switch one store
+at a time, and servers on the shim and on the native API can run side by side.
+
+| ProfileStore | KeepBlox |
+|---|---|
+| `ProfileStore.New(name, template)` | `KeepBlox.store(name, { template = template })` |
+| `store:StartSessionAsync(key, { Cancel, Steal })` returns a profile or nil | `store:load(key, { cancel, steal })` returns `{ ok, profile }` or `{ ok = false, reason }` |
+| `profile:EndSession()` | `profile:release()` |
+| `profile:Save()` | `profile:save()` |
+| `profile:Reconcile()` | automatic on every load (`reconcile`, on by default) |
+| `profile:IsActive()` | `profile:isActive()` |
+| `profile:AddUserId(id)` / `RemoveUserId(id)` | `profile:addUserId(id)` / `removeUserId(id)` |
+| `profile.OnSessionEnd` | `profile.onEnded`, with the reason |
+| `profile.OnSave` / `OnLastSave` | `profile.onSaving`, with `final` and the reason |
+| `profile.OnAfterSave` | `profile.onSaved` |
+| `store:MessageAsync(key, message)` | `store:message(key, message)` |
+| `profile:MessageHandler(fn)` | `profile:onMessage(fn)` |
+| `store:VersionQuery(...)` | `store:versions(key, query)`, `store:readVersion`, `store:restore` |
+| `store:GetAsync(key)` and `SetAsync` | `store:edit(key, fn)` |
+| `ProfileStore.OnError` | `store.onError` |
+
+Two things change in the code, not just the names:
+
+- `store:load` returns a result. Check `result.ok`, and use `result.reason` in the kick message.
+- ProfileStore fills missing keys only when you call `Reconcile`. The native store does it on every
+  load; pass `reconcile = false` to keep ProfileStore's behaviour.
+
+<Aside>
+Keys keep their names. A ProfileStore key of `tostring(player.UserId)` stays that; a native store loads
+it with `store:load(tostring(player.UserId))`.
+</Aside>
+
+See the [quick start](/KeepBlox/getting-started/quick-start/) for a complete native setup.

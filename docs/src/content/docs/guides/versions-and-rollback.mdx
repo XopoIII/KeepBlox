@@ -1,0 +1,101 @@
+---
+title: Versions and rollback
+description: How store:versions, store:readVersion and store:restore list a key's past versions, read one, and make one current again without racing a live session.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Roblox keeps the first write of every UTC hour of a key as a backup for 30 days
+([Roblox docs: versioning](https://create.roblox.com/docs/cloud-services/data-stores/versioning-listing-and-caching)).
+KeepBlox lets a support tool list those versions, read one, and restore one.
+
+## versions
+
+```lua
+const list = store:versions(`u_{userId}`, { newestFirst = true, limit = 20 })
+for _, version in list do
+	print(version.version, DateTime.fromUnixTimestampMillis(version.at):ToIsoDate(), version.deleted)
+end
+```
+
+`store:versions(key, query)` returns a list of `{ version, at, deleted }`:
+
+- `version` is the version's id, a string, for `readVersion` and `restore`;
+- `at` is when it was written, in Unix milliseconds;
+- `deleted` is true for a version that marks the key removed.
+
+| Query field | Meaning |
+|---|---|
+| `from`, `to` | Bounds on `at`, in Unix milliseconds. 0 or nil means no bound. |
+| `newestFirst` | Newest first. Default: oldest first. |
+| `limit` | Stop after this many. Default 100. |
+
+## readVersion
+
+```lua
+const data = store:readVersion(`u_{userId}`, version)
+```
+
+`store:readVersion(key, version)` returns the profile data the key held at that version, or nil when
+that version is not a profile. A version stored compressed is returned decompressed (see
+[Large profiles](/KeepBlox/guides/large-profiles/)).
+
+## restore
+
+```lua
+const result = store:restore(`u_{userId}`, version)
+if not result.ok then
+	warn(`restore refused: {result.reason}`)
+end
+```
+
+`store:restore(key, version)` makes that version's data current. It writes through the lock, in one
+`UpdateAsync`, and changes only the data: the record's lock, its queued messages and its purchase
+receipt ids stay as they are now. So a restore never replays a message or a purchase.
+
+It returns `{ ok = true }` or `{ ok = false, reason = ... }`:
+
+| Reason | When |
+|---|---|
+| `"inUse"` | A server holds the key. Nothing is written. |
+| `"notAProfile"` | The version, or the key's current value, is not a profile record. |
+| `"failed"` | The write did not succeed. |
+
+## Refused while in use
+
+A restore refuses while any server holds the key, so it never races a live session. A live session
+would otherwise overwrite the restored data at its next save, or keep playing on data that no longer
+matches the store.
+
+## Support workflow
+
+<Steps>
+
+1. Find the player's key and list its versions with `store:versions`. Pick one by its time.
+
+2. Check it with `store:readVersion` before you restore it.
+
+3. Kick the player. The server that holds the profile releases it when the player leaves (the game's
+   `PlayerRemoving` handler calls `profile:release()`).
+
+4. Call `store:restore`. If it returns `"inUse"`, the release has not landed yet: wait a few seconds
+   and try again.
+
+5. Let the player rejoin. The next load starts from the restored data.
+
+</Steps>
+
+A key whose server died still names that server as its holder, so a restore refuses it. A quiet load
+takes such a key over once its owner is proven dead, without kicking anyone from a live server:
+`store:load(key, { quiet = true })` fails with `"inUse"` while the owner lives. Release the profile it
+returns, then restore.
+
+<Aside>
+Versions are read from the live data store. Stores in memory (`mock`, or Studio play tests in
+`"memory"` or `"copy"` mode) keep no versions, and these calls raise an error there.
+</Aside>
+
+<Aside type="caution">
+`versions` and `readVersion` call the data store directly and raise an error when the call fails, as
+does the first read of `restore`. Wrap them in `pcall` in a support tool.
+</Aside>

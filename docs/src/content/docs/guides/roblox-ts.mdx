@@ -1,0 +1,103 @@
+---
+title: roblox-ts
+description: Using KeepBlox from roblox-ts through the declarations in types/index.d.ts, and how a test keeps them in step with the Luau API.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+KeepBlox is written in Luau. Its TypeScript declarations for [roblox-ts](https://roblox-ts.com) live in
+`types/index.d.ts` in the repository. They describe the module as `export = KeepBlox`, with the store,
+profile and result types in the `KeepBlox` namespace.
+
+## A store and a profile
+
+The data type comes from the template, so `profile.Data` is typed everywhere:
+
+```ts
+import KeepBlox from "@rbxts/keepblox";
+import { Players } from "@rbxts/services";
+
+const store = KeepBlox.store("Profiles", {
+	template: { coins: 0, pets: new Array<string>() },
+});
+
+Players.PlayerAdded.Connect((player) => {
+	const result = store.load(`u_${player.UserId}`, {
+		cancel: () => player.Parent === undefined,
+	});
+	if (!result.ok) {
+		player.Kick(`Your data could not be loaded (${result.reason}). Please rejoin.`);
+		return;
+	}
+	const profile = result.profile;
+	profile.addUserId(player.UserId);
+	profile.onEnded.connect((reason) => {
+		if (reason !== "released") player.Kick("Your data was opened elsewhere.");
+	});
+	profile.Data.coins += 10;
+});
+
+Players.PlayerRemoving.Connect((player) => {
+	store.profiles()[`u_${player.UserId}`]?.release();
+});
+```
+
+<Aside>
+The import path above is a placeholder: how the package reaches a roblox-ts project is settled with
+distribution. The declarations are the same either way.
+</Aside>
+
+## Results are unions
+
+Every call that can fail returns a union on `ok`, as the Luau API does, so TypeScript narrows it:
+
+```ts
+const traded = store.trade(keyA, keyB, (a, b) => {
+	a.coins -= 100;
+	b.coins += 100;
+});
+if (!traded.ok) {
+	warn(traded.reason); // "notHere" | "error" | "refused" | "lost" | "failed"
+}
+```
+
+The declared unions are `LoadResult`, `EditResult`, `TradeResult`, `Restored`, `Sent` and
+`SharedResult`. Their reasons are listed in [Load failures](/KeepBlox/reference/load-failures/).
+
+## Purchases
+
+`KeepBlox.processReceipt` is declared to return a `ProcessReceipt` callback over the engine's
+`Enum.ProductPurchaseDecision`:
+
+```ts
+import { MarketplaceService } from "@rbxts/services";
+
+MarketplaceService.ProcessReceipt = KeepBlox.processReceipt(store, {
+	keyFor: (userId) => `u_${userId}`,
+	products: {
+		[12345]: (profile) => {
+			profile.Data.coins += 100;
+		},
+	},
+});
+```
+
+See [Purchases](/KeepBlox/guides/purchases/).
+
+## Signals and connections
+
+A profile's signals (`onSaving`, `onSaved`, `onEnded`) and `store.onError` are KeepBlox signals, not
+engine ones: their method is `connect` (lower case), and it returns a connection with `connected` and
+`disconnect()`. `watch` on a shared store returns the engine's MessagingService connection, with
+`Disconnect()`.
+
+## Kept in step with the Luau API
+
+A test in the suite, `tests/unit/Typings.luau`, reads `src/Store.luau`, `src/Profile.luau` and
+`src/init.luau`, and fails when a field of the `Store` type, a field of the `Profile` type, or an export
+of the module is not declared in `types/index.d.ts`. So a method added to the Luau API cannot ship
+without its declaration.
+
+The test checks names, not signatures, and it does not cover the option and result types. Those are
+kept by hand; when a declaration and the Luau source disagree, the Luau source and
+[the reference](/KeepBlox/reference/store/) are right.

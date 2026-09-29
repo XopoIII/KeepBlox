@@ -18,6 +18,7 @@
 --- every renewal (bench/Run.luau holds its budget), and it is compiled natively. Dictionary keys come
 --- in iteration order, which is stable for a table that did not change; a reordered but equal table at
 --- worst costs one extra write. `size` estimates the stored JSON length the 4 MB limit applies to.
+const Services = require("./Services")
 
 export type Encoded = {
 	--> Equal texts mean equal data.
@@ -25,6 +26,9 @@ export type Encoded = {
 	--> The estimated stored size in bytes (JSON; a buffer as its base64 text).
 	size: number,
 }
+
+-- The most CPU time one check spends before it lets a frame pass.
+const SLICE_SECONDS = 0.002
 
 const Validate = {}
 
@@ -184,6 +188,46 @@ const function walk(state: State, value: any)
 	end
 end
 
+-- Only for a refusal: follows the biggest field down while it holds most of its parent's size, so
+-- the error says what grew (" (most of it: Data.log, 4100000 bytes)").
+const function largest(value: any, root: string, size: number): string
+	local path = root
+	local current = value
+	local currentSize = size
+	for _ = 1, 8 do
+		if type(current) ~= "table" then
+			break
+		end
+		local bestKey: any = nil
+		local bestSize = 0
+		for key, item in current do
+			const encoded = Validate.check(item, "", math.huge)
+			const itemSize = if encoded then encoded.size else 0
+			if itemSize > bestSize then
+				bestKey, bestSize = key, itemSize
+			end
+		end
+		if bestKey == nil or bestSize * 2 < currentSize then
+			break
+		end
+		path ..= if type(bestKey) == "number" then `[{bestKey}]` else `.{bestKey}`
+		current, currentSize = current[bestKey], bestSize
+	end
+	return if path == root then "" else ` (most of it: {path}, {currentSize} bytes)`
+end
+
+--> A `pause` for `check` that lets a frame pass after every `SLICE_SECONDS` of CPU time, so a large
+--> profile is checked over several frames and never stalls one.
+function Validate.slicer(clock: Services.Clock): () -> ()
+	local started = os.clock()
+	return function()
+		if os.clock() - started >= SLICE_SECONDS then
+			clock.wait()
+			started = os.clock()
+		end
+	end
+end
+
 --> Checks `value` and encodes it; `root` names it in errors ("Data"). Returns the encoding, or nil and
 --> the reason, with the path of the first bad value. Refuses anything over `limit` bytes. `pause`, if
 --> given, is called every few hundred values: a caller that yields there spreads the work over frames.
@@ -206,7 +250,7 @@ function Validate.check(value: any, root: string, limit: number?, pause: (() -> 
 	end
 	const cap = limit or Validate.LIMIT
 	if state.size > cap then
-		return nil, `{root}: about {state.size} bytes, over the {cap} byte limit`
+		return nil, `{root}: about {state.size} bytes, over the {cap} byte limit{largest(value, root, state.size)}`
 	end
 	return { text = table.concat(state.parts, ",", 1, state.count), size = state.size }, nil
 end

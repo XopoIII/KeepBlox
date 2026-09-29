@@ -10,12 +10,14 @@
 --- interval. The write renews the lease and saves the data if it changed. The loop waits when the
 --- server's data store budget is spent, so loads and releases are not starved. On shutdown every
 --- session is released in parallel within the deadline.
-const Claim = require("./Claim")
+const Boards = require("./Boards")
+const Codec = require("./Codec")
 const Config = require("./Config")
-const Inbox = require("./Inbox")
-const Messages = require("./Messages")
+const Edit = require("./Edit")
+const Import = require("./Import")
 const Migrate = require("./Migrate")
 const MockServices = require("./MockServices")
+const Open = require("./Open")
 const Profile = require("./Profile")
 const Record = require("./Record")
 const Schema = require("./Schema")
@@ -25,6 +27,7 @@ const Serial = require("./Serial")
 const Services = require("./Services")
 const Session = require("./Session")
 const Signal = require("./Signal")
+const Trade = require("./Trade")
 const Upkeep = require("./Upkeep")
 const Validate = require("./Validate")
 const Versions = require("./Versions")
@@ -45,19 +48,28 @@ export type Options = {
 	--> Keep profiles in memory, never in a live data store: `true`, or the name of a scratch set. In
 	--> Studio without API access this happens on its own, after a read-only check.
 	mock: (boolean | string)?,
+	--> Fill keys the stored data lacks from the template, deeply, on every load. Default true.
+	reconcile: boolean?,
+	--> What Studio play tests do with data (live servers ignore it):
+	--> - "live" (default): the real store when API access is on, memory when it is off;
+	--> - "memory": always memory, nothing live is read or written;
+	--> - "copy": each profile starts as a copy of its live data (read once, never written), then lives in
+	-->   memory. For testing against real profiles without touching them.
+	studio: ("live" | "memory" | "copy")?,
+	--> Where a key's data comes from on its first load, when moving from another library (see Import
+	--> and `KeepBlox.importers`).
+	import: Import.Importer?,
+	--> Leaderboards: a number read from each profile's data, mirrored to an ordered data store and read
+	--> back with `store:leaderboard` (see Boards).
+	leaderboards: { [string]: Boards.Board }?,
+	leaderboardOptions: Boards.Options?,
+	--> Store profiles over `above` bytes compressed (see Codec). Off by default: ProfileStore cannot
+	--> read a compressed profile.
+	compress: Codec.Options?,
 }
 
-export type LoadOptions = {
-	--> Polled while the load waits; true gives up (the player left).
-	cancel: (() -> boolean)?,
-	--> Take the key at once from whoever holds it, as ProfileStore's `Steal = true`. For recovering a
-	--> key stuck on a dead server by hand; a normal load never needs it.
-	steal: boolean?,
-}
-
-export type LoadResult =
-	{ ok: true, profile: Profile.Profile }
-	| { ok: false, reason: Claim.Failure | "open" | "newerSchema" | "migration" | "schema" }
+export type LoadOptions = Open.LoadOptions
+export type LoadResult = Open.LoadResult
 
 export type Store = {
 	read name: string,
@@ -76,18 +88,19 @@ export type Store = {
 	restore: (self: Store, key: string, version: string) -> Versions.Restored,
 	--> A ProcessReceipt callback for this store, answering with a decision's name (see Receipts).
 	receipts: (self: Store, options: Receipts.Options) -> (receipt: Receipts.Receipt) -> Receipts.Decision,
+	--> Edits a key, open here or nobody's, without kicking anyone (see Edit). "inUse" when a live server
+	--> holds it: send a message instead.
+	edit: (self: Store, key: string, edit: (data: any) -> (), options: Edit.Options?) -> Edit.Result,
+	--> Releases every open profile in parallel, as a server shutdown does, and refuses new loads.
+	--> Yields until done or `shutdownDeadline` passes. For tests, and for closing a store early.
+	close: (self: Store) -> (),
+	--> One change to two profiles open on this server, landing in both or neither (see Trade).
+	trade: (self: Store, keyA: string, keyB: string, change: (dataA: any, dataB: any) -> ()) -> Trade.Result,
+	--> The top of a leaderboard, `{key, value}` entries, highest first unless asked otherwise.
+	leaderboard: (self: Store, name: string, query: Boards.Query?) -> { Boards.Entry },
 }
 
 const Store = {}
-
--- A stable spread of renewal times over the interval, from the key alone.
-const function offset(key: string): number
-	local hash = 0
-	for index = 1, #key do
-		hash = (hash * 31 + string.byte(key, index)) % 1000
-	end
-	return hash / 1000
-end
 
 function Store.new(name: string, options: Options): Store
 	assert(type(name) == "string" and #name > 0, "KeepBlox: a store needs a name")
@@ -103,12 +116,20 @@ function Store.new(name: string, options: Options): Store
 	)
 	const plan = Migrate.plan(options.schema, options.version, options.migrations)
 	const config = Config.resolve(options.config)
+	const studio = options.studio or "live"
+	assert(
+		studio == "live" or studio == "memory" or studio == "copy",
+		`KeepBlox: studio is "live", "memory" or "copy", not "{studio}"`
+	)
 	local services = options.services or require("./RobloxServices").build()
+	const inMemory = services.isStudio and studio ~= "live"
 	if options.mock then
 		services = MockServices.wrap(services, if type(options.mock) == "string" then options.mock else "scratch")
+	elseif inMemory then
+		services = MockServices.wrap(services, `studio:{studio}`, studio == "copy")
 	end
 	-- Studio without API access is found by a read on first load; a write would touch a live key.
-	local checked = options.mock ~= nil or not services.isStudio
+	local checked = options.mock ~= nil or inMemory or not services.isStudio
 	const clock = services.clock
 	const onError: Signal.Signal<string, string> = Signal.new(clock.spawn)
 	const sessions: { [string]: Session.Session } = {}
@@ -116,6 +137,7 @@ function Store.new(name: string, options: Options): Store
 	local closing = false
 
 	const base: Session.Context = {
+		storeName = name,
 		services = services,
 		config = config,
 		dataStore = services.dataStores:GetDataStore(name),
@@ -133,6 +155,24 @@ function Store.new(name: string, options: Options): Store
 			end
 		end,
 	}
+	if options.compress then
+		assert(services.codec, "KeepBlox: these services cannot compress")
+		assert(
+			type(options.compress.above) == "number" and options.compress.above > 0,
+			"KeepBlox: compress needs `above`, a positive number of bytes"
+		)
+		base.compress = options.compress
+	end
+	const boards = if options.leaderboards
+		then Boards.new(function(): Services.Services
+			return base.services
+		end, name, options.leaderboards, options.leaderboardOptions, base.report, config.callTimeout)
+		else nil
+	if boards then
+		base.stored = function(key: string, data: any, final: boolean)
+			boards:stored(key, data, final)
+		end
+	end
 
 	const internals: Upkeep.Internals = {
 		context = function(): Session.Context
@@ -144,7 +184,12 @@ function Store.new(name: string, options: Options): Store
 		end,
 	}
 	Upkeep.renew(internals)
-	Upkeep.shutdown(internals, function()
+	const beating = { ok = false }
+	base.beating = function(): boolean
+		return beating.ok
+	end
+	const beatOnce = Upkeep.beat(internals, beating)
+	const closeAll = Upkeep.shutdown(internals, function()
 		closing = true
 	end)
 
@@ -165,101 +210,39 @@ function Store.new(name: string, options: Options): Store
 		end)
 	end
 
+	const state: Open.State = {
+		name = name,
+		template = template,
+		reconcile = options.reconcile ~= false,
+		plan = plan,
+		config = config,
+		base = base,
+		sessions = sessions,
+		opening = opening,
+		onError = onError,
+		closing = function(): boolean
+			return closing
+		end,
+		prepare = function()
+			if not checked then
+				checkAccess()
+			end
+		end,
+		importer = options.import,
+		beating = function(): boolean
+			-- A load before the first beat landed beats first: its record must say the server beats.
+			if not beating.ok then
+				beatOnce()
+			end
+			return beating.ok
+		end,
+	}
+
 	return {
 		name = name,
 		onError = onError,
 		load = function(_: Store, key: string, loadOptions: LoadOptions?): LoadResult
-			assert(type(key) == "string" and #key > 0 and #key <= 50, "KeepBlox: a key is 1-50 characters")
-			if sessions[key] or opening[key] then
-				return { ok = false, reason = "open" }
-			end
-			opening[key] = true
-			if not checked then
-				checkAccess()
-			end
-			const context = table.clone(base)
-			context.identity = { placeId = services.placeId, jobId = services.jobId, guid = services.guid() }
-			const listener =
-				{ session = nil :: Session.Session?, connection = nil :: Services.Connection?, done = false }
-			Upkeep.listen(services, context.identity.guid, listener)
-			const claim = Claim.open(
-				context,
-				name,
-				key,
-				template,
-				loadOptions and loadOptions.cancel,
-				loadOptions ~= nil and loadOptions.steal == true
-			)
-			opening[key] = nil
-			if not claim.ok then
-				listener.done = true
-				if listener.connection then
-					listener.connection:Disconnect()
-				end
-				return { ok = false, reason = claim.reason }
-			end
-			const record = claim.record
-			-- The data as stored, before any migration: a profile that did not change is not written again.
-			const stored = Validate.check(record.Data, "Data", nil, Session.slicer(clock))
-			const migrated = Migrate.run(plan, record.Data, Migrate.stored(record))
-			if not migrated.ok then
-				-- Never hand out, or write back, data this server cannot make sense of.
-				Claim.giveBack(context, key, claim.loadCount)
-				listener.done = true
-				if listener.connection then
-					listener.connection:Disconnect()
-				end
-				onError:fire(key, migrated.message)
-				return { ok = false, reason = migrated.reason }
-			end
-			record.Data = migrated.data
-			local session: Session.Session
-			const profile = Profile.new(key, claim.loadCount, record, clock.spawn, {
-				isActive = function(): boolean
-					return session.active and not session.releasing
-				end,
-				save = function(): boolean
-					return Session.save(context, session)
-				end,
-				release = function()
-					Session.release(context, session, "released")
-				end,
-				handle = function(handler: Inbox.Handler)
-					session.inbox:handle(handler)
-				end,
-			})
-			-- Migrated data is written at the first renewal, with its new schema version.
-			const encoded = if migrated.changed then nil else stored
-			session = {
-				key = key,
-				loadCount = claim.loadCount,
-				profile = profile,
-				context = context,
-				active = true,
-				releasing = false,
-				storedText = if encoded then encoded.text else "",
-				storedSize = if encoded then encoded.size else 0,
-				lastDataWrite = clock.now(),
-				nextRenew = clock.now() + config.renew * (0.5 + offset(key) / 2),
-				serial = Serial.new(clock),
-				lastProblem = nil :: string?,
-				inbox = Inbox.new(clock, function()
-					session.saveSoon = true
-				end, function(message: string)
-					onError:fire(key, message)
-				end),
-				saveSoon = false,
-				receipts = Record.receipts(record.MetaData),
-				storedReceipts = {},
-				listener = listener,
-			}
-			listener.session = session
-			session.inbox:receive(Messages.list(record))
-			for _, id in session.receipts do
-				session.storedReceipts[id] = true
-			end
-			sessions[key] = session
-			return { ok = true, profile = profile }
+			return Open.load(state, key, loadOptions)
 		end,
 		message = function(_: Store, key: string, message: { [any]: any }): Send.Result
 			return Send.message(internals, key, message)
@@ -275,6 +258,19 @@ function Store.new(name: string, options: Options): Store
 		end,
 		receipts = function(_: Store, receiptOptions: Receipts.Options): (Receipts.Receipt) -> Receipts.Decision
 			return Receipts.handler(internals, receiptOptions)
+		end,
+		close = function(_: Store)
+			closeAll()
+		end,
+		trade = function(_: Store, keyA: string, keyB: string, change: (dataA: any, dataB: any) -> ()): Trade.Result
+			return Trade.run(name, sessions, keyA, keyB, change)
+		end,
+		leaderboard = function(_: Store, boardName: string, query: Boards.Query?): { Boards.Entry }
+			assert(boards, "KeepBlox: this store has no leaderboards")
+			return boards:top(boardName, query)
+		end,
+		edit = function(_: Store, key: string, edit: (data: any) -> (), editOptions: Edit.Options?): Edit.Result
+			return Edit.run(state, key, edit, editOptions)
 		end,
 		profiles = function(_: Store): { [string]: Profile.Profile }
 			const open = {}

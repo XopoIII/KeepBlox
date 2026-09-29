@@ -6,6 +6,7 @@
 ---   hand it over by writing `ForceLoadSession`. With `steal`, it takes the key only if that request
 ---   is still ours (a third server asking since then wins, as in ProfileStore).
 --- - `force` takes the key from whoever holds it, at once (ProfileStore's `Steal = true`).
+--- - `quiet` never asks: a held key is left as it is, unless the caller proves its owner dead.
 --- - `save` writes only while `ActiveSession` is this server and `SessionLoadCount` is this session's.
 ---   Otherwise it writes nothing and reports the session lost. Every save bumps our lease and
 ---   `LastUpdate`, and reports another server's pending `ForceLoadSession`, so the owner hands over.
@@ -21,13 +22,46 @@ export type Owner = {
 	lease: number?,
 	lastUpdate: number?,
 	loadCount: number,
+	--> The owner beats in MemoryStore (see Lease).
+	memory: boolean,
 }
 
 export type Claim =
-	{ kind: "taken", loadCount: number, record: any }
+	{ kind: "taken", loadCount: number, record: any, previous: Previous? }
 	| { kind: "busy", owner: Owner }
 	| { kind: "outbid" }
 	| { kind: "foreign", value: any }
+	| { kind: "legacyLocked" }
+
+--> How a claim treats a key someone else holds.
+export type Mode = {
+	--> Take the key from whoever holds it, at once (ProfileStore's `Steal = true`).
+	force: boolean?,
+	--> Never ask for a hand-over: a held key is left untouched, no `ForceLoadSession` is written.
+	quiet: boolean?,
+	--> With `quiet`: take a held key only while its owner is still this session at this lease, which
+	--> the caller watched long enough to know it is dead.
+	expect: Expected?,
+	--> An importer's reader (see Import): a value that is not a profile is converted, not quarantined,
+	--> when the reader recognises it. A value the old library still holds is left alone.
+	adopt: ((value: any, info: any, now: number) -> { kind: string, data: any?, userIds: { number }? })?,
+	--> The importer's name, recorded in a profile made from imported data.
+	imported: string?,
+	--> The template is data imported from elsewhere (not a new player's defaults).
+	fromImport: boolean?,
+	--> UserIds for a profile made from data imported from elsewhere.
+	userIds: { number }?,
+	--> This server beats in MemoryStore: the record says so, for newcomers (see Lease).
+	memory: boolean?,
+	--> The schema version a new profile's data is at: the template is written for the current schema,
+	--> so no migration may run on it. Imported data gets none (it is from before every migration).
+	version: number?,
+}
+
+export type Expected = { guid: string, loadCount: number, lease: number? }
+
+--> The session a claim took the key from (a server that died or was cut off): where its snapshots are.
+export type Previous = { jobId: string, loadCount: number, snap: number }
 
 export type Save =
 	{ kind: "saved", handOver: boolean, record: any, messages: { Messages.Entry } }
@@ -46,12 +80,27 @@ export type Payload = {
 	receipts: { string }?,
 	--> The schema version `data` is at, stored with it.
 	schemaVersion: number?,
+	--> An open trade's journal, stored with `data` (see Trade); false clears it.
+	journal: any?,
+	--> Whether this server's MemoryStore beat can be trusted now (see Lease).
+	memory: boolean?,
+	--> The session's latest MemoryStore snapshot number, stored with the data (see Lease).
+	snap: number?,
 }
 
 const Lock = {}
 
-const function take(record: any, identity: Record.Identity, now: number): Claim
+const function take(record: any, identity: Record.Identity, now: number, mode: Mode?): Claim
 	const meta = record.MetaData
+	const before = meta.ActiveSession
+	local previous: Previous? = nil
+	if type(before) == "table" and not Record.isHere(before, identity) then
+		previous = {
+			jobId = tostring(before[2]),
+			loadCount = meta.SessionLoadCount or 0,
+			snap = tonumber(Record.ours(meta).snap) or 0,
+		}
+	end
 	meta.ActiveSession = { identity.placeId, identity.jobId, identity.guid }
 	meta.ForceLoadSession = nil
 	meta.SessionLoadCount = (meta.SessionLoadCount or 0) + 1
@@ -59,8 +108,10 @@ const function take(record: any, identity: Record.Identity, now: number): Claim
 	const ours = Record.ours(meta)
 	ours.owner = identity.guid
 	ours.lease += 1
+	ours.memory = if mode and mode.memory then true else nil
+	ours.snap = nil
 	record.WasOverwritten = false
-	return { kind = "taken", loadCount = meta.SessionLoadCount, record = record }
+	return { kind = "taken", loadCount = meta.SessionLoadCount, record = record, previous = previous }
 end
 
 --> The claim transform. `now` is this server's os.time(), stored as LastUpdate for ProfileStore.
@@ -70,43 +121,72 @@ function Lock.claim(
 	template: { [any]: any },
 	now: number,
 	steal: boolean,
-	force: boolean?
+	mode: Mode?,
+	info: any?
 ): (any?, Claim)
 	const kind = Record.classify(value)
 	if kind == "foreign" then
+		const adopt = mode and mode.adopt
+		const found = if adopt then adopt(value, info, now) else nil
+		if found and found.kind == "data" then
+			const record = Record.fresh(found.data, now, nil)
+			record.UserIds = table.clone(found.userIds or {})
+			Record.ours(record.MetaData).importedFrom = (mode :: Mode).imported
+			return record, take(record, identity, now, mode)
+		elseif found and found.kind == "locked" then
+			return nil, { kind = "legacyLocked" }
+		end
 		return nil, { kind = "foreign", value = value }
 	end
 	const record = if kind == "profile" then value else Record.fresh(template, now, value and value.GlobalUpdates)
+	if kind ~= "profile" and mode then
+		if mode.fromImport then
+			Record.ours(record.MetaData).importedFrom = mode.imported
+			record.UserIds = table.clone(mode.userIds or {})
+		elseif mode.version then
+			Record.ours(record.MetaData).schemaVersion = mode.version
+		end
+	end
 	const meta = record.MetaData
 	const active = meta.ActiveSession
 	if active == nil or Record.isHere(active, identity) then
-		const claim = take(record, identity, now)
+		const claim = take(record, identity, now, mode)
 		return record, claim
 	end
 
 	const ours = Record.ours(meta)
 	const request = meta.ForceLoadSession
-	if force then
-		return record, take(record, identity, now)
+	const owner: Owner = {
+		session = active,
+		lease = if ours.owner ~= nil and ours.owner == active[3] then ours.lease else nil,
+		lastUpdate = meta.LastUpdate,
+		loadCount = meta.SessionLoadCount or 0,
+		memory = ours.memory == true and ours.owner == active[3],
+	}
+	if mode and mode.force then
+		return record, take(record, identity, now, mode)
+	end
+	if mode and mode.quiet then
+		const expect = mode.expect
+		if
+			expect
+			and expect.guid == tostring(active[3])
+			and expect.loadCount == owner.loadCount
+			and expect.lease == owner.lease
+		then
+			return record, take(record, identity, now, mode)
+		end
+		return nil, { kind = "busy", owner = owner }
 	end
 	if steal then
 		if Record.isHere(request, identity) then
-			const claim = take(record, identity, now)
+			const claim = take(record, identity, now, mode)
 			return record, claim
 		end
 		return nil, { kind = "outbid" }
 	end
 	meta.ForceLoadSession = { identity.placeId, identity.jobId }
-	return record,
-		{
-			kind = "busy",
-			owner = {
-				session = active,
-				lease = if ours.owner ~= nil and ours.owner == active[3] then ours.lease else nil,
-				lastUpdate = meta.LastUpdate,
-				loadCount = meta.SessionLoadCount or 0,
-			},
-		}
+	return record, { kind = "busy", owner = owner }
 end
 
 --> The save transform for the session `loadCount` of this server.
@@ -136,6 +216,15 @@ function Lock.save(
 	end
 	if payload.schemaVersion ~= nil then
 		Record.ours(meta).schemaVersion = payload.schemaVersion
+	end
+	if payload.snap ~= nil then
+		Record.ours(meta).snap = payload.snap
+	end
+	if payload.memory ~= nil then
+		Record.ours(meta).memory = if payload.memory then true else nil
+	end
+	if payload.journal ~= nil then
+		Record.ours(meta).trade = if payload.journal == false then nil else payload.journal
 	end
 	if payload.userIds ~= nil then
 		value.UserIds = payload.userIds

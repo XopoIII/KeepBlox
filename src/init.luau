@@ -25,13 +25,16 @@
 ---         if profile then profile:release() end
 ---     end)
 const Config = require("@self/Config")
+const Importers = require("@self/Importers")
 const Migrate = require("@self/Migrate")
 const Profile = require("@self/Profile")
 const Record = require("@self/Record")
 const Schema = require("@self/Schema")
+const Shared = require("@self/Shared")
 const Store = require("@self/Store")
 
 export type Store = Store.Store
+export type SharedStore = Shared.SharedStore
 export type Profile = Profile.Profile
 export type LoadResult = Store.LoadResult
 export type Config = Config.Config
@@ -44,8 +47,16 @@ KeepBlox.store = Store.new
 --> The protocol's default numbers.
 KeepBlox.defaults = Config.DEFAULT
 
+--> Opens the shared store `name`: documents no server owns, changed atomically by any (see Shared).
+KeepBlox.shared = Shared.new
+
 --> Builders for a store's `schema` (see Schema).
 KeepBlox.schema = Schema
+
+--> Importers for a store's `import`: moving from DocumentService, Lapis, DataKeep, DataStore2 or
+--> Suphi's DataStore Module (see Importers). ProfileStore and ProfileService need none: KeepBlox reads
+--> their records as they are.
+KeepBlox.importers = Importers
 
 --> Runs a store's migrations, defaults and schema check on a copy of `data` stored at version `from`,
 --> exactly as a load does. For testing each migration with fixtures from before and after it.

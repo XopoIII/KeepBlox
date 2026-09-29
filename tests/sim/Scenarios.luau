@@ -193,7 +193,15 @@ function Scenarios.soak(scenario: Scenario, adapter: Adapter.Adapter, count: num
 	const result: Soak = {
 		violations = {},
 		failures = {},
-		metrics = { maxProgressLost = 0, maxStaleSeconds = 0, maxOpenSeconds = 0, opens = 0, failedOpens = 0 },
+		metrics = {
+			maxProgressLost = 0,
+			maxStaleSeconds = 0,
+			maxOpenSeconds = 0,
+			opens = 0,
+			failedOpens = 0,
+			cancelledOpens = 0,
+			openSeconds = {},
+		},
 		maxShutdownSeconds = 0,
 		missedShutdowns = 0,
 	}
@@ -211,6 +219,8 @@ function Scenarios.soak(scenario: Scenario, adapter: Adapter.Adapter, count: num
 		worst.maxOpenSeconds = math.max(worst.maxOpenSeconds, m.maxOpenSeconds)
 		worst.opens += m.opens
 		worst.failedOpens += m.failedOpens
+		worst.cancelledOpens += m.cancelledOpens
+		table.move(m.openSeconds, 1, #m.openSeconds, #worst.openSeconds + 1, worst.openSeconds)
 		for _, shutdown in report.shutdowns do
 			result.maxShutdownSeconds = math.max(result.maxShutdownSeconds, shutdown.seconds)
 			if not shutdown.finished then

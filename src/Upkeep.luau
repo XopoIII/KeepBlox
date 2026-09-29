@@ -1,6 +1,7 @@
 --!strict
 --- What a store does in the background: renewing its sessions, releasing them on shutdown, and
 --- listening for the messages other servers send to a session.
+const Lease = require("./Lease")
 const Services = require("./Services")
 const Session = require("./Session")
 
@@ -15,6 +16,48 @@ export type Internals = {
 export type Listener = { session: Session.Session?, connection: Services.Connection?, done: boolean }
 
 const Upkeep = {}
+
+--> Beats this server's MemoryStore entry every `heartbeat` seconds, from the start (see Lease), and
+--> hands over the sessions another server asked for there. `beating.ok` says whether the last beat
+--> landed: only then may a new session tell newcomers to trust the beat. Returns one beat, for a load
+--> that must not wait for the loop's next one.
+function Upkeep.beat(internals: Internals, beating: { ok: boolean }): () -> ()
+	const clock = internals.context().services.clock
+	const function once()
+		const context = internals.context()
+		if not Lease.available(context) then
+			return
+		end
+		const requested = Lease.beat(context, internals.sessions)
+		if requested ~= nil and not beating.ok then
+			-- The beat is back: sessions opened meanwhile tell newcomers so at their next write.
+			for _, session in internals.sessions do
+				session.saveSoon = true
+			end
+		end
+		beating.ok = requested ~= nil
+		-- A profile no snapshot covers is written at `renewFallback`, so a crash loses no more than that.
+		const soonest = clock.now() + context.config.renewFallback
+		for _, session in internals.sessions do
+			if not session.snapshotted and session.nextRenew > soonest then
+				session.nextRenew = soonest
+			end
+		end
+		for _, key in requested or {} do
+			const session = internals.sessions[key]
+			if session and session.active and not session.releasing then
+				clock.spawn(Session.release, session.context, session, "handedOver")
+			end
+		end
+	end
+	clock.spawn(function()
+		while not internals.closing() do
+			once()
+			clock.wait(internals.context().config.heartbeat)
+		end
+	end)
+	return once
+end
 
 --> Renews every session every `renew` seconds, and saves soon the ones that asked for it. The loop
 --> waits while the server's data store budget is spent, so loads and releases are not starved.
@@ -36,7 +79,8 @@ function Upkeep.renew(internals: Internals)
 						break
 					end
 					if due then
-						session.nextRenew = now + context.config.renew
+						session.nextRenew = now
+							+ if session.snapshotted then context.config.renew else context.config.renewFallback
 					end
 					session.saveSoon = false
 					clock.spawn(Session.save, session.context, session, true)
@@ -47,11 +91,12 @@ function Upkeep.renew(internals: Internals)
 end
 
 --> On shutdown, releases every session in parallel, and waits for them within the deadline.
---> `close` marks the store closing first, so no new load starts.
-function Upkeep.shutdown(internals: Internals, close: () -> ())
+--> `close` marks the store closing first, so no new load starts. Returns the same closing, for
+--> `store:close()` (tests, and games that close a store themselves).
+function Upkeep.shutdown(internals: Internals, close: () -> ()): () -> ()
 	const context = internals.context()
 	const clock = context.services.clock
-	context.services.bindToClose(function()
+	const function closeAll()
 		close()
 		local pending = 0
 		for _, session in internals.sessions do
@@ -65,7 +110,9 @@ function Upkeep.shutdown(internals: Internals, close: () -> ())
 		while pending > 0 and clock.now() - started < context.config.shutdownDeadline do
 			clock.wait(0.1)
 		end
-	end)
+	end
+	context.services.bindToClose(closeAll)
+	return closeAll
 end
 
 --> Listens on "PS_"..`guid` for requests to a session: `EndSession` hands it over, and a bare

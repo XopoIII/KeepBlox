@@ -10,9 +10,12 @@
 const Backend = require("./Backend")
 const Budget = require("./Budget")
 const Clock = require("./Clock")
+const Codec = require("./Codec")
 const DataStore = require("./DataStore")
 const Faults = require("./Faults")
+const MemoryStore = require("./MemoryStore")
 const Messaging = require("./Messaging")
+const Ordered = require("./Ordered")
 const Scheduler = require("./Scheduler")
 const Services = require("@keepblox/Services")
 
@@ -31,6 +34,8 @@ export type Server = {
 	read budget: Budget.Budget,
 	--> BindToClose callbacks registered on this server, in order.
 	read closing: { () -> () },
+	--> This server's MemoryStoreService (the fake shared by the world).
+	read memoryStores: any,
 	--> Stops the server where it stands: its threads are dropped and its subscriptions go dead.
 	crash: (self: Server) -> (),
 }
@@ -40,6 +45,10 @@ export type World = {
 	read backend: Backend.Backend,
 	read faults: Faults.Faults,
 	read bus: Messaging.Bus,
+	--> Every ordered data store's values, by store id ("<name>/<scope>").
+	read ordered: Ordered.Shared,
+	--> Every memory store structure of the experience.
+	read memory: MemoryStore.Shared,
 	read epoch: number,
 	server: (self: World, options: ServerOptions) -> Server,
 }
@@ -54,12 +63,22 @@ function World.new(seed: number, epoch: number?): World
 	const faults = Faults.new(scheduler.random)
 	const start = epoch or DEFAULT_EPOCH
 	const names: { [string]: boolean } = {}
+	const budgets: { Budget.Budget } = {}
+	const memory = MemoryStore.shared(function(): number
+		local total = 0
+		for _, budget in budgets do
+			total += budget.players
+		end
+		return total
+	end)
 
 	const world: World = {
 		scheduler = scheduler,
 		backend = Backend.new(),
 		faults = faults,
 		bus = Messaging.bus(scheduler, faults, start),
+		ordered = {},
+		memory = memory,
 		epoch = start,
 
 		server = function(self: World, options: ServerOptions): Server
@@ -68,6 +87,8 @@ function World.new(seed: number, epoch: number?): World
 			names[name] = true
 
 			const budget = Budget.new(scheduler, options.players)
+			table.insert(budgets, budget)
+			const memoryStores = MemoryStore.service(scheduler, faults, memory, name)
 			const context: DataStore.Context = {
 				scheduler = scheduler,
 				backend = self.backend,
@@ -94,6 +115,26 @@ function World.new(seed: number, epoch: number?): World
 				end
 				return handle
 			end
+			const orderedHandles: { [string]: Services.OrderedDataStore } = {}
+			function dataStores.GetOrderedDataStore(
+				_: Services.DataStoreService,
+				store: string,
+				scope: string?
+			): Services.OrderedDataStore
+				const id = `{store}/{scope or "global"}`
+				local handle = orderedHandles[id]
+				if not handle then
+					handle = Ordered.new({
+						scheduler = scheduler,
+						faults = faults,
+						budget = budget,
+						server = name,
+						shared = self.ordered,
+					}, id)
+					orderedHandles[id] = handle
+				end
+				return handle
+			end
 			function dataStores.GetRequestBudgetForRequestType(
 				_: Services.DataStoreService,
 				requestType: Services.RequestType
@@ -105,7 +146,10 @@ function World.new(seed: number, epoch: number?): World
 				name = name,
 				budget = budget,
 				closing = closing,
+				memoryStores = memoryStores,
 				services = {
+					codec = Codec.new(),
+					memory = memoryStores,
 					dataStores = dataStores :: Services.DataStoreService,
 					messaging = self.bus:handle(name),
 					clock = Clock.new(scheduler, {

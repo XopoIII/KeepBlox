@@ -18,12 +18,15 @@
 --- A value that is not a profile is never overwritten: it is copied to "<store>__quarantine" and the
 --- load fails with "foreign".
 const Call = require("./Call")
+const Lease = require("./Lease")
 const Lock = require("./Lock")
 const Session = require("./Session")
 
-export type Failure = "cancelled" | "closing" | "timeout" | "foreign" | "outbid"
+export type Failure = "cancelled" | "closing" | "timeout" | "foreign" | "outbid" | "inUse" | "legacyLocked"
 
-export type Result = { ok: true, record: any, loadCount: number } | { ok: false, reason: Failure }
+export type Result =
+	{ ok: true, record: any, loadCount: number, previous: Lock.Previous? }
+	| { ok: false, reason: Failure }
 
 type Observed = {
 	guid: string,
@@ -33,6 +36,8 @@ type Observed = {
 	since: number,
 	--> When this server first asked this owner to hand over.
 	askedAt: number,
+	--> What this server has seen of the owner's MemoryStore beat (see Lease).
+	beat: Lease.Watch,
 }
 
 const Claim = {}
@@ -87,7 +92,7 @@ function Claim.open(
 	key: string,
 	template: { [any]: any },
 	cancel: (() -> boolean)?,
-	force: boolean?
+	mode: Lock.Mode?
 ): Result
 	const clock = context.services.clock
 	const config = context.config
@@ -112,8 +117,8 @@ function Claim.open(
 			context.dataStore.UpdateAsync,
 			context.dataStore,
 			key,
-			function(value: any): any
-				const record, outcome = Lock.claim(value, context.identity, template, clock.time(), steal, force)
+			function(value: any, info: any): any
+				const record, outcome = Lock.claim(value, context.identity, template, clock.time(), steal, mode, info)
 				claim = outcome
 				return record
 			end
@@ -128,12 +133,20 @@ function Claim.open(
 					Claim.giveBack(context, key, outcome.loadCount)
 					return { ok = false, reason = if context.closing() then "closing" else "cancelled" }
 				end
-				return { ok = true, record = outcome.record, loadCount = outcome.loadCount }
+				return { ok = true, record = outcome.record, loadCount = outcome.loadCount, previous = outcome.previous }
 			elseif outcome.kind == "foreign" then
 				quarantine(context, storeName, key, outcome.value)
 				return { ok = false, reason = "foreign" }
 			elseif outcome.kind == "outbid" then
 				return { ok = false, reason = "outbid" }
+			elseif outcome.kind == "legacyLocked" then
+				-- The library being imported from still holds the key: wait for its release.
+				if clock.now() - started + delay > config.loadTimeout then
+					return { ok = false, reason = "legacyLocked" }
+				end
+				clock.wait(delay)
+				delay = math.min(delay * 2, config.backoffMax)
+				continue
 			end
 
 			-- Busy: another session holds the key.
@@ -141,8 +154,57 @@ function Claim.open(
 			const now = clock.now()
 			const guid = tostring(owner.session[3])
 			local watch = observed
-			if watch == nil or watch.guid ~= guid or watch.loadCount ~= owner.loadCount then
-				watch = { guid = guid, loadCount = owner.loadCount, lease = owner.lease, since = now, askedAt = now }
+			if mode and mode.quiet then
+				-- Never ask: fail while the owner lives, take the key only once it is proven dead.
+				if
+					watch ~= nil
+					and (watch.guid ~= guid or watch.loadCount ~= owner.loadCount or owner.lease ~= watch.lease)
+				then
+					return { ok = false, reason = "inUse" }
+				end
+				if watch == nil then
+					watch = {
+						guid = guid,
+						loadCount = owner.loadCount,
+						lease = owner.lease,
+						since = now,
+						askedAt = now,
+						beat = { asked = false } :: Lease.Watch,
+					}
+					observed = watch
+				end
+				const current = watch :: Observed
+				-- A beat that moves is a live owner; one that stopped is a dead one (see Lease).
+				const verdict = if owner.memory
+					then Lease.judge(context, tostring(owner.session[2]), key, current.beat, false)
+					else "unknown"
+				if verdict == "alive" then
+					return { ok = false, reason = "inUse" }
+				end
+				const dead = verdict == "dead"
+					or verdict == "unknown"
+						and if owner.lease == nil
+							then owner.lastUpdate ~= nil and clock.time() - owner.lastUpdate > config.profileStoreDead
+							else now - current.since >= config.death
+				if dead then
+					mode =
+						{ quiet = true, expect = { guid = guid, loadCount = owner.loadCount, lease = owner.lease } } :: Lock.Mode
+					continue
+				elseif owner.lease == nil then
+					return { ok = false, reason = "inUse" }
+				end
+				clock.wait(delay)
+				delay = math.min(delay * 2, config.backoffMax)
+				continue
+			elseif watch == nil or watch.guid ~= guid or watch.loadCount ~= owner.loadCount then
+				watch = {
+					guid = guid,
+					loadCount = owner.loadCount,
+					lease = owner.lease,
+					since = now,
+					askedAt = now,
+					beat = { asked = false } :: Lease.Watch,
+				}
 				observed = watch
 				ask(context, owner)
 			elseif owner.lease ~= watch.lease then
@@ -150,7 +212,28 @@ function Claim.open(
 				watch.since = now
 			end
 			const current = watch :: Observed
-			if current.lease == nil then
+			-- The owner's MemoryStore beat, when it keeps one, decides (see Lease).
+			const verdict = if owner.memory
+				then Lease.judge(context, tostring(owner.session[2]), key, current.beat, true)
+				else "unknown"
+			if verdict == "dead" then
+				steal = true
+			elseif verdict ~= "unknown" then
+				-- Watching a beat: the data store is tried on its backoff, the beat every second between, so
+				-- its end is caught as it comes.
+				local waited = 0
+				while waited < math.min(delay, 2) and not context.closing() and not (cancel and cancel()) do
+					waited += clock.wait(1)
+					if Lease.judge(context, tostring(owner.session[2]), key, current.beat, true) == "dead" then
+						steal = true
+						break
+					end
+				end
+				if not steal then
+					delay = math.min(delay * 2, config.backoffMax)
+				end
+				continue
+			elseif current.lease == nil then
 				const stale = owner.lastUpdate ~= nil and clock.time() - owner.lastUpdate > config.profileStoreDead
 				steal = stale or now - current.askedAt >= config.profileStoreSteal
 			else

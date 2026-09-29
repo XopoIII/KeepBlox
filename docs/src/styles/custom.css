@@ -1,0 +1,17 @@
+/* KeepBlox green. */
+:root {
+	--sl-color-accent-low: #10281c;
+	--sl-color-accent: #2f9e62;
+	--sl-color-accent-high: #bfeccf;
+}
+
+:root[data-theme='light'] {
+	--sl-color-accent-low: #d5f3e0;
+	--sl-color-accent: #217a4a;
+	--sl-color-accent-high: #0f3a22;
+}
+
+/* The changelog and benchmark pages import Markdown files whose own titles repeat the page's. */
+.kb-imported > h1:first-child {
+	display: none;
+}

@@ -1,0 +1,92 @@
+---
+title: Leaderboards
+description: How a store mirrors chosen numbers from each profile into ordered data stores, and how store:leaderboard reads them back sorted.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A leaderboard needs an OrderedDataStore, which a profile store is not. KeepBlox keeps one beside the
+profiles for each board you name, fills it from the profiles' data as they save, and reads it back
+sorted.
+
+```lua
+const store = KeepBlox.store("Profiles", {
+	template = { coins = 0, wins = 0 },
+	leaderboards = {
+		coins = function(data) return data.coins end,
+		wins = function(data) return data.wins end,
+	},
+	leaderboardOptions = { interval = 60, cache = 60 },
+})
+
+const top = store:leaderboard("coins", { count = 10 })
+for rank, entry in top do
+	print(rank, entry.key, entry.value) -- entry.key is the profile key, such as "u_1"
+end
+```
+
+## Declaring boards
+
+`leaderboards` maps each board's name to a function that reads its value from a profile's data. The
+function receives the data as it was stored, and returns a number, or nil.
+
+Each board is the ordered data store `"<store>__<board>"`, keyed by profile key. With the store above,
+the boards are `Profiles__coins` and `Profiles__wins`.
+
+## Values
+
+- A value is stored as an integer: KeepBlox floors it with `math.floor`.
+- nil removes the key from the board. So does NaN, and any value that is not a number.
+- A read function that throws is reported through `store.onError`, and that board is skipped for that
+  save.
+
+## When boards are written
+
+A board is a mirror, written after a save and not with it. The profile is the truth.
+
+- After a save stores a profile, each board's value is written if it changed since the last value
+  written for that profile.
+- A profile writes its boards at most once per `interval` seconds (default 60).
+- The release always writes, whatever the interval, so a player's final values reach the board.
+
+A board can therefore trail the profile by up to `interval`, and by the time between two saves on top
+of that. Writes run in their own thread, so they never hold up a save.
+
+## Budgets
+
+Roblox gives ordered data stores their own request budgets, smaller than a standard data store's:
+about 30 + 5 per player a minute for writes (`OrderedWrite`) and 5 + 2 per player for sorted reads
+(`OrderedList`).
+
+- **Writes.** Before each board write, KeepBlox checks the `OrderedWrite` budget. When it is spent,
+  the write is skipped, and the value is written by a later save once the budget returns. A failed
+  write is reported through `store.onError` and tried again the same way. A write skipped or failed
+  at the release has no later save to retry it: the board keeps its previous value for that key until
+  the profile is next loaded and saved.
+- **Reads.** `store:leaderboard` keeps each answer for `cache` seconds (default 60), per board, count
+  and order. Calls within that time return a copy of the cached answer and cost nothing.
+
+## Reading a board
+
+`store:leaderboard(name, query)` returns a list of `{ key, value }` entries.
+
+| Query field | Meaning |
+|---|---|
+| `count` | How many entries from the top. Default 10; clamped to 1..100. |
+| `ascending` | `true` for lowest first. Default: highest first. |
+
+It raises an error when the store has no leaderboards, or no board of that name.
+
+<Aside type="caution">
+A cache miss calls `GetSortedAsync` directly, and a failure of that call is raised, not returned. Wrap
+`store:leaderboard` in `pcall` where a failed read must not stop the calling code.
+</Aside>
+
+## Options
+
+`leaderboardOptions` is optional:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `interval` | 60 | Seconds between one profile's writes to its boards. The release ignores it. |
+| `cache` | 60 | Seconds a `leaderboard` answer is kept. |

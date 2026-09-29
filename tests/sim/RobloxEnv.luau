@@ -1,31 +1,36 @@
 --!strict
 --- The engine globals one virtual server gives the Roblox code it runs: `game`, `task`, `os`,
---- `coroutine`, `Enum`, `Instance`, `script`, `warn` and `print`, all over the fakes.
+--- `coroutine`, `Enum`, `Instance`, `DateTime`, `typeof`, `require`, `script`, `warn` and `print`, all over
+--- the fakes (see env/Engine, env/Instances, env/Services).
 ---
---- This is how unmodified Roblox modules (the vendored ProfileStore) run in the simulator. Each server
---- loads its own copy of a module into its own environment, so module state is per server, as it is
---- in Roblox. The engine's scheduling rules are kept:
---- - `task.spawn` runs a function or thread at once, up to its first yield;
---- - `task.defer` runs it later;
---- - `task.wait()` with no argument waits one frame;
---- - `coroutine.resume` of a thread that then waits hands control back to the resumer.
----
---- Frames are coarser than a live server's 60 Hz (`frame`, 0.1 s by default): a frame-based loop sees
---- the same time pass in fewer steps.
-const Scheduler = require("@fakes/Scheduler")
+--- This is how unmodified Roblox modules (the vendored ProfileStore, the rival libraries the benchmarks
+--- download) run in the simulator. Each server loads its own copy of a module into its own
+--- environment, so module state is per server, as it is in Roblox.
+const Engine = require("./env/Engine")
+const Instances = require("./env/Instances")
+const ServicesEnv = require("./env/Services")
 const World = require("@fakes/World")
 const fs = require("@lune/fs")
 const luau = require("@lune/luau")
+
+export type Node = Instances.Node
 
 export type Env = {
 	read server: World.Server,
 	read globals: { [string]: any },
 	--> Everything the code printed or warned, in order.
 	read log: { string },
+	--> Players joining and leaving this server.
+	read players: ServicesEnv.Players,
 	--> Runs a module's `source` in this server's environment, and returns what it returns. It must be
 	--> called from a thread of this server. Read the source first, outside any simulated thread, with
 	--> `RobloxEnv.read`.
 	load: (self: Env, source: string, name: string) -> any,
+	--> Calls `observer(store, key, value)` after each write this server makes commits: what a library
+	--> was told is stored. Adapters of libraries with no save signal acknowledge through it.
+	onWrite: (self: Env, observer: ServicesEnv.WriteObserver) -> (),
+	--> Builds a module tree read with `RobloxEnv.tree` as instances, and returns its root, for `require`.
+	mount: (self: Env, node: Node, parent: any?) -> any,
 }
 
 export type Options = {
@@ -33,149 +38,35 @@ export type Options = {
 	isStudio: boolean?,
 }
 
-const SortDirection = table.freeze({
-	Ascending = table.freeze({ Name = "Ascending" }),
-	Descending = table.freeze({ Name = "Descending" }),
-})
-
 const RobloxEnv = {}
 
 function RobloxEnv.new(world: World.World, server: World.Server, options: Options?): Env
-	const scheduler: Scheduler.Scheduler = world.scheduler
 	const services = server.services
-	const clock = services.clock
 	const frame = if options and options.frame then options.frame else 0.1
+	const engine = Engine.new(world, server, frame, options ~= nil and options.isStudio == true)
 	const log: { string } = {}
 
-	const function wait(dt: number?): number
-		return clock.wait(if dt == nil or dt < frame then frame else dt)
+	const function line(...: any): string
+		const parts = table.pack(...)
+		const words = {}
+		for index = 1, parts.n do
+			words[index] = tostring(parts[index])
+		end
+		return table.concat(words, " ")
 	end
 
-	const task = {
-		wait = wait,
-		spawn = function(target: any, ...: any): any
-			scheduler:resume(target, nil, ...)
-			return target
-		end,
-		defer = function(target: any, ...: any)
-			if type(target) == "thread" then
-				scheduler:spawn(function(...: any)
-					scheduler:resume(target, nil, ...)
-				end, nil, ...)
-			else
-				scheduler:spawn(target, nil, ...)
-			end
-		end,
-		delay = function(seconds: number, fn: (...any) -> (), ...: any)
-			scheduler:spawn(function(...: any)
-				wait(seconds)
-				fn(...)
-			end, nil, ...)
-		end,
-	}
-
-	const heartbeat: { (number) -> () } = {}
-	local beating = false
-	const RunService = {
-		IsStudio = function(_: any): boolean
-			return options ~= nil and options.isStudio == true
-		end,
-		Heartbeat = {
-			Connect = function(_: any, fn: (number) -> ())
-				table.insert(heartbeat, fn)
-				if not beating then
-					beating = true
-					scheduler:spawn(function()
-						while true do
-							const dt = wait(frame)
-							for _, listener in table.clone(heartbeat) do
-								-- Each listener runs in its own thread, as a connected handler does.
-								scheduler:resume(function()
-									listener(dt)
-								end)
-							end
-						end
-					end, server.name)
-				end
-				return {
-					Disconnect = function()
-						const index = table.find(heartbeat, fn)
-						if index then
-							table.remove(heartbeat, index)
-						end
-					end,
-				}
-			end,
-		},
-	}
-
-	const DataStoreService = {
-		GetDataStore = function(_: any, name: string, scope: string?, _options: any): any
-			const store = services.dataStores:GetDataStore(name, scope)
-			return {
-				GetAsync = function(_: any, key: string, getOptions: any): (any, any)
-					return store:GetAsync(key, if getOptions then getOptions.UseCache else nil)
-				end,
-				SetAsync = function(_: any, key: string, value: any, userIds: { number }?): string
-					return store:SetAsync(key, value, userIds)
-				end,
-				UpdateAsync = function(_: any, key: string, transform: any): (any, any)
-					return store:UpdateAsync(key, transform)
-				end,
-				RemoveAsync = function(_: any, key: string): (any, any)
-					return store:RemoveAsync(key)
-				end,
-				GetVersionAsync = function(_: any, key: string, version: string): (any, any)
-					return store:GetVersionAsync(key, version)
-				end,
-				ListVersionsAsync = function(
-					_: any,
-					key: string,
-					direction: any,
-					minDate: number?,
-					maxDate: number?,
-					pageSize: number?
-				): any
-					const ascending = direction ~= SortDirection.Descending
-					return store:ListVersionsAsync(key, ascending, minDate, maxDate, pageSize)
-				end,
-			}
-		end,
-		GetRequestBudgetForRequestType = function(_: any, requestType: any): number
-			return services.dataStores:GetRequestBudgetForRequestType(requestType)
-		end,
-	}
-
-	const MessagingService = {
-		PublishAsync = function(_: any, topic: string, message: any)
-			services.messaging:PublishAsync(topic, message)
-		end,
-		SubscribeAsync = function(_: any, topic: string, callback: (any) -> ()): any
-			return services.messaging:SubscribeAsync(topic, callback)
-		end,
-	}
-
-	const HttpService = {
-		GenerateGUID = function(_: any, braces: boolean?): string
-			const random = scheduler.random
-			const hex = function(digits: number): string
-				local text = ""
-				for _ = 1, digits do
-					text ..= string.format("%X", random:integer(0, 15))
-				end
-				return text
-			end
-			const guid = `{hex(8)}-{hex(4)}-{hex(4)}-{hex(4)}-{hex(12)}`
-			return if braces == false then guid else `\{{guid}\}`
-		end,
-	}
-
-	const byName: { [string]: any } = {
-		DataStoreService = DataStoreService,
-		MessagingService = MessagingService,
-		HttpService = HttpService,
-		RunService = RunService,
-	}
+	const globals: { [string]: any } = {}
+	const function run(source: string, name: string, script: any): any
+		const env = table.clone(globals)
+		env.script = script
+		const chunk = luau.load(source, { debugName = name, environment = env })
+		return chunk()
+	end
+	const instances = Instances.new(engine, run, function(target: any): any
+		error(`RobloxEnv: cannot require {tostring(target)}`, 2)
+	end)
+	const observers: { ServicesEnv.WriteObserver } = {}
+	const byName, players = ServicesEnv.build(world, server, engine, instances, observers)
 
 	const game = {
 		PlaceId = services.placeId,
@@ -187,60 +78,43 @@ function RobloxEnv.new(world: World.World, server: World.Server, options: Option
 			services.bindToClose(callback)
 		end,
 	}
-
-	const osTable = table.clone(os)
-	osTable.time = function(): number
-		return clock.time()
-	end
-	osTable.clock = function(): number
-		return clock.now()
+	for name, service in byName do
+		(game :: any)[name] = service
 	end
 
-	const coroutineTable = table.clone(coroutine)
-	coroutineTable.resume = function(co: thread, ...: any): ...any
-		return scheduler:resume(co, nil, ...)
+	globals.game = game
+	globals.task = engine.task
+	globals.os = engine.os
+	globals.coroutine = engine.coroutine
+	globals.Enum = engine.Enum
+	globals.DateTime = engine.DateTime
+	globals.typeof = engine.typeof
+	globals.require = instances.require
+	globals.Instance = { new = instances.new }
+	globals.warn = function(...: any)
+		table.insert(log, "warn: " .. line(...))
 	end
-
-	const function line(...: any): string
-		const parts = table.pack(...)
-		const words = {}
-		for index = 1, parts.n do
-			words[index] = tostring(parts[index])
-		end
-		return table.concat(words, " ")
+	globals.print = function(...: any)
+		table.insert(log, line(...))
 	end
-
-	const globals: { [string]: any } = {
-		game = game,
-		task = task,
-		os = osTable,
-		coroutine = coroutineTable,
-		Enum = { SortDirection = SortDirection },
-		Instance = {
-			new = function(className: string): any
-				if className == "DataStoreOptions" then
-					return { SetExperimentalFeatures = function() end }
-				end
-				error(`RobloxEnv: Instance.new("{className}") is not faked`, 2)
-			end,
-		},
-		warn = function(...: any)
-			table.insert(log, "warn: " .. line(...))
-		end,
-		print = function(...: any)
-			table.insert(log, line(...))
-		end,
-	}
+	globals.wait = engine.wait
+	globals.spawn = function(fn: (...any) -> ())
+		engine.task.defer(fn)
+	end
 
 	return {
 		server = server,
 		globals = globals,
 		log = log,
-		load = function(self: Env, source: string, name: string): any
-			const env = table.clone(self.globals)
-			env.script = { Name = name }
-			const chunk = luau.load(source, { debugName = name, environment = env })
-			return chunk()
+		players = players,
+		load = function(_: Env, source: string, name: string): any
+			return run(source, name, { Name = name })
+		end,
+		onWrite = function(_: Env, observer: ServicesEnv.WriteObserver)
+			table.insert(observers, observer)
+		end,
+		mount = function(_: Env, node: Node, parent: any?): any
+			return instances.mount(node, parent)
 		end,
 	}
 end
@@ -249,6 +123,30 @@ end
 --> own scheduler, and a simulated thread that yields there is resumed outside the simulation.
 function RobloxEnv.read(path: string): string
 	return fs.readFile(path)
+end
+
+--> A directory as a module tree (see Instances.Node), named `name`. Call it outside simulated threads.
+function RobloxEnv.tree(path: string, name: string): Node
+	const node: Node = { name = name, source = nil, children = {} }
+	for _, entry in fs.readDir(path) do
+		const full = `{path}/{entry}`
+		if fs.isDir(full) then
+			table.insert(node.children, RobloxEnv.tree(full, entry))
+		else
+			const stem, extension = string.match(entry, "^(.-)%.(luau?)$")
+			if stem and extension and not string.find(entry, "%.spec%.") and not string.find(entry, "%.test%.") then
+				if stem == "init" then
+					node.source = fs.readFile(full)
+				else
+					table.insert(node.children, { name = stem, source = fs.readFile(full), children = {} })
+				end
+			end
+		end
+	end
+	table.sort(node.children, function(a: Node, b: Node): boolean
+		return a.name < b.name
+	end)
+	return node
 end
 
 return RobloxEnv

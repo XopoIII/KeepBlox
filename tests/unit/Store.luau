@@ -10,7 +10,11 @@ const TEMPLATE = { coins = 0, items = {} }
 const function setup(seed: number?): (World.World, World.Server, KeepBlox.Store, { string })
 	const world = World.new(seed or 1)
 	const server = world:server({ name = "A", players = 1 })
-	const store = KeepBlox.store("Profiles", { template = TEMPLATE, services = server.services })
+	-- These specs exercise the renewal itself, so it runs every 15 s instead of the default 300.
+	const store = KeepBlox.store(
+		"Profiles",
+		{ template = TEMPLATE, services = server.services, config = { renew = 15, death = 35 } }
+	)
 	const errors: { string } = {}
 	store.onError:connect(function(key: string, message: string)
 		table.insert(errors, `{key}: {message}`)

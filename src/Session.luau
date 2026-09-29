@@ -10,77 +10,19 @@
 --- still renewed and the last good save stays. So one bad value never blocks the session, its
 --- hand-over or its release (the "poison" scenario), and the error names the value's path.
 const Call = require("./Call")
-const Config = require("./Config")
-const Inbox = require("./Inbox")
+const Codec = require("./Codec")
 const Lock = require("./Lock")
-const Migrate = require("./Migrate")
 const Profile = require("./Profile")
 const Record = require("./Record")
 const Schema = require("./Schema")
-const Serial = require("./Serial")
-const Services = require("./Services")
+const Types = require("./Types")
 const Validate = require("./Validate")
 
--- The most CPU time one write spends before it lets a frame pass.
-const SLICE_SECONDS = 0.002
-
-export type Context = {
-	services: Services.Services,
-	config: Config.Config,
-	dataStore: Services.DataStore,
-	identity: Record.Identity,
-	--> Reports a problem with a key; the store turns it into its `onError` signal.
-	report: (key: string, message: string) -> (),
-	--> True once the server began shutting down.
-	closing: () -> boolean,
-	--> The schema and migrations the data follows.
-	plan: Migrate.Plan,
-	--> Called once when a session ends, so the store can forget it.
-	forget: (session: Session) -> (),
-}
-
-export type Session = {
-	key: string,
-	loadCount: number,
-	profile: Profile.Profile,
-	--> The context this session writes with: the store's, with this session's own identity.
-	context: Context,
-	active: boolean,
-	--> True from the moment a release begins: the data is frozen then, so the final save holds every
-	--> change the game made.
-	releasing: boolean,
-	--> The canonical text of the data as last stored.
-	storedText: string,
-	storedSize: number,
-	lastDataWrite: number,
-	nextRenew: number,
-	serial: Serial.Serial,
-	--> The last validation problem reported, so it is not reported on every renewal.
-	lastProblem: string?,
-	--> The incoming messages and their handlers.
-	inbox: Inbox.Inbox,
-	--> Save at the next tick, not at the next renewal: a message was processed, or someone sent one.
-	saveSoon: boolean,
-	--> Purchase receipt ids granted into the data, the ones not yet stored included (see Receipts).
-	receipts: { string },
-	--> The receipt ids the store is known to hold.
-	storedReceipts: { [string]: boolean },
-	--> The hand-over subscription, set up before the claim; `done` once the session ended.
-	listener: { session: Session?, connection: Services.Connection?, done: boolean },
-}
+export type Context = Types.Context
+export type Session = Types.Session
+export type Pending = Types.Pending
 
 const Session = {}
-
---> A `pause` for `Validate.check` that lets a frame pass after every `SLICE_SECONDS` of CPU time.
-function Session.slicer(clock: Services.Clock): () -> ()
-	local started = os.clock()
-	return function()
-		if os.clock() - started >= SLICE_SECONDS then
-			clock.wait()
-			started = os.clock()
-		end
-	end
-end
 
 --> Ends `session` for `reason`: it stops writing, its data is frozen, and the game is told.
 function Session.finish(context: Context, session: Session, reason: Profile.EndReason)
@@ -116,17 +58,19 @@ const function write(
 		profile.onSaving:fire(false, nil)
 	end
 	-- Copy at once (fast), then check the copy in slices, so a large profile never stalls a frame.
-	const snapshot = Record.copy(profile.Data)
+	local snapshot = Record.copy(profile.Data)
 	-- Taken at the same moment as the snapshot: the effects of these messages are in it.
-	const consumed = session.inbox:processed()
-	const receipts = table.clone(session.receipts)
+	local consumed = session.inbox:processed()
+	local receipts = table.clone(session.receipts)
 	local newReceipt = false
 	for _, id in receipts do
 		if not session.storedReceipts[id] then
 			newReceipt = true
 		end
 	end
-	local encoded, problem = Validate.check(snapshot, "Data", nil, Session.slicer(clock))
+	-- A compressing store checks the size of what it stores (Codec), not of the data in memory.
+	local encoded, problem =
+		Validate.check(snapshot, "Data", if context.compress then math.huge else nil, Validate.slicer(clock))
 	const schema = context.plan.schema
 	if encoded and schema and encoded.text ~= session.storedText then
 		-- Only changed data is checked against the schema; unchanged data passed already.
@@ -141,14 +85,25 @@ const function write(
 			session.lastProblem = problem
 			context.report(session.key, `not saved: {problem}`)
 		end
+		-- The last snapshot that could be stored is newer than the store's copy: that is stored instead,
+		-- with the messages and receipts that were in it (see Lease).
+		const good = session.good
+		if good and good.text ~= session.storedText then
+			snapshot, consumed, receipts, data = good.data, good.consumed, good.receipts, good.data
+			encoded = { text = good.text, size = good.size }
+		end
 	elseif encoded.text ~= session.storedText or next(consumed) ~= nil or newReceipt then
 		session.lastProblem = nil
 		-- A large profile writes less often, to stay inside the key's write throughput. Processed
 		-- messages do not wait: their removal must be written with their effect.
 		const spacing = encoded.size * 60 / context.config.writeBytesPerMinute
-		const urgent = next(consumed) ~= nil or newReceipt
+		const urgent = next(consumed) ~= nil or newReceipt or session.clearJournal
 		if not automatic or urgent or clock.now() - session.lastDataWrite >= spacing then
-			data = snapshot
+			data, problem = Codec.pack(context.services.codec, context.compress, snapshot, encoded.size)
+			if problem and problem ~= session.lastProblem then
+				session.lastProblem = problem
+				context.report(session.key, `not saved: {problem}`)
+			end
 		end
 	end
 	const payload: Lock.Payload = {
@@ -159,6 +114,12 @@ const function write(
 		consumed = if data ~= nil then consumed else nil,
 		receipts = if data ~= nil then receipts else nil,
 		schemaVersion = if data ~= nil then context.plan.version else nil,
+		memory = context.beating ~= nil and context.beating(),
+		snap = session.snapSeq,
+		-- A settled trade's journal goes only with data that matches memory (see Trade).
+		journal = if session.clearJournal and (data ~= nil or (encoded and encoded.text == session.storedText))
+			then false
+			else nil,
 	}
 	local outcome: Lock.Save? = nil
 	const ok, err = Call.run(
@@ -182,6 +143,9 @@ const function write(
 		Session.finish(context, session, "lost")
 		return false
 	end
+	if payload.journal == false then
+		session.clearJournal = false
+	end
 	if data ~= nil and encoded then
 		session.storedText = encoded.text
 		session.storedSize = encoded.size
@@ -194,8 +158,16 @@ const function write(
 		end
 	end
 	session.inbox:receive(result.messages)
-	profile.LastSavedData = Record.copy(result.record.Data)
-	profile.onSaved:fire(Record.copy(result.record.Data))
+	-- What the store holds now, uncompressed: the snapshot just written, or what already was.
+	const saved = if data ~= nil
+		then snapshot
+		elseif Codec.packed(result.record.Data) then profile.LastSavedData
+		else result.record.Data
+	profile.LastSavedData = Record.copy(saved)
+	profile.onSaved:fire(Record.copy(saved))
+	if context.stored then
+		context.stored(session.key, saved, release)
+	end
 	if release then
 		Session.finish(context, session, reason)
 	elseif result.handOver then
@@ -211,7 +183,35 @@ function Session.save(context: Context, session: Session, automatic: boolean?): 
 	if not session.active then
 		return false
 	end
-	return session.serial:run(write, context, session, false, "released", automatic == true)
+	if automatic == true then
+		return session.serial:run(write, context, session, false, "released", true)
+	end
+	const joined = session.pending
+	if joined then
+		table.insert(joined.waiters, coroutine.running())
+		return coroutine.yield()
+	end
+	const pending: Pending = { done = false, stored = false, waiters = {} }
+	session.pending = pending
+	const ok, stored = pcall(session.serial.run, session.serial, function(): boolean
+		-- The snapshot is taken from here on: a later call must queue a save of its own.
+		if session.pending == pending then
+			session.pending = nil
+		end
+		return write(context, session, false, "released", false)
+	end)
+	if session.pending == pending then
+		session.pending = nil
+	end
+	pending.done = true
+	pending.stored = ok and stored == true
+	for _, waiter in pending.waiters do
+		context.services.clock.spawn(waiter, pending.stored)
+	end
+	if not ok then
+		error(stored, 0)
+	end
+	return pending.stored
 end
 
 --> Ends the session with a final save, retrying until it is stored, the key turns out to be owned

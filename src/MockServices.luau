@@ -6,6 +6,8 @@
 --- serializes them, so game code can never hold a reference into "stored" data. Nothing here ever
 --- reaches a live key. Each name keeps its own set of stores, so separate scratch sessions stay
 --- separate within one play test.
+const MockMemory = require("./MockMemory")
+const MockOrdered = require("./MockOrdered")
 const Record = require("./Record")
 const Services = require("./Services")
 
@@ -30,7 +32,38 @@ const function keyInfo(entry: Entry): Services.KeyInfo
 	}
 end
 
-const function store(entries: { [string]: Entry }, clock: Services.Clock): Services.DataStore
+-- A live record copied into memory must not carry the live server's lock: nobody here would release it.
+const function unlock(value: any): any
+	if type(value) == "table" and type(value.MetaData) == "table" then
+		value.MetaData.ActiveSession = nil
+		value.MetaData.ForceLoadSession = nil
+	end
+	return value
+end
+
+const function store(entries: { [string]: Entry }, clock: Services.Clock, seed: Services.DataStore?): Services.DataStore
+	-- Keys already read from `seed`, so each is copied once and memory wins from then on.
+	const seeded: { [string]: boolean } = {}
+	const function copyIn(key: string)
+		if seed == nil or seeded[key] then
+			return
+		end
+		seeded[key] = true
+		const live = seed :: Services.DataStore
+		const ok, value = pcall(function(): any
+			return (live:GetAsync(key))
+		end)
+		if ok and value ~= nil and entries[key] == nil then
+			entries[key] = {
+				value = unlock(Record.copy(value)),
+				version = 1,
+				userIds = {},
+				metadata = {},
+				updatedMs = clock.time() * 1000,
+			}
+		end
+	end
+
 	const function write(key: string, value: any, userIds: { number }?, metadata: { [string]: any }?): Entry
 		const previous = entries[key]
 		const entry: Entry = {
@@ -50,6 +83,7 @@ const function store(entries: { [string]: Entry }, clock: Services.Clock): Servi
 
 	const handle = {}
 	function handle.GetAsync(_: Services.DataStore, key: string): (any, Services.KeyInfo?)
+		copyIn(key)
 		const entry = entries[key]
 		if entry == nil then
 			return nil, nil
@@ -70,6 +104,7 @@ const function store(entries: { [string]: Entry }, clock: Services.Clock): Servi
 		key: string,
 		transform: Services.Transform
 	): (any, Services.KeyInfo?)
+		copyIn(key)
 		const entry = entries[key]
 		const current = if entry then Record.copy(entry.value) else nil
 		const value, userIds, metadata = transform(current, if entry then keyInfo(entry) else nil)
@@ -80,6 +115,7 @@ const function store(entries: { [string]: Entry }, clock: Services.Clock): Servi
 		return Record.copy(written.value), keyInfo(written)
 	end
 	function handle.RemoveAsync(_: Services.DataStore, key: string): (any, Services.KeyInfo?)
+		copyIn(key)
 		const entry = entries[key]
 		entries[key] = nil
 		if entry == nil then
@@ -93,7 +129,8 @@ const function store(entries: { [string]: Entry }, clock: Services.Clock): Servi
 end
 
 --> `base` with its data stores and messaging kept in memory, in the scratch set `name`.
-function MockServices.wrap(base: Services.Services, name: string): Services.Services
+--> With `copyLive`, each key is first read from the live store (read only, once), without its lock.
+function MockServices.wrap(base: Services.Services, name: string, copyLive: boolean?): Services.Services
 	local set = sets[name]
 	if not set then
 		set = {}
@@ -111,9 +148,24 @@ function MockServices.wrap(base: Services.Services, name: string): Services.Serv
 		const id = `{storeName}/{scope or "global"}`
 		if not handles[id] then
 			stores[id] = stores[id] or {}
-			handles[id] = store(stores[id], base.clock)
+			handles[id] =
+				store(stores[id], base.clock, if copyLive then base.dataStores:GetDataStore(storeName, scope) else nil)
 		end
 		return handles[id]
+	end
+	const ordered: { [string]: Services.OrderedDataStore } = {}
+	function dataStores.GetOrderedDataStore(
+		_: Services.DataStoreService,
+		storeName: string,
+		scope: string?
+	): Services.OrderedDataStore
+		const id = `ordered:{storeName}/{scope or "global"}`
+		if not ordered[id] then
+			-- Kept beside the set's data stores, so a scratch set keeps its leaderboards too.
+			stores[id] = stores[id] or {}
+			ordered[id] = MockOrdered.new(stores[id] :: any)
+		end
+		return ordered[id]
 	end
 	function dataStores.GetRequestBudgetForRequestType(
 		_: Services.DataStoreService,
@@ -150,6 +202,7 @@ function MockServices.wrap(base: Services.Services, name: string): Services.Serv
 	const wrapped = table.clone(base)
 	wrapped.dataStores = dataStores :: Services.DataStoreService
 	wrapped.messaging = messaging :: Services.Messaging
+	wrapped.memory = MockMemory.new(base.clock)
 	return wrapped
 end
 

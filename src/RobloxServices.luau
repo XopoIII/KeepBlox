@@ -79,6 +79,14 @@ function RobloxServices.build(): Services.Services
 	function dataStores.GetDataStore(_: Services.DataStoreService, name: string, scope: string?): Services.DataStore
 		return wrapStore(dataStoreService:GetDataStore(name, scope))
 	end
+	function dataStores.GetOrderedDataStore(
+		_: Services.DataStoreService,
+		name: string,
+		scope: string?
+	): Services.OrderedDataStore
+		-- An OrderedDataStore already has the seam's shape, pages included: `{key, value}` entries.
+		return dataStoreService:GetOrderedDataStore(name, scope) :: any
+	end
 	function dataStores.GetRequestBudgetForRequestType(
 		_: Services.DataStoreService,
 		requestType: Services.RequestType
@@ -109,9 +117,33 @@ function RobloxServices.build(): Services.Services
 		spawn = function(target: thread | (...any) -> (), ...: any)
 			task.spawn(target :: any, ...)
 		end,
+		cancel = function(target: thread)
+			task.cancel(target)
+		end,
+	}
+
+	const httpService = game:GetService("HttpService")
+	const encodingService = game:GetService("EncodingService") :: any
+	const zstd = (Enum :: any).CompressionAlgorithm.Zstd
+	const codec: Services.Codec = {
+		encode = function(value: any): string
+			return httpService:JSONEncode(value)
+		end,
+		decode = function(text: string): any
+			return httpService:JSONDecode(text)
+		end,
+		compress = function(text: string): buffer
+			return encodingService:CompressBuffer(buffer.fromstring(text), zstd, 3)
+		end,
+		decompress = function(packed: buffer): string
+			return buffer.tostring(encodingService:DecompressBuffer(packed, zstd))
+		end,
 	}
 
 	return {
+		codec = codec,
+		-- MemoryStoreSortedMap already has the seam's shape (its transform's sort key is not used).
+		memory = game:GetService("MemoryStoreService") :: any,
 		dataStores = dataStores :: Services.DataStoreService,
 		messaging = messaging :: Services.Messaging,
 		clock = clock,

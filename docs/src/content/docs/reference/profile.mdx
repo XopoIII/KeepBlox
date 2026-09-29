@@ -1,0 +1,156 @@
+---
+title: Profile
+description: Every field, signal and method of a profile, the reasons a session ends, and the freeze that follows.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A profile is what `store:load` returns: the data of one key, and the session this server holds on it.
+
+```lua
+profile.Data.coins += 10       -- change freely; the library notices and saves
+profile:save()                 -- save now; true once it is stored
+profile:release()              -- final save, then the lock is let go
+profile.onEnded:connect(function(reason) ... end)
+```
+
+## Fields
+
+| Field | Type | Meaning |
+|---|---|---|
+| `Data` | table | The live data. Change it in place; it is saved when it changed. |
+| `LastSavedData` | table | A copy of the data as last stored. Updated after every stored write. |
+| `UserIds` | `{ number }` | The user ids stored in the record, as ProfileStore stores them. Written with every save. Change it with `addUserId` and `removeUserId`. |
+| `RobloxMetaData` | table | Metadata stored with the record, as in ProfileStore. Written with every save. |
+| `key` | string | The profile's key. Read only. |
+| `loadCount` | number | How many sessions this key has had, this one included. Read only. |
+| `createdAt` | number | When the profile was first created, in Unix seconds (ProfileStore's `ProfileCreateTime`); 0 when the record does not say. Read only. |
+
+`Data` is the same table for the whole session. When KeepBlox has to put data back (a failed trade or
+edit), it changes that table in place, so references the game holds into it stay valid.
+
+## Signals
+
+Signals have `connect(listener)`, which returns a connection with `connected` and `disconnect()`. Each
+listener runs in its own thread, so a listener that yields or errors never stalls the library.
+
+### onSaving
+
+```lua
+profile.onSaving:connect(function(final: boolean, reason: EndReason?) ... end)
+```
+
+Fires right before each save takes its snapshot of `Data`: the last chance to write into it. `final`
+is `false` for a save or renewal. For the release it fires once, with `final = true` and the reason
+the session ends, right before the data freezes.
+
+<Aside type="caution">
+A listener must not yield. Writes made after it yields miss that save, and after a final `onSaving`
+the data is frozen.
+</Aside>
+
+### onSaved
+
+```lua
+profile.onSaved:connect(function(saved) ... end)
+```
+
+Fires with a copy of the stored data after every write that was stored, renewals included.
+
+### onEnded
+
+```lua
+profile.onEnded:connect(function(reason: EndReason) ... end)
+```
+
+Fires once, when the session ends. `Data` is frozen by then.
+
+## Methods
+
+### isActive
+
+```lua
+profile:isActive(): boolean
+```
+
+True while the session is live and not releasing.
+
+### save
+
+```lua
+profile:save(): boolean
+```
+
+Saves now and yields until it is stored: `true`, or `false` when it could not be (the call failed, the
+data cannot be stored, or the session has ended). It also renews the lease. Calls made while a save
+waits for its turn join that save, so calling `save` in a loop makes one write, not a queue of them.
+A save never ends the session.
+
+### release
+
+```lua
+profile:release(): ()
+```
+
+Ends the session: a final save, then the lock is released. Yields until done. The final save is
+retried with backoff until it is stored, the key turns out to be owned elsewhere, or shutdown runs out
+of time. Call it when the player leaves.
+
+### onMessage
+
+```lua
+profile:onMessage(handler: (message: any, processed: () -> ()) -> ()): ()
+```
+
+Handles offline messages sent to this key with `store:message`. Each message goes to one handler: the
+handlers in turn, until one calls `processed()` after changing `Data`. The message leaves the queue in
+the same save that stores that change, so it is handled exactly once. See
+[Messages and edits](/KeepBlox/guides/messages-and-edits/).
+
+### addUserId, removeUserId
+
+```lua
+profile:addUserId(userId: number): ()
+profile:removeUserId(userId: number): ()
+```
+
+Adds a user id to `UserIds` (once; an id already there is not added again), or removes it. The id
+must be an integer.
+
+## End reasons
+
+`onEnded` fires with one of these, and `onSaving` passes the same value with its final call.
+
+| Reason | When |
+|---|---|
+| `"released"` | The game called `profile:release()` (or `store:edit` released the key it claimed). |
+| `"handedOver"` | Another server asked for the key and this server handed it over with a final save. The request came by MessagingService, through this server's MemoryStore entry, or in the record, seen at a write. |
+| `"lost"` | A write found the key owned by another server: this session had already lost it, and nothing was written. |
+| `"shutdown"` | The server shut down (`BindToClose`), or the game called `store:close()`. |
+
+For any reason other than `"released"`, the player is usually still in the game: kick them, or tell
+them their data was opened elsewhere.
+
+```lua
+profile.onEnded:connect(function(reason)
+	if reason ~= "released" then
+		player:Kick("Your data was opened elsewhere.")
+	end
+end)
+```
+
+## The freeze on end
+
+When the session ends, for any reason, `Data` is frozen deeply with `table.freeze`. A release freezes
+it as it begins, right after the final `onSaving`, so the final save holds every change the game made.
+
+Code that still writes to `Data` then fails loudly instead of changing a copy nobody will save. That
+matters most when the session was lost to another server: a trade or purchase running on the stale
+copy stops with an error rather than handing out items that the other server's copy never had.
+
+```lua
+-- after the session ended:
+profile.Data.coins += 1 -- error: attempt to modify a readonly table
+```
+
+Check `profile:isActive()` before starting work that changes `Data` across a yield.

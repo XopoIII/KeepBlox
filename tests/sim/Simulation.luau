@@ -67,7 +67,7 @@ function Simulation.new(seed: number, adapter: Adapter.Adapter): Simulation
 	const shutdowns: { Shutdown } = {}
 	world.backend:observe(function(event)
 		if event.store == adapter.store then
-			Ledger.checkWrite(ledger, scheduler, jobOf, event)
+			Ledger.checkWrite(ledger, scheduler, jobOf, event, adapter.format)
 		end
 	end)
 
@@ -126,7 +126,7 @@ function Simulation.new(seed: number, adapter: Adapter.Adapter): Simulation
 					end,
 				})
 				if session == nil then
-					ledger:openFailed(key, name)
+					ledger:openFailed(key, name, not present[key])
 					return
 				end
 				ledger:opened(key, name, table.clone(session.data.p))
@@ -203,7 +203,7 @@ function Simulation.new(seed: number, adapter: Adapter.Adapter): Simulation
 		end,
 
 		finish = function(_: Simulation): Report
-			ledger:finish(world.backend, adapter.store)
+			ledger:finish(world.backend, adapter.store, adapter.format, world)
 			return {
 				violations = ledger.violations,
 				metrics = ledger.metrics,

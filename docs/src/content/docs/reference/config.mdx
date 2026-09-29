@@ -1,0 +1,84 @@
+---
+title: Config
+description: Every number the protocol runs on, with its default, its meaning, and the rules a store checks when it resolves them.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A store runs on the numbers in `KeepBlox.defaults`. The store option `config` overrides any of them
+for that store's profiles:
+
+```lua
+const store = KeepBlox.store("Profiles", {
+	template = TEMPLATE,
+	config = { renew = 120, death = 300 },
+})
+```
+
+The defaults are measured against the library's simulation scenarios and the ProfileStore baseline.
+Change them only for a reason you can name.
+
+## Fields
+
+### Renewal and crash loss
+
+| Field | Default | Meaning |
+|---|---|---|
+| `renew` | 300 | Seconds between an owner's writes of a profile. Every write renews the lease and saves the data if it changed. What a crash can lose meanwhile is covered by the MemoryStore snapshot in each beat, so this sets the data store cost (at 300 s, about 13 reads and 13 writes per player-hour), not the loss. |
+| `renewFallback` | 30 | Seconds between writes of a profile no MemoryStore snapshot covers (too large, holding buffers, or MemoryStore down). For such a profile, this is the most play a crash can lose. |
+| `heartbeat` | 4 | Seconds between a server's MemoryStore beats. Each beat carries the snapshots of its changed profiles and picks up hand-over requests. |
+| `snapshotBytes` | 1000 | Bytes of data up to which a profile is snapshotted in MemoryStore at every beat. The experience's MemoryStore holds about 1.2 KB per player in all. |
+| `snapshotTtl` | 900 | Seconds a server's MemoryStore entry, with its snapshots, outlives its last beat: how late after a crash a player can come back and still get them. |
+
+### Taking over a key
+
+| Field | Default | Meaning |
+|---|---|---|
+| `death` | 605 | Seconds a newcomer waits on a lease that does not move before it takes the key from a KeepBlox owner it believes dead. Used only when the owner's MemoryStore beat cannot be read. Only the newcomer's own clock measures it. |
+| `profileStoreSteal` | 40 | Seconds after its first hand-over request that a newcomer takes a key from a ProfileStore owner, as ProfileStore itself does (its `SESSION_STEAL`). |
+| `profileStoreDead` | 630 | A ProfileStore owner whose `LastUpdate` is this many seconds old is dead (ProfileStore's `ASSUME_DEAD`). |
+
+### Calls and loads
+
+| Field | Default | Meaning |
+|---|---|---|
+| `loadTimeout` | 120 | Seconds a load may take in all before it fails with `"timeout"`. Shared stores also retry a call for at most this long. |
+| `callTimeout` | 20 | Seconds a single data store or MemoryStore call may take before it counts as failed. |
+| `backoffMin` | 1 | The first retry delay, in seconds, for a hand-over poll or a failed call. |
+| `backoffMax` | 5 | The longest retry delay; each delay doubles from `backoffMin` up to this. |
+
+### Size and shutdown
+
+| Field | Default | Meaning |
+|---|---|---|
+| `writeBytesPerMinute` | 3145728 (3 MB) | Bytes of data one key may write a minute. A larger profile saves its data less often on renewals. Roblox allows 4 MB. See [Large profiles](/KeepBlox/guides/large-profiles/). |
+| `shutdownDeadline` | 25 | Seconds a shutdown (or `store:close()`) waits for releases before it gives up. Roblox allows 30 for `BindToClose`. |
+
+## Resolve rules
+
+A store resolves its config when it is opened, and raises an error on a bad one:
+
+- Every name must be one of the fields above; an unknown name is an error.
+- Every value must be a positive number.
+- `death` must be at least twice `renew`, so a slow owner is never mistaken for a dead one.
+- `backoffMin` must not exceed `backoffMax`.
+- `renewFallback` is capped at `renew`: a fallback slower than the renewal itself would be no fallback.
+  This one is adjusted, not refused.
+
+```lua
+KeepBlox.store("Profiles", { template = TEMPLATE, config = { renew = 400 } })
+-- error: KeepBlox: death must be at least twice renew
+```
+
+Raising `renew` therefore means raising `death` with it.
+
+<Aside>
+Two servers must agree on these numbers for the same data store. A newcomer judges an owner with its
+own `death`, `heartbeat` and ProfileStore numbers; an owner renews with its own `renew`. Change them on
+every server at once.
+</Aside>
+
+## Shared stores
+
+`KeepBlox.shared` takes the same `config` option and the same rules. It uses `loadTimeout`,
+`callTimeout`, `backoffMin` and `backoffMax`.
