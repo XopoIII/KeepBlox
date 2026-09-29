@@ -30,6 +30,16 @@ type Entry = {
 	writes: { { atMs: number, kilobytes: number } },
 }
 
+export type WriteEvent = {
+	store: string,
+	key: string,
+	--> The latest version before this write, or nil for the first write of the key.
+	previous: Version?,
+	version: Version,
+	--> The server that made the call, when the caller named one.
+	writer: string?,
+}
+
 export type Backend = {
 	--> The latest version of a key, deleted or not; nil if the key was never written.
 	latest: (self: Backend, store: string, key: string) -> Version?,
@@ -43,10 +53,13 @@ export type Backend = {
 		value: any,
 		userIds: { number },
 		metadata: { [string]: any },
-		nowMs: number
+		nowMs: number,
+		writer: string?
 	) -> Version,
 	--> Writes a tombstone. Returns the version it replaced as latest, or nil.
-	remove: (self: Backend, store: string, key: string, nowMs: number) -> Version?,
+	remove: (self: Backend, store: string, key: string, nowMs: number, writer: string?) -> Version?,
+	--> Calls `listener` after every committed write and remove, in commit order.
+	observe: (self: Backend, listener: (WriteEvent) -> ()) -> (),
 	--> Every retained version, oldest first.
 	versions: (self: Backend, store: string, key: string) -> { Version },
 	--> One version by id, or nil.
@@ -103,7 +116,9 @@ function Backend.new(): Backend
 		found.writes = kept
 	end
 
-	const function append(found: Entry, version: Version)
+	const listeners: { (WriteEvent) -> () } = {}
+
+	const function append(found: Entry, version: Version, store: string, key: string, writer: string?)
 		const versions = found.versions
 		const last = versions[#versions]
 		-- Only the first write in a UTC hour is kept as a backup; later ones in that hour replace it.
@@ -111,6 +126,10 @@ function Backend.new(): Backend
 			versions[#versions] = version
 		else
 			table.insert(versions, version)
+		end
+		const event: WriteEvent = { store = store, key = key, previous = last, version = version, writer = writer }
+		for _, listener in listeners do
+			listener(event)
 		end
 	end
 
@@ -137,7 +156,8 @@ function Backend.new(): Backend
 			value: any,
 			userIds: { number },
 			metadata: { [string]: any },
-			nowMs: number
+			nowMs: number,
+			writer: string?
 		): Version
 			const size = Encoding.size(value)
 			if size > VALUE_LIMIT then
@@ -161,11 +181,11 @@ function Backend.new(): Backend
 				metadata = Encoding.copy(metadata),
 				deleted = false,
 			}
-			append(found, version)
+			append(found, version, store, key, writer)
 			return version
 		end,
 
-		remove = function(_: Backend, store: string, key: string, nowMs: number): Version?
+		remove = function(_: Backend, store: string, key: string, nowMs: number, writer: string?): Version?
 			const found = entry(store, key)
 			if not found then
 				return nil
@@ -178,8 +198,12 @@ function Backend.new(): Backend
 				userIds = {},
 				metadata = {},
 				deleted = true,
-			})
+			}, store, key, writer)
 			return if previous and not previous.deleted then previous else nil
+		end,
+
+		observe = function(_: Backend, listener: (WriteEvent) -> ())
+			table.insert(listeners, listener)
 		end,
 
 		versions = function(_: Backend, store: string, key: string): { Version }

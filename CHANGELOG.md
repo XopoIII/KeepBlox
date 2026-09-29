@@ -16,3 +16,9 @@ semantic versioning.
   - a seeded virtual scheduler;
   - per-server clocks with skew and drift;
   - DataStore and MessagingService fakes.
+- The simulation harness:
+  - an engine environment that runs unmodified Roblox modules on virtual servers;
+  - a ledger that checks the data invariants on every committed write;
+  - nine named scenarios, run over many seeds.
+- The vendored ProfileStore v1.0.3 as the baseline, with its measured weak spots in
+  `tests/reference/BASELINE.md`.

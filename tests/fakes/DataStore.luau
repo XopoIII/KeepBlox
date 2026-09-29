@@ -113,7 +113,7 @@ function DataStore.new(context: Context, store: string): Services.DataStore
 		budget:acquire({ "StandardWrite" }, "Set", Errors.queueFull(302, "SetAsync"))
 		fault("SetAsync", key, false)
 		travel()
-		const version = backend:write(store, key, value, userIds or {}, metadata or {}, nowMs())
+		const version = backend:write(store, key, value, userIds or {}, metadata or {}, nowMs(), context.server)
 		fault("SetAsync", key, true)
 		travel()
 		remember(key, value, VersionPages.keyInfo(version, backend:createdMs(store, key) or 0))
@@ -159,7 +159,8 @@ function DataStore.new(context: Context, store: string): Services.DataStore
 			travel()
 			-- Another server wrote in between: discard this result and run the transform again.
 			if backend:latest(store, key) == base then
-				const version = backend:write(store, key, newValue, userIds or {}, metadata or {}, nowMs())
+				const version =
+					backend:write(store, key, newValue, userIds or {}, metadata or {}, nowMs(), context.server)
 				fault("UpdateAsync", key, true)
 				const written = VersionPages.keyInfo(version, backend:createdMs(store, key) or 0)
 				remember(key, newValue, written)
@@ -174,7 +175,7 @@ function DataStore.new(context: Context, store: string): Services.DataStore
 		fault("RemoveAsync", key, false)
 		travel()
 		const createdMs = backend:createdMs(store, key) or 0
-		const previous = backend:remove(store, key, nowMs())
+		const previous = backend:remove(store, key, nowMs(), context.server)
 		fault("RemoveAsync", key, true)
 		travel()
 		remember(key, nil, nil)
