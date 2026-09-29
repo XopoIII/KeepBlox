@@ -67,7 +67,13 @@ export type Session = {
 	storedReceipts: { [string]: boolean },
 	--> The hand-over subscription, set up before the claim; `done` once the session ended.
 	listener: { session: Session?, connection: Services.Connection?, done: boolean },
+	--> A manual save waiting in the lane that has not taken its snapshot yet. Later calls join it:
+	--> its snapshot will hold their changes, so a game calling `save` in a loop makes one write, not
+	--> a queue of them.
+	pending: Pending?,
 }
+
+export type Pending = { done: boolean, stored: boolean, waiters: { thread } }
 
 const Session = {}
 
@@ -211,7 +217,35 @@ function Session.save(context: Context, session: Session, automatic: boolean?): 
 	if not session.active then
 		return false
 	end
-	return session.serial:run(write, context, session, false, "released", automatic == true)
+	if automatic == true then
+		return session.serial:run(write, context, session, false, "released", true)
+	end
+	const joined = session.pending
+	if joined then
+		table.insert(joined.waiters, coroutine.running())
+		return coroutine.yield()
+	end
+	const pending: Pending = { done = false, stored = false, waiters = {} }
+	session.pending = pending
+	const ok, stored = pcall(session.serial.run, session.serial, function(): boolean
+		-- The snapshot is taken from here on: a later call must queue a save of its own.
+		if session.pending == pending then
+			session.pending = nil
+		end
+		return write(context, session, false, "released", false)
+	end)
+	if session.pending == pending then
+		session.pending = nil
+	end
+	pending.done = true
+	pending.stored = ok and stored == true
+	for _, waiter in pending.waiters do
+		context.services.clock.spawn(waiter, pending.stored)
+	end
+	if not ok then
+		error(stored, 0)
+	end
+	return pending.stored
 end
 
 --> Ends the session with a final save, retrying until it is stored, the key turns out to be owned

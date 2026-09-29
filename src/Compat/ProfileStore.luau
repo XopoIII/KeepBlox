@@ -107,6 +107,8 @@ function Compat.withServices(given: Services.Services?): any
 					services = base,
 					config = Config.resolve(overrides) :: any,
 					mock = if mock then `ProfileStore.Mock/{storeName}` else nil,
+					-- ProfileStore fills from the template only when the game calls Reconcile.
+					reconcile = false,
 				})
 				created.onError:connect(function(key: string, message: string)
 					noteError(message, storeName, key)

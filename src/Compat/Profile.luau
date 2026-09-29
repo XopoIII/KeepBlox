@@ -49,17 +49,7 @@ const LAST_SAVE_REASON: { [string]: string } = {
 
 --> Fills keys missing from `target` with copies from `template`, recursively (ProfileStore's
 --> Reconcile). Existing values are never replaced.
-function CompatProfile.reconcile(target: { [any]: any }, template: { [any]: any })
-	for key, value in template do
-		if type(key) == "string" then
-			if target[key] == nil then
-				target[key] = Record.copy(value)
-			elseif type(target[key]) == "table" and type(value) == "table" then
-				CompatProfile.reconcile(target[key], value)
-			end
-		end
-	end
-end
+CompatProfile.reconcile = Record.reconcile
 
 --> The ProfileStore face of an open KeepBlox profile.
 function CompatProfile.active(profile: Profile.Profile, template: { [any]: any }, services: Services.Services): any

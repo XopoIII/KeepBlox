@@ -62,6 +62,21 @@ function Record.copy(value: any): any
 	return result
 end
 
+--> Fills string keys missing from `target` with copies from `template`, recursively into tables both
+--> hold (ProfileStore's Reconcile). Existing values are never replaced, and array items are left alone.
+function Record.reconcile(target: { [any]: any }, template: { [any]: any })
+	for key, value in template do
+		if type(key) == "string" then
+			const current = target[key]
+			if current == nil then
+				target[key] = Record.copy(value)
+			elseif type(current) == "table" and type(value) == "table" and not table.isfrozen(current) then
+				Record.reconcile(current, value)
+			end
+		end
+	end
+end
+
 --> A new record for a key that holds nothing (or only messages), not yet owned by anyone.
 function Record.fresh(template: { [any]: any }, now: number, messages: any?): any
 	return {

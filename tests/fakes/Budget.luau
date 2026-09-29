@@ -90,7 +90,8 @@ function Budget.new(scheduler: Scheduler.Scheduler, players: number?): Budget
 					if delay <= 0 then
 						break
 					end
-					scheduler:wait(delay)
+					-- At least a millisecond: a float remainder of a token must not stall virtual time.
+					scheduler:wait(math.max(delay, 0.001))
 					refill(budget)
 				end
 				queues[queue] -= 1

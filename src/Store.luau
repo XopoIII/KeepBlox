@@ -10,12 +10,10 @@
 --- interval. The write renews the lease and saves the data if it changed. The loop waits when the
 --- server's data store budget is spent, so loads and releases are not starved. On shutdown every
 --- session is released in parallel within the deadline.
-const Claim = require("./Claim")
 const Config = require("./Config")
-const Inbox = require("./Inbox")
-const Messages = require("./Messages")
 const Migrate = require("./Migrate")
 const MockServices = require("./MockServices")
+const Open = require("./Open")
 const Profile = require("./Profile")
 const Record = require("./Record")
 const Schema = require("./Schema")
@@ -45,19 +43,12 @@ export type Options = {
 	--> Keep profiles in memory, never in a live data store: `true`, or the name of a scratch set. In
 	--> Studio without API access this happens on its own, after a read-only check.
 	mock: (boolean | string)?,
+	--> Fill keys the stored data lacks from the template, deeply, on every load. Default true.
+	reconcile: boolean?,
 }
 
-export type LoadOptions = {
-	--> Polled while the load waits; true gives up (the player left).
-	cancel: (() -> boolean)?,
-	--> Take the key at once from whoever holds it, as ProfileStore's `Steal = true`. For recovering a
-	--> key stuck on a dead server by hand; a normal load never needs it.
-	steal: boolean?,
-}
-
-export type LoadResult =
-	{ ok: true, profile: Profile.Profile }
-	| { ok: false, reason: Claim.Failure | "open" | "newerSchema" | "migration" | "schema" }
+export type LoadOptions = Open.LoadOptions
+export type LoadResult = Open.LoadResult
 
 export type Store = {
 	read name: string,
@@ -79,15 +70,6 @@ export type Store = {
 }
 
 const Store = {}
-
--- A stable spread of renewal times over the interval, from the key alone.
-const function offset(key: string): number
-	local hash = 0
-	for index = 1, #key do
-		hash = (hash * 31 + string.byte(key, index)) % 1000
-	end
-	return hash / 1000
-end
 
 function Store.new(name: string, options: Options): Store
 	assert(type(name) == "string" and #name > 0, "KeepBlox: a store needs a name")
@@ -165,101 +147,31 @@ function Store.new(name: string, options: Options): Store
 		end)
 	end
 
+	const state: Open.State = {
+		name = name,
+		template = template,
+		reconcile = options.reconcile ~= false,
+		plan = plan,
+		config = config,
+		base = base,
+		sessions = sessions,
+		opening = opening,
+		onError = onError,
+		closing = function(): boolean
+			return closing
+		end,
+		prepare = function()
+			if not checked then
+				checkAccess()
+			end
+		end,
+	}
+
 	return {
 		name = name,
 		onError = onError,
 		load = function(_: Store, key: string, loadOptions: LoadOptions?): LoadResult
-			assert(type(key) == "string" and #key > 0 and #key <= 50, "KeepBlox: a key is 1-50 characters")
-			if sessions[key] or opening[key] then
-				return { ok = false, reason = "open" }
-			end
-			opening[key] = true
-			if not checked then
-				checkAccess()
-			end
-			const context = table.clone(base)
-			context.identity = { placeId = services.placeId, jobId = services.jobId, guid = services.guid() }
-			const listener =
-				{ session = nil :: Session.Session?, connection = nil :: Services.Connection?, done = false }
-			Upkeep.listen(services, context.identity.guid, listener)
-			const claim = Claim.open(
-				context,
-				name,
-				key,
-				template,
-				loadOptions and loadOptions.cancel,
-				loadOptions ~= nil and loadOptions.steal == true
-			)
-			opening[key] = nil
-			if not claim.ok then
-				listener.done = true
-				if listener.connection then
-					listener.connection:Disconnect()
-				end
-				return { ok = false, reason = claim.reason }
-			end
-			const record = claim.record
-			-- The data as stored, before any migration: a profile that did not change is not written again.
-			const stored = Validate.check(record.Data, "Data", nil, Session.slicer(clock))
-			const migrated = Migrate.run(plan, record.Data, Migrate.stored(record))
-			if not migrated.ok then
-				-- Never hand out, or write back, data this server cannot make sense of.
-				Claim.giveBack(context, key, claim.loadCount)
-				listener.done = true
-				if listener.connection then
-					listener.connection:Disconnect()
-				end
-				onError:fire(key, migrated.message)
-				return { ok = false, reason = migrated.reason }
-			end
-			record.Data = migrated.data
-			local session: Session.Session
-			const profile = Profile.new(key, claim.loadCount, record, clock.spawn, {
-				isActive = function(): boolean
-					return session.active and not session.releasing
-				end,
-				save = function(): boolean
-					return Session.save(context, session)
-				end,
-				release = function()
-					Session.release(context, session, "released")
-				end,
-				handle = function(handler: Inbox.Handler)
-					session.inbox:handle(handler)
-				end,
-			})
-			-- Migrated data is written at the first renewal, with its new schema version.
-			const encoded = if migrated.changed then nil else stored
-			session = {
-				key = key,
-				loadCount = claim.loadCount,
-				profile = profile,
-				context = context,
-				active = true,
-				releasing = false,
-				storedText = if encoded then encoded.text else "",
-				storedSize = if encoded then encoded.size else 0,
-				lastDataWrite = clock.now(),
-				nextRenew = clock.now() + config.renew * (0.5 + offset(key) / 2),
-				serial = Serial.new(clock),
-				lastProblem = nil :: string?,
-				inbox = Inbox.new(clock, function()
-					session.saveSoon = true
-				end, function(message: string)
-					onError:fire(key, message)
-				end),
-				saveSoon = false,
-				receipts = Record.receipts(record.MetaData),
-				storedReceipts = {},
-				listener = listener,
-			}
-			listener.session = session
-			session.inbox:receive(Messages.list(record))
-			for _, id in session.receipts do
-				session.storedReceipts[id] = true
-			end
-			sessions[key] = session
-			return { ok = true, profile = profile }
+			return Open.load(state, key, loadOptions)
 		end,
 		message = function(_: Store, key: string, message: { [any]: any }): Send.Result
 			return Send.message(internals, key, message)

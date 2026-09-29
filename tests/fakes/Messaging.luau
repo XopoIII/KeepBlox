@@ -39,6 +39,8 @@ export type Bus = {
 	handle: (self: Bus, server: string) -> Services.Messaging,
 	--> Disconnects every subscription of `server` (it crashed).
 	disconnectServer: (self: Bus, server: string) -> (),
+	--> How many subscriptions `server` holds connected now (a leak shows here).
+	connected: (self: Bus, server: string) -> number,
 }
 
 const TOPIC_LIMIT = 80
@@ -120,6 +122,16 @@ function Messaging.bus(scheduler: Scheduler.Scheduler, faults: Faults.Faults, ep
 			end
 
 			return handle :: Services.Messaging
+		end,
+
+		connected = function(_: Bus, server: string): number
+			local count = 0
+			for _, subscription in subscriptions do
+				if subscription.server == server and subscription.connected then
+					count += 1
+				end
+			end
+			return count
 		end,
 
 		disconnectServer = function(_: Bus, server: string)
