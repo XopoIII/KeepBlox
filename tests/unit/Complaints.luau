@@ -129,7 +129,7 @@ Spec.test("Complaints: a load in flight when shutdown begins gives the key back 
 	world.scheduler:spawn(function()
 		outcome = store:load("u_1")
 	end, "A")
-	world.scheduler:run(world.scheduler.now + 1)
+	world.scheduler:run(world.scheduler.now + 3)
 	Sim.run(world.scheduler, "A", function()
 		for _, callback in server.closing do
 			callback()

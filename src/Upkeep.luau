@@ -19,31 +19,37 @@ const Upkeep = {}
 
 --> Beats this server's MemoryStore entry every `heartbeat` seconds, from the start (see Lease), and
 --> hands over the sessions another server asked for there. `beating.ok` says whether the last beat
---> landed: only then may a new session tell newcomers to trust the beat.
-function Upkeep.beat(internals: Internals, beating: { ok: boolean })
+--> landed: only then may a new session tell newcomers to trust the beat. Returns one beat, for a load
+--> that must not wait for the loop's next one.
+function Upkeep.beat(internals: Internals, beating: { ok: boolean }): () -> ()
 	const clock = internals.context().services.clock
+	const function once()
+		const context = internals.context()
+		if not Lease.available(context) then
+			return
+		end
+		const requested = Lease.beat(context)
+		if requested ~= nil and not beating.ok then
+			-- The beat is back: sessions opened meanwhile tell newcomers so at their next write.
+			for _, session in internals.sessions do
+				session.saveSoon = true
+			end
+		end
+		beating.ok = requested ~= nil
+		for _, key in requested or {} do
+			const session = internals.sessions[key]
+			if session and session.active and not session.releasing then
+				clock.spawn(Session.release, session.context, session, "handedOver")
+			end
+		end
+	end
 	clock.spawn(function()
 		while not internals.closing() do
-			const context = internals.context()
-			if Lease.available(context) then
-				const requested = Lease.beat(context)
-				if requested ~= nil and not beating.ok then
-					-- The beat is back: sessions opened meanwhile tell newcomers so at their next write.
-					for _, session in internals.sessions do
-						session.saveSoon = true
-					end
-				end
-				beating.ok = requested ~= nil
-				for _, key in requested or {} do
-					const session = internals.sessions[key]
-					if session and session.active and not session.releasing then
-						clock.spawn(Session.release, session.context, session, "handedOver")
-					end
-				end
-			end
-			clock.wait(context.config.heartbeat)
+			once()
+			clock.wait(internals.context().config.heartbeat)
 		end
 	end)
+	return once
 end
 
 --> Renews every session every `renew` seconds, and saves soon the ones that asked for it. The loop

@@ -188,7 +188,7 @@ function Store.new(name: string, options: Options): Store
 	base.beating = function(): boolean
 		return beating.ok
 	end
-	Upkeep.beat(internals, beating)
+	const beatOnce = Upkeep.beat(internals, beating)
 	const closeAll = Upkeep.shutdown(internals, function()
 		closing = true
 	end)
@@ -230,6 +230,10 @@ function Store.new(name: string, options: Options): Store
 		end,
 		importer = options.import,
 		beating = function(): boolean
+			-- A load before the first beat landed beats first: its record must say the server beats.
+			if not beating.ok then
+				beatOnce()
+			end
 			return beating.ok
 		end,
 	}

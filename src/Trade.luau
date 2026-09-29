@@ -77,6 +77,10 @@ function Trade.decide(context: Session.Context, storeName: string, id: string, w
 end
 
 -- One lock-guarded write of `session`'s record, inside its lane (the caller holds it).
+-- Sessions a trade's write found lost: ended once the trade is over (ending freezes the data, which the
+-- trade may still have to put back).
+const lostHere: { [Session.Session]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+
 const function write(context: Session.Context, session: Session.Session, data: any?, journal: any): boolean
 	const payload: Lock.Payload = { data = data, release = false, journal = journal }
 	local lost = false
@@ -93,6 +97,9 @@ const function write(context: Session.Context, session: Session.Session, data: a
 			return record
 		end
 	)
+	if ok and lost then
+		lostHere[session] = true
+	end
 	if ok and not lost and data ~= nil then
 		const encoded = Validate.check(data, "Data")
 		if encoded then
@@ -230,9 +237,16 @@ function Trade.run(
 	end
 	-- Lanes are always taken in key order, so two trades never wait on each other.
 	const first, second = if keyA < keyB then a else b, if keyA < keyB then b else a
-	return first.serial:run(function(): Result
+	const result = first.serial:run(function(): Result
 		return second.serial:run(inLanes, storeName, a, b, change)
 	end)
+	for _, session in { a, b } do
+		if lostHere[session] then
+			lostHere[session] = nil
+			Session.finish(session.context, session, "lost")
+		end
+	end
+	return result
 end
 
 --> Settles a trade left open in a record just claimed (its server died midway). Returns the data the

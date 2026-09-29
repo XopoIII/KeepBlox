@@ -27,8 +27,11 @@ const function held(seed: number, coins: number, config: { [string]: number }?):
 end
 
 -- Server B loads u_1; returns how long it took and the coins it got.
-const function takeOver(world: World.World, name: string): (number, number)
-	const b = KeepBlox.store("Profiles", { template = TEMPLATE, services = world:server({ name = name }).services })
+const function takeOver(world: World.World, name: string, config: { [string]: number }?): (number, number)
+	const b = KeepBlox.store(
+		"Profiles",
+		{ template = TEMPLATE, services = world:server({ name = name }).services, config = config }
+	)
 	local took, coins = math.huge, -1
 	Sim.run(world.scheduler, name, function()
 		const started = world.scheduler.now
@@ -62,11 +65,13 @@ Spec.test("Lease: an owner cut off from MessagingService hands over at its next 
 end)
 
 Spec.test("Lease: with MemoryStore down, the lease rule still takes over a crashed owner, safely", function()
-	const world, a = held(4, 7)
+	-- The fallback rule at a 15 s renewal (35 s death), so it shows within the spec's time.
+	const fallback = { renew = 15, death = 35 }
+	const world, a = held(4, 7, fallback)
 	a:crash()
 	world.faults:add({ op = "MemoryStoreGetAsync", error = "InternalError: memory store unavailable" })
 	world.faults:add({ op = "MemoryStoreUpdateAsync", error = "InternalError: memory store unavailable" })
-	const took, coins = takeOver(world, "B")
+	const took, coins = takeOver(world, "B", fallback)
 	Spec.truthy(took >= 30 and took < 60, `took {took} s (the data store rule)`)
 	Spec.equal(coins, 7)
 end)

@@ -72,7 +72,13 @@ const function setup(options: any?): (World.World, World.Server, KeepBlox.Store,
 	const world = World.new(1)
 	const server = world:server({ name = "A" })
 	const store =
-		KeepBlox.store("Profiles", options or { schema = SCHEMA, migrations = MIGRATIONS, services = server.services })
+		-- Migrated data is written at the first renewal: 15 s here, not the default 300.
+		KeepBlox.store("Profiles", options or {
+			schema = SCHEMA,
+			migrations = MIGRATIONS,
+			services = server.services,
+			config = { renew = 15, death = 35 },
+		})
 	const errors = {}
 	store.onError:connect(function(_: string, message: string)
 		table.insert(errors, message)

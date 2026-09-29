@@ -5,10 +5,13 @@
 
 export type Config = {
 	--> Seconds between an owner's writes. Every write renews the lease and saves the data if it
-	--> changed, so this is also the most play a crash can lose.
+	--> changed, so this is also the most play a crash can lose. It trades against cost: 300 s spends
+	--> about 14 reads and 14 writes per player-hour (bench/Frontier.luau). A dead owner is found by
+	--> its MemoryStore beat within seconds, whatever this is (see Lease).
 	renew: number,
 	--> Seconds a newcomer waits on a lease that does not move before it takes the key from a
-	--> KeepBlox owner it believes dead. Must stay well above `renew`.
+	--> KeepBlox owner it believes dead. Used only when the owner's MemoryStore beat cannot be read.
+	--> Must stay well above `renew`.
 	death: number,
 	--> Seconds after its first hand-over request that a newcomer takes a key from a ProfileStore owner,
 	--> as ProfileStore itself does (its SESSION_STEAL).
@@ -36,8 +39,8 @@ export type Config = {
 const Config = {}
 
 Config.DEFAULT = table.freeze({
-	renew = 15,
-	death = 35,
+	renew = 300,
+	death = 605,
 	profileStoreSteal = 40,
 	profileStoreDead = 630,
 	loadTimeout = 120,

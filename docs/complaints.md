@@ -15,7 +15,7 @@ Suphi [t/2425597](https://devforum.roblox.com/t/2425597) (`pN #m` is page N, pos
 
 | Complaint | Source | KeepBlox | Spec |
 |---|---|---|---|
-| 60-90 s wait for the lock after a server hop or auto-reconnect | PS#41, PS p60 #1274 | a live owner hands over on request in about a second; a dead one is taken after 35 s of an unmoved lease | `tests/scenario/KeepBlox.luau` (handoff, crash), `tests/reference/BASELINE.md` |
+| 60-90 s wait for the lock after a server hop or auto-reconnect | PS#41, PS p60 #1274 | a live owner hands over on request in about a second (through MemoryStore when MessagingService is down); a dead server is known by its MemoryStore beat, and its keys are taken within about 12 s | `tests/unit/Lease.luau`, `bench/Benchmarks.md` |
 | Kicked after a manual save | PStore p8 #153 | a save never ends or re-claims the session | `Complaints: a manual save does not end the session` |
 | Lock kept after a failed load or close; player locked out | Lapis#30, Lapis#46 | a failed or cancelled load gives the key back; a failed migration too | `Complaints: a load in flight when shutdown begins gives the key back`, `Store: a cancelled load gives the key back` |
 | Every load became a force-load | DataKeep#6 | the claim transform decides from the record alone | `tests/unit/Lock.luau` |
@@ -109,9 +109,8 @@ Suphi [t/2425597](https://devforum.roblox.com/t/2425597) (`pN #m` is page N, pos
 
 ## Still open
 
-- Suphi's DataStore Module is not in the benchmarks yet: its source ships only as a Roblox asset, which needs
-  a signed-in download. Its importer is tested with values in its documented format.
-- KeepBlox renews every lease with a DataStore write every 15 s: about 240 reads and writes per player-hour,
-  against ProfileStore's 14 (bench/Benchmarks.md). That is the price of losing at most 15 s on a crash
-  (ProfileStore: 300 s) and is within 10% of the per-player budget, but it is the one number where rivals
-  spend less. A MemoryStore heartbeat (M8) is the plan to bring it down.
+- Cost against crash loss is one trade-off no library escapes: data store writes an hour times the
+  seconds a crash can lose is about constant (`bench/Frontier.luau`). KeepBlox writes every 300 s by
+  default, as cheap as ProfileStore and Lapis, and loses less than ProfileStore on a crash (Lapis locks
+  the player out instead). ProfileService loses less by writing every 30 s, at nine times the cost;
+  `config = { renew = 30, death = 65 }` does the same with KeepBlox.
