@@ -55,3 +55,13 @@ Suphi [t/2425597](https://devforum.roblox.com/t/2425597) (`pN #m` is page N, pos
 | Complaint | Source | KeepBlox | Spec |
 |---|---|---|---|
 | Reconcile is manual and shallow | Suphi p11 #213, PStore#9 | a template store fills missing keys deeply on every load; a schema store fills its defaults | `Complaints: new template keys reach old profiles, deeply` |
+
+## Support, admin and Studio
+
+| Complaint | Source | KeepBlox | Spec |
+|---|---|---|---|
+| No way to edit offline players (bans, gifts, bulk fixes) | PS#48, PS p40 #834, DocS#58 | `store:edit(key, fn)`: edits in place when open here, claims quietly when nobody holds the key, "inUse" (and a `store:message`) when a live server does; never kicks | `tests/unit/Edit.luau` |
+| An edit that fails half-way leaves broken data | DocS#92 | an edit that throws or cannot be stored is undone and nothing is written | `Edit: an edit that throws writes nothing` |
+| Want Studio play tests that never save | PStore p6 #113, DocS#65 | `studio = "memory"` | `Mock: studio = memory never touches live data` |
+| Want to test against real profiles without touching them | PStore p6 #113 | `studio = "copy"`: live data read once, unlocked, kept in memory | `Mock: studio = copy starts from the live data` |
+| Studio with API access writes a probe to a live key | PStore findings | the access check only reads | `Mock: Studio without API access falls back to memory` |

@@ -21,7 +21,7 @@ const Call = require("./Call")
 const Lock = require("./Lock")
 const Session = require("./Session")
 
-export type Failure = "cancelled" | "closing" | "timeout" | "foreign" | "outbid"
+export type Failure = "cancelled" | "closing" | "timeout" | "foreign" | "outbid" | "inUse"
 
 export type Result = { ok: true, record: any, loadCount: number } | { ok: false, reason: Failure }
 
@@ -87,7 +87,7 @@ function Claim.open(
 	key: string,
 	template: { [any]: any },
 	cancel: (() -> boolean)?,
-	force: boolean?
+	mode: Lock.Mode?
 ): Result
 	const clock = context.services.clock
 	const config = context.config
@@ -113,7 +113,7 @@ function Claim.open(
 			context.dataStore,
 			key,
 			function(value: any): any
-				const record, outcome = Lock.claim(value, context.identity, template, clock.time(), steal, force)
+				const record, outcome = Lock.claim(value, context.identity, template, clock.time(), steal, mode)
 				claim = outcome
 				return record
 			end
@@ -141,7 +141,34 @@ function Claim.open(
 			const now = clock.now()
 			const guid = tostring(owner.session[3])
 			local watch = observed
-			if watch == nil or watch.guid ~= guid or watch.loadCount ~= owner.loadCount then
+			if mode and mode.quiet then
+				-- Never ask: fail while the owner lives, take the key only once it is proven dead.
+				if
+					watch ~= nil
+					and (watch.guid ~= guid or watch.loadCount ~= owner.loadCount or owner.lease ~= watch.lease)
+				then
+					return { ok = false, reason = "inUse" }
+				end
+				if watch == nil then
+					watch =
+						{ guid = guid, loadCount = owner.loadCount, lease = owner.lease, since = now, askedAt = now }
+					observed = watch
+				end
+				const current = watch :: Observed
+				const dead = if owner.lease == nil
+					then owner.lastUpdate ~= nil and clock.time() - owner.lastUpdate > config.profileStoreDead
+					else now - current.since >= config.death
+				if dead then
+					mode =
+						{ quiet = true, expect = { guid = guid, loadCount = owner.loadCount, lease = owner.lease } } :: Lock.Mode
+					continue
+				elseif owner.lease == nil then
+					return { ok = false, reason = "inUse" }
+				end
+				clock.wait(delay)
+				delay = math.min(delay * 2, config.backoffMax)
+				continue
+			elseif watch == nil or watch.guid ~= guid or watch.loadCount ~= owner.loadCount then
 				watch = { guid = guid, loadCount = owner.loadCount, lease = owner.lease, since = now, askedAt = now }
 				observed = watch
 				ask(context, owner)

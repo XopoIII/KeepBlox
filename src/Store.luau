@@ -11,6 +11,7 @@
 --- server's data store budget is spent, so loads and releases are not starved. On shutdown every
 --- session is released in parallel within the deadline.
 const Config = require("./Config")
+const Edit = require("./Edit")
 const Migrate = require("./Migrate")
 const MockServices = require("./MockServices")
 const Open = require("./Open")
@@ -45,6 +46,12 @@ export type Options = {
 	mock: (boolean | string)?,
 	--> Fill keys the stored data lacks from the template, deeply, on every load. Default true.
 	reconcile: boolean?,
+	--> What Studio play tests do with data (live servers ignore it):
+	--> - "live" (default): the real store when API access is on, memory when it is off;
+	--> - "memory": always memory, nothing live is read or written;
+	--> - "copy": each profile starts as a copy of its live data (read once, never written), then lives in
+	-->   memory. For testing against real profiles without touching them.
+	studio: ("live" | "memory" | "copy")?,
 }
 
 export type LoadOptions = Open.LoadOptions
@@ -67,6 +74,9 @@ export type Store = {
 	restore: (self: Store, key: string, version: string) -> Versions.Restored,
 	--> A ProcessReceipt callback for this store, answering with a decision's name (see Receipts).
 	receipts: (self: Store, options: Receipts.Options) -> (receipt: Receipts.Receipt) -> Receipts.Decision,
+	--> Edits a key, open here or nobody's, without kicking anyone (see Edit). "inUse" when a live server
+	--> holds it: send a message instead.
+	edit: (self: Store, key: string, edit: (data: any) -> (), options: Edit.Options?) -> Edit.Result,
 }
 
 const Store = {}
@@ -85,12 +95,20 @@ function Store.new(name: string, options: Options): Store
 	)
 	const plan = Migrate.plan(options.schema, options.version, options.migrations)
 	const config = Config.resolve(options.config)
+	const studio = options.studio or "live"
+	assert(
+		studio == "live" or studio == "memory" or studio == "copy",
+		`KeepBlox: studio is "live", "memory" or "copy", not "{studio}"`
+	)
 	local services = options.services or require("./RobloxServices").build()
+	const inMemory = services.isStudio and studio ~= "live"
 	if options.mock then
 		services = MockServices.wrap(services, if type(options.mock) == "string" then options.mock else "scratch")
+	elseif inMemory then
+		services = MockServices.wrap(services, `studio:{studio}`, studio == "copy")
 	end
 	-- Studio without API access is found by a read on first load; a write would touch a live key.
-	local checked = options.mock ~= nil or not services.isStudio
+	local checked = options.mock ~= nil or inMemory or not services.isStudio
 	const clock = services.clock
 	const onError: Signal.Signal<string, string> = Signal.new(clock.spawn)
 	const sessions: { [string]: Session.Session } = {}
@@ -187,6 +205,9 @@ function Store.new(name: string, options: Options): Store
 		end,
 		receipts = function(_: Store, receiptOptions: Receipts.Options): (Receipts.Receipt) -> Receipts.Decision
 			return Receipts.handler(internals, receiptOptions)
+		end,
+		edit = function(_: Store, key: string, edit: (data: any) -> (), editOptions: Edit.Options?): Edit.Result
+			return Edit.run(state, key, edit, editOptions)
 		end,
 		profiles = function(_: Store): { [string]: Profile.Profile }
 			const open = {}

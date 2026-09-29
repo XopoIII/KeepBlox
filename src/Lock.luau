@@ -6,6 +6,7 @@
 ---   hand it over by writing `ForceLoadSession`. With `steal`, it takes the key only if that request
 ---   is still ours (a third server asking since then wins, as in ProfileStore).
 --- - `force` takes the key from whoever holds it, at once (ProfileStore's `Steal = true`).
+--- - `quiet` never asks: a held key is left as it is, unless the caller proves its owner dead.
 --- - `save` writes only while `ActiveSession` is this server and `SessionLoadCount` is this session's.
 ---   Otherwise it writes nothing and reports the session lost. Every save bumps our lease and
 ---   `LastUpdate`, and reports another server's pending `ForceLoadSession`, so the owner hands over.
@@ -28,6 +29,19 @@ export type Claim =
 	| { kind: "busy", owner: Owner }
 	| { kind: "outbid" }
 	| { kind: "foreign", value: any }
+
+--> How a claim treats a key someone else holds.
+export type Mode = {
+	--> Take the key from whoever holds it, at once (ProfileStore's `Steal = true`).
+	force: boolean?,
+	--> Never ask for a hand-over: a held key is left untouched, no `ForceLoadSession` is written.
+	quiet: boolean?,
+	--> With `quiet`: take a held key only while its owner is still this session at this lease, which
+	--> the caller watched long enough to know it is dead.
+	expect: Expected?,
+}
+
+export type Expected = { guid: string, loadCount: number, lease: number? }
 
 export type Save =
 	{ kind: "saved", handOver: boolean, record: any, messages: { Messages.Entry } }
@@ -70,7 +84,7 @@ function Lock.claim(
 	template: { [any]: any },
 	now: number,
 	steal: boolean,
-	force: boolean?
+	mode: Mode?
 ): (any?, Claim)
 	const kind = Record.classify(value)
 	if kind == "foreign" then
@@ -86,8 +100,26 @@ function Lock.claim(
 
 	const ours = Record.ours(meta)
 	const request = meta.ForceLoadSession
-	if force then
+	const owner: Owner = {
+		session = active,
+		lease = if ours.owner ~= nil and ours.owner == active[3] then ours.lease else nil,
+		lastUpdate = meta.LastUpdate,
+		loadCount = meta.SessionLoadCount or 0,
+	}
+	if mode and mode.force then
 		return record, take(record, identity, now)
+	end
+	if mode and mode.quiet then
+		const expect = mode.expect
+		if
+			expect
+			and expect.guid == tostring(active[3])
+			and expect.loadCount == owner.loadCount
+			and expect.lease == owner.lease
+		then
+			return record, take(record, identity, now)
+		end
+		return nil, { kind = "busy", owner = owner }
 	end
 	if steal then
 		if Record.isHere(request, identity) then
@@ -97,16 +129,7 @@ function Lock.claim(
 		return nil, { kind = "outbid" }
 	end
 	meta.ForceLoadSession = { identity.placeId, identity.jobId }
-	return record,
-		{
-			kind = "busy",
-			owner = {
-				session = active,
-				lease = if ours.owner ~= nil and ours.owner == active[3] then ours.lease else nil,
-				lastUpdate = meta.LastUpdate,
-				loadCount = meta.SessionLoadCount or 0,
-			},
-		}
+	return record, { kind = "busy", owner = owner }
 end
 
 --> The save transform for the session `loadCount` of this server.

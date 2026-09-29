@@ -85,4 +85,59 @@ Spec.test("Mock: Studio with API access uses the real store", function()
 	Spec.equal(seen[1], "Profiles/global u_1")
 end)
 
+Spec.test("Mock: studio = memory never touches live data, even with API access (ProfileStore p6 #113)", function()
+	const world = World.new(1)
+	const seen = writes(world)
+	const services: any = world:server({ name = "A" }).services
+	services.isStudio = true
+	const store = KeepBlox.store("Profiles", { template = { coins = 0 }, services = services, studio = "memory" })
+	Sim.run(world.scheduler, "A", function()
+		const result = store:load("u_1")
+		assert(result.ok, "loaded")
+		result.profile.Data.coins = 5
+		result.profile:release()
+	end, 60)
+	Spec.equal(seen, {})
+end)
+
+Spec.test("Mock: studio = copy starts from the live data, unlocked, and never writes it back", function()
+	const world = World.new(1)
+	const live =
+		KeepBlox.store("Profiles", { template = { coins = 0 }, services = world:server({ name = "L" }).services })
+	Sim.run(world.scheduler, "L", function()
+		const result = live:load("u_1")
+		assert(result.ok, "live load")
+		result.profile.Data.coins = 42
+		result.profile:save()
+	end, 10)
+	const byStudio: { string } = {}
+	world.backend:observe(function(event)
+		if event.writer == "S" then
+			table.insert(byStudio, `{event.store} {event.key}`)
+		end
+	end)
+	const services: any = world:server({ name = "S" }).services
+	services.isStudio = true
+	const studio = KeepBlox.store("Profiles", { template = { coins = 0 }, services = services, studio = "copy" })
+	local took = math.huge
+	Sim.run(world.scheduler, "S", function()
+		const started = world.scheduler.now
+		const result = studio:load("u_1")
+		assert(result.ok, "studio load")
+		took = world.scheduler.now - started
+		Spec.equal(result.profile.Data.coins, 42)
+		result.profile.Data.coins = 0
+		result.profile:release()
+	end, world.scheduler.now + 30)
+	Spec.truthy(took < 2, `the live owner was not waited on ({took} s)`)
+	Spec.equal(byStudio, {}, "studio writes")
+	Spec.equal((world.backend:latest("Profiles/global", "u_1") :: any).value.Data.coins, 42)
+end)
+
+Spec.test("Mock: a studio mode other than live, memory or copy is refused", function()
+	Spec.throws(function()
+		KeepBlox.store("P", { template = {}, studio = "off" :: any })
+	end, `studio is "live", "memory" or "copy", not "off"`)
+end)
+
 return nil

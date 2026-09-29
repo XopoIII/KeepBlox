@@ -26,11 +26,15 @@ export type LoadOptions = {
 	--> Take the key at once from whoever holds it, as ProfileStore's `Steal = true`. For recovering a
 	--> key stuck on a dead server by hand; a normal load never needs it.
 	steal: boolean?,
+	--> Never ask a live owner to hand the key over (no player is kicked): fail with "inUse" instead.
+	--> A dead owner is still taken over, once its lease has not moved for `death` seconds. For
+	--> support tools and offline edits (`store:edit`).
+	quiet: boolean?,
 }
 
-export type LoadResult =
-	{ ok: true, profile: Profile.Profile }
-	| { ok: false, reason: Claim.Failure | "open" | "newerSchema" | "migration" | "schema" }
+export type Failure = Claim.Failure | "open" | "newerSchema" | "migration" | "schema"
+
+export type LoadResult = { ok: true, profile: Profile.Profile } | { ok: false, reason: Failure }
 
 --> What a load needs from its store.
 export type State = {
@@ -109,7 +113,14 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 	context.identity = { placeId = services.placeId, jobId = services.jobId, guid = services.guid() }
 	const listener: Upkeep.Listener = { session = nil, connection = nil, done = false }
 	Upkeep.listen(services, context.identity.guid, listener)
-	const claim = Claim.open(context, state.name, key, state.template, cancel, options ~= nil and options.steal == true)
+	const claim = Claim.open(
+		context,
+		state.name,
+		key,
+		state.template,
+		cancel,
+		if options then { force = options.steal == true, quiet = options.quiet == true } else nil
+	)
 	state.opening[key] = nil
 	if not claim.ok then
 		stopListening(listener)
