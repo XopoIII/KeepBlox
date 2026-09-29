@@ -185,7 +185,7 @@ const MUTANTS: { Mutant } = {
 	},
 	{
 		file = "src/Record.luau",
-		from = "\t\tsetmetatable(result, nil)",
+		from = "\t\tsetmetatable(result :: any, nil)",
 		to = "",
 		breaks = "a copy of the data carries no metatable",
 	},
