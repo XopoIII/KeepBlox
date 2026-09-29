@@ -17,7 +17,8 @@
 --- - When a session ends, `Data` is frozen: late writes fail loudly instead of being lost quietly.
 --- - The owner saves every renewal (15 s, only if changed), not every 300 s. `AUTO_SAVE_PERIOD`,
 ---   `LOAD_REPEAT_PERIOD` and `FIRST_LOAD_REPEAT` are accepted by `SetConstant` but have no effect.
---- - `KeyInfo` is nil.
+--- - `KeyInfo` is nil. `MessageHandler` works on active profiles only, not in view mode.
+--- - A full message queue refuses `MessageAsync` (false) instead of dropping the oldest message.
 const Config = require("../Config")
 const CompatProfile = require("./Profile")
 const MockServices = require("../MockServices")
@@ -166,6 +167,55 @@ function Compat.withServices(given: Services.Services?): any
 			return (pcall(function()
 				dataStore():RemoveAsync(key)
 			end))
+		end
+
+		function store.MessageAsync(_: any, key: string, message: { [any]: any }): boolean
+			return open():message(key, message).ok
+		end
+
+		-- ProfileStore takes dates as DateTime or Unix milliseconds.
+		const function millis(date: any): number
+			if type(date) == "number" then
+				return date
+			elseif date ~= nil then
+				return date.UnixTimestampMillis
+			end
+			return 0
+		end
+
+		function store.VersionQuery(_: any, key: string, direction: any?, minDate: any?, maxDate: any?): any
+			-- Enum.SortDirection.Descending, read by its Name.
+			local name = tostring(direction)
+			pcall(function()
+				name = (direction :: any).Name
+			end)
+			const newestFirst = name == "Descending"
+			local found: { any }? = nil
+			local nextIndex = 1
+			return {
+				NextAsync = function(_: any): any
+					if found == nil then
+						found = open():versions(key, {
+							newestFirst = newestFirst,
+							from = millis(minDate),
+							to = millis(maxDate),
+							limit = 1024,
+						})
+					end
+					const list = found :: { any }
+					while nextIndex <= #list do
+						const entry = list[nextIndex]
+						nextIndex += 1
+						if not entry.deleted then
+							const profile = store:GetAsync(key, entry.version)
+							if profile then
+								return profile
+							end
+						end
+					end
+					return nil
+				end,
+			}
 		end
 
 		return store

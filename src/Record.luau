@@ -88,7 +88,7 @@ function Record.isHere(tag: any, identity: Identity): boolean
 end
 
 --> Our namespaced state in a record's MetaData, created if absent (a ProfileStore record has none).
-function Record.ours(meta: any): { lease: number, owner: string? }
+function Record.ours(meta: any): { lease: number, owner: string?, receipts: { string }? }
 	local state = meta.KeepBlox
 	if type(state) ~= "table" then
 		state = { lease = 0 }
@@ -98,6 +98,13 @@ function Record.ours(meta: any): { lease: number, owner: string? }
 		state.lease = 0
 	end
 	return state
+end
+
+--> The purchase receipt ids a record holds, oldest first (see Receipts).
+function Record.receipts(meta: any): { string }
+	const ours = if type(meta) == "table" then meta.KeepBlox else nil
+	const list = if type(ours) == "table" then ours.receipts else nil
+	return if type(list) == "table" then table.clone(list) else {}
 end
 
 return Record

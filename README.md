@@ -23,6 +23,9 @@ servers and random fault schedules:
 - Shutdown releases every profile within the deadline; no call retries forever.
 - Saving is spread across frames and respects the DataStore request budget.
 
+It also gives you offline messages (gifts, admin grants) handled exactly once, a `ProcessReceipt` helper
+that never grants a purchase twice or loses one, and version history with a safe restore for support.
+
 ## Migrating from ProfileStore
 
 Change one line; the keys and their format stay as they are:

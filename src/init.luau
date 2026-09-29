@@ -41,4 +41,13 @@ KeepBlox.store = Store.new
 --> The protocol's default numbers.
 KeepBlox.defaults = Config.DEFAULT
 
+--> The callback for `MarketplaceService.ProcessReceipt`, over `store:receipts(options)`: it returns the
+--> engine's `Enum.ProductPurchaseDecision`.
+function KeepBlox.processReceipt(store: Store.Store, options: any): (receipt: any) -> any
+	const decide = store:receipts(options)
+	return function(receipt: any): any
+		return (Enum :: any).ProductPurchaseDecision[decide(receipt)]
+	end
+end
+
 return table.freeze(KeepBlox)

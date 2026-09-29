@@ -40,6 +40,10 @@ export type Profile = {
 	save: (self: Profile) -> boolean,
 	--> Ends the session: a final save, then the lock is released. Yields until done.
 	release: (self: Profile) -> (),
+	--> Handles offline messages sent to this key (`store:message`). Each message goes to one handler:
+	--> the handlers in turn, until one calls `processed()` after changing `Data`. The message leaves
+	--> the queue in the same save that stores that change, so it is handled exactly once.
+	onMessage: (self: Profile, handler: (message: any, processed: () -> ()) -> ()) -> (),
 	addUserId: (self: Profile, userId: number) -> (),
 	removeUserId: (self: Profile, userId: number) -> (),
 }
@@ -49,6 +53,7 @@ export type Backing = {
 	isActive: () -> boolean,
 	save: () -> boolean,
 	release: () -> (),
+	handle: (handler: (message: any, processed: () -> ()) -> ()) -> (),
 }
 
 const Profile = {}
@@ -89,6 +94,10 @@ function Profile.new(
 		end,
 		release = function(_: Profile)
 			backing.release()
+		end,
+		onMessage = function(_: Profile, handler: (message: any, processed: () -> ()) -> ())
+			assert(type(handler) == "function", "KeepBlox: onMessage needs a function")
+			backing.handle(handler)
 		end,
 		addUserId = function(self: Profile, userId: number)
 			assert(type(userId) == "number" and userId == math.floor(userId), "KeepBlox: a user id is an integer")
