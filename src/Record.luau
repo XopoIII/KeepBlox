@@ -113,6 +113,8 @@ function Record.ours(meta: any): {
 	trade: { id: string, before: any }?,
 	--> The owner beats in MemoryStore (see Lease).
 	memory: boolean?,
+	--> The owner's latest MemoryStore snapshot number when this data was stored (see Lease).
+	snap: number?,
 }
 	local state = meta.KeepBlox
 	if type(state) ~= "table" then

@@ -28,7 +28,7 @@ function Upkeep.beat(internals: Internals, beating: { ok: boolean }): () -> ()
 		if not Lease.available(context) then
 			return
 		end
-		const requested = Lease.beat(context)
+		const requested = Lease.beat(context, internals.sessions)
 		if requested ~= nil and not beating.ok then
 			-- The beat is back: sessions opened meanwhile tell newcomers so at their next write.
 			for _, session in internals.sessions do
@@ -36,6 +36,13 @@ function Upkeep.beat(internals: Internals, beating: { ok: boolean }): () -> ()
 			end
 		end
 		beating.ok = requested ~= nil
+		-- A profile no snapshot covers is written at `renewFallback`, so a crash loses no more than that.
+		const soonest = clock.now() + context.config.renewFallback
+		for _, session in internals.sessions do
+			if not session.snapshotted and session.nextRenew > soonest then
+				session.nextRenew = soonest
+			end
+		end
 		for _, key in requested or {} do
 			const session = internals.sessions[key]
 			if session and session.active and not session.releasing then
@@ -72,7 +79,8 @@ function Upkeep.renew(internals: Internals)
 						break
 					end
 					if due then
-						session.nextRenew = now + context.config.renew
+						session.nextRenew = now
+							+ if session.snapshotted then context.config.renew else context.config.renewFallback
 					end
 					session.saveSoon = false
 					clock.spawn(Session.save, session.context, session, true)

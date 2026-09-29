@@ -11,77 +11,16 @@
 --- hand-over or its release (the "poison" scenario), and the error names the value's path.
 const Call = require("./Call")
 const Codec = require("./Codec")
-const Config = require("./Config")
-const Inbox = require("./Inbox")
 const Lock = require("./Lock")
-const Migrate = require("./Migrate")
 const Profile = require("./Profile")
 const Record = require("./Record")
 const Schema = require("./Schema")
-const Serial = require("./Serial")
-const Services = require("./Services")
+const Types = require("./Types")
 const Validate = require("./Validate")
 
-export type Context = {
-	--> The store's name (its data store).
-	storeName: string,
-	services: Services.Services,
-	config: Config.Config,
-	dataStore: Services.DataStore,
-	identity: Record.Identity,
-	--> Reports a problem with a key; the store turns it into its `onError` signal.
-	report: (key: string, message: string) -> (),
-	--> True once the server began shutting down.
-	closing: () -> boolean,
-	--> The schema and migrations the data follows.
-	plan: Migrate.Plan,
-	--> Called once when a session ends, so the store can forget it.
-	forget: (session: Session) -> (),
-	--> Called after each save stored the data (`final` on the release): the leaderboards' mirror.
-	stored: ((key: string, data: any, final: boolean) -> ())?,
-	--> Large profiles are stored compressed (see Codec).
-	compress: Codec.Options?,
-	--> This server's MemoryStore beat is landing (see Lease); every write tells newcomers so.
-	beating: (() -> boolean)?,
-}
-
-export type Session = {
-	key: string,
-	loadCount: number,
-	profile: Profile.Profile,
-	--> The context this session writes with: the store's, with this session's own identity.
-	context: Context,
-	active: boolean,
-	--> True from the moment a release begins: the data is frozen then, so the final save holds every
-	--> change the game made.
-	releasing: boolean,
-	--> The canonical text of the data as last stored.
-	storedText: string,
-	storedSize: number,
-	lastDataWrite: number,
-	nextRenew: number,
-	serial: Serial.Serial,
-	--> The last validation problem reported, so it is not reported on every renewal.
-	lastProblem: string?,
-	--> The incoming messages and their handlers.
-	inbox: Inbox.Inbox,
-	--> Save at the next tick, not at the next renewal: a message was processed, or someone sent one.
-	saveSoon: boolean,
-	--> Purchase receipt ids granted into the data, the ones not yet stored included (see Receipts).
-	receipts: { string },
-	--> The receipt ids the store is known to hold.
-	storedReceipts: { [string]: boolean },
-	--> The hand-over subscription, set up before the claim; `done` once the session ended.
-	listener: { session: Session?, connection: Services.Connection?, done: boolean },
-	--> A manual save waiting in the lane that has not taken its snapshot yet. Later calls join it:
-	--> its snapshot will hold their changes, so a game calling `save` in a loop makes one write, not
-	--> a queue of them.
-	pending: Pending?,
-	--> The record holds a settled trade's journal: the next write that stores this data clears it.
-	clearJournal: boolean,
-}
-
-export type Pending = { done: boolean, stored: boolean, waiters: { thread } }
+export type Context = Types.Context
+export type Session = Types.Session
+export type Pending = Types.Pending
 
 const Session = {}
 
@@ -119,10 +58,10 @@ const function write(
 		profile.onSaving:fire(false, nil)
 	end
 	-- Copy at once (fast), then check the copy in slices, so a large profile never stalls a frame.
-	const snapshot = Record.copy(profile.Data)
+	local snapshot = Record.copy(profile.Data)
 	-- Taken at the same moment as the snapshot: the effects of these messages are in it.
-	const consumed = session.inbox:processed()
-	const receipts = table.clone(session.receipts)
+	local consumed = session.inbox:processed()
+	local receipts = table.clone(session.receipts)
 	local newReceipt = false
 	for _, id in receipts do
 		if not session.storedReceipts[id] then
@@ -145,6 +84,13 @@ const function write(
 		if problem ~= session.lastProblem then
 			session.lastProblem = problem
 			context.report(session.key, `not saved: {problem}`)
+		end
+		-- The last snapshot that could be stored is newer than the store's copy: that is stored instead,
+		-- with the messages and receipts that were in it (see Lease).
+		const good = session.good
+		if good and good.text ~= session.storedText then
+			snapshot, consumed, receipts, data = good.data, good.consumed, good.receipts, good.data
+			encoded = { text = good.text, size = good.size }
 		end
 	elseif encoded.text ~= session.storedText or next(consumed) ~= nil or newReceipt then
 		session.lastProblem = nil
@@ -169,6 +115,7 @@ const function write(
 		receipts = if data ~= nil then receipts else nil,
 		schemaVersion = if data ~= nil then context.plan.version else nil,
 		memory = context.beating ~= nil and context.beating(),
+		snap = session.snapSeq,
 		-- A settled trade's journal goes only with data that matches memory (see Trade).
 		journal = if session.clearJournal and (data ~= nil or (encoded and encoded.text == session.storedText))
 			then false

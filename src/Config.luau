@@ -5,9 +5,9 @@
 
 export type Config = {
 	--> Seconds between an owner's writes. Every write renews the lease and saves the data if it
-	--> changed, so this is also the most play a crash can lose. It trades against cost: 300 s spends
-	--> about 14 reads and 14 writes per player-hour (bench/Frontier.luau). A dead owner is found by
-	--> its MemoryStore beat within seconds, whatever this is (see Lease).
+	--> changed. What a crash can lose meanwhile is covered by the MemoryStore snapshot in each beat (see
+	--> Lease), so this sets the data store cost (300 s: about 13 reads and 13 writes per player-hour),
+	--> not the loss. A profile no snapshot covers is written at `renewFallback`.
 	renew: number,
 	--> Seconds a newcomer waits on a lease that does not move before it takes the key from a
 	--> KeepBlox owner it believes dead. Used only when the owner's MemoryStore beat cannot be read.
@@ -34,6 +34,15 @@ export type Config = {
 	heartbeat: number,
 	--> Seconds a beat keeps the lease alive: a dead owner is known this long after its last beat.
 	leaseTtl: number,
+	--> Seconds between writes of a profile no MemoryStore snapshot covers (too large, holding buffers,
+	--> or MemoryStore down): then this, not `renew`, is the most play a crash can lose.
+	renewFallback: number,
+	--> Bytes of data up to which a profile is snapshotted in MemoryStore at every beat (see Lease). The
+	--> experience's MemoryStore holds about 1.2 KB per player in all.
+	snapshotBytes: number,
+	--> Seconds a server's snapshots outlive its last beat: how late after a crash a player can come back
+	--> and still get them.
+	snapshotTtl: number,
 }
 
 const Config = {}
@@ -51,6 +60,9 @@ Config.DEFAULT = table.freeze({
 	shutdownDeadline = 25,
 	heartbeat = 4,
 	leaseTtl = 12,
+	renewFallback = 30,
+	snapshotBytes = 1000,
+	snapshotTtl = 900,
 } :: Config)
 
 --> The defaults with `overrides` applied. Refuses a death time that could mistake a slow owner for a
@@ -68,6 +80,8 @@ function Config.resolve(overrides: { [string]: any }?): Config
 	assert(config.death >= 2 * config.renew, "KeepBlox: death must be at least twice renew")
 	assert(config.backoffMin <= config.backoffMax, "KeepBlox: backoffMin must not exceed backoffMax")
 	assert(config.leaseTtl >= 2 * config.heartbeat, "KeepBlox: leaseTtl must be at least twice heartbeat")
+	-- A fallback slower than the renewal itself would be no fallback.
+	config.renewFallback = math.min(config.renewFallback, config.renew)
 	return config
 end
 

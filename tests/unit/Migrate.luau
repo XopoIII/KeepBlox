@@ -105,7 +105,7 @@ Spec.test("Migrate: a ProfileStore record with no version is migrated on load an
 		const result = store:load("u_1")
 		assert(result.ok, "loaded")
 		Spec.equal(result.profile.Data, { coins = 7, stats = { wins = 2, losses = 1 } })
-		world.scheduler:wait(20)
+		world.scheduler:wait(31)
 		Spec.equal(stored(world).Data, { coins = 7, stats = { wins = 2, losses = 1 } })
 		Spec.equal(stored(world).MetaData.KeepBlox.schemaVersion, 2)
 		result.profile:release()

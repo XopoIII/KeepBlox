@@ -38,12 +38,12 @@ function Codec.unpack(codec: Services.Codec?, stored: any): any
 end
 
 -- Whether `value` holds a buffer anywhere.
-const function hasBuffer(value: any): boolean
+function Codec.hasBuffer(value: any): boolean
 	if typeof(value) == "buffer" then
 		return true
 	elseif type(value) == "table" then
 		for _, item in value do
-			if hasBuffer(item) then
+			if Codec.hasBuffer(item) then
 				return true
 			end
 		end
@@ -54,7 +54,7 @@ end
 --> What to store for checked `data` of `size` bytes: the data, or its compressed form. Nil and the
 --> reason when it cannot be stored either way.
 function Codec.pack(codec: Services.Codec?, options: Options?, data: any, size: number): (any, string?)
-	if options == nil or size <= options.above or codec == nil or hasBuffer(data) then
+	if options == nil or size <= options.above or codec == nil or Codec.hasBuffer(data) then
 		if size > Validate.LIMIT then
 			return nil, `Data: about {size} bytes, over the {Validate.LIMIT} byte limit`
 		end

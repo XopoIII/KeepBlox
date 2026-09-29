@@ -109,8 +109,9 @@ Suphi [t/2425597](https://devforum.roblox.com/t/2425597) (`pN #m` is page N, pos
 
 ## Still open
 
-- Cost against crash loss is one trade-off no library escapes: data store writes an hour times the
-  seconds a crash can lose is about constant (`bench/Frontier.luau`). KeepBlox writes every 300 s by
-  default, as cheap as ProfileStore and Lapis, and loses less than ProfileStore on a crash (Lapis locks
-  the player out instead). ProfileService loses less by writing every 30 s, at nine times the cost;
-  `config = { renew = 30, death = 65 }` does the same with KeepBlox.
+- Cost against crash loss: for a library that only has the data store, writes an hour times the seconds
+  a crash can lose is about constant. KeepBlox steps out of it with the snapshots its server heartbeat
+  carries in MemoryStore (`src/Lease.luau`): it writes the data store every 300 s, as cheaply as
+  ProfileStore, and a crash loses about one 4 s beat. A profile too large for a snapshot (over
+  `snapshotBytes`, 1000 by default: MemoryStore holds about 1.2 KB per player) is written every 30 s
+  instead, which matches ProfileService on both loss and cost.

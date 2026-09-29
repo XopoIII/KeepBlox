@@ -27,7 +27,7 @@ export type Owner = {
 }
 
 export type Claim =
-	{ kind: "taken", loadCount: number, record: any }
+	{ kind: "taken", loadCount: number, record: any, previous: Previous? }
 	| { kind: "busy", owner: Owner }
 	| { kind: "outbid" }
 	| { kind: "foreign", value: any }
@@ -60,6 +60,9 @@ export type Mode = {
 
 export type Expected = { guid: string, loadCount: number, lease: number? }
 
+--> The session a claim took the key from (a server that died or was cut off): where its snapshots are.
+export type Previous = { jobId: string, loadCount: number, snap: number }
+
 export type Save =
 	{ kind: "saved", handOver: boolean, record: any, messages: { Messages.Entry } }
 	| { kind: "lost", owner: Record.Session? }
@@ -81,12 +84,23 @@ export type Payload = {
 	journal: any?,
 	--> Whether this server's MemoryStore beat can be trusted now (see Lease).
 	memory: boolean?,
+	--> The session's latest MemoryStore snapshot number, stored with the data (see Lease).
+	snap: number?,
 }
 
 const Lock = {}
 
 const function take(record: any, identity: Record.Identity, now: number, mode: Mode?): Claim
 	const meta = record.MetaData
+	const before = meta.ActiveSession
+	local previous: Previous? = nil
+	if type(before) == "table" and not Record.isHere(before, identity) then
+		previous = {
+			jobId = tostring(before[2]),
+			loadCount = meta.SessionLoadCount or 0,
+			snap = tonumber(Record.ours(meta).snap) or 0,
+		}
+	end
 	meta.ActiveSession = { identity.placeId, identity.jobId, identity.guid }
 	meta.ForceLoadSession = nil
 	meta.SessionLoadCount = (meta.SessionLoadCount or 0) + 1
@@ -95,8 +109,9 @@ const function take(record: any, identity: Record.Identity, now: number, mode: M
 	ours.owner = identity.guid
 	ours.lease += 1
 	ours.memory = if mode and mode.memory then true else nil
+	ours.snap = nil
 	record.WasOverwritten = false
-	return { kind = "taken", loadCount = meta.SessionLoadCount, record = record }
+	return { kind = "taken", loadCount = meta.SessionLoadCount, record = record, previous = previous }
 end
 
 --> The claim transform. `now` is this server's os.time(), stored as LastUpdate for ProfileStore.
@@ -201,6 +216,9 @@ function Lock.save(
 	end
 	if payload.schemaVersion ~= nil then
 		Record.ours(meta).schemaVersion = payload.schemaVersion
+	end
+	if payload.snap ~= nil then
+		Record.ours(meta).snap = payload.snap
 	end
 	if payload.memory ~= nil then
 		Record.ours(meta).memory = if payload.memory then true else nil

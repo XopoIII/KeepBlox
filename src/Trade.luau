@@ -82,7 +82,7 @@ end
 const lostHere: { [Session.Session]: boolean } = setmetatable({}, { __mode = "k" }) :: any
 
 const function write(context: Session.Context, session: Session.Session, data: any?, journal: any): boolean
-	const payload: Lock.Payload = { data = data, release = false, journal = journal }
+	const payload: Lock.Payload = { data = data, release = false, journal = journal, snap = session.snapSeq }
 	local lost = false
 	const ok = Call.run(
 		context.services.clock,
@@ -237,9 +237,14 @@ function Trade.run(
 	end
 	-- Lanes are always taken in key order, so two trades never wait on each other.
 	const first, second = if keyA < keyB then a else b, if keyA < keyB then b else a
-	const result = first.serial:run(function(): Result
+	a.trading, b.trading = true, true
+	const ok, result = pcall(first.serial.run, first.serial, function(): Result
 		return second.serial:run(inLanes, storeName, a, b, change)
 	end)
+	a.trading, b.trading = false, false
+	if not ok then
+		error(result, 0)
+	end
 	for _, session in { a, b } do
 		if lostHere[session] then
 			lostHere[session] = nil

@@ -17,10 +17,12 @@ const Messages = require("./Messages")
 const Migrate = require("./Migrate")
 const Profile = require("./Profile")
 const Record = require("./Record")
+const Recover = require("./Recover")
 const Serial = require("./Serial")
 const Session = require("./Session")
 const Signal = require("./Signal")
 const Trade = require("./Trade")
+const Types = require("./Types")
 const Upkeep = require("./Upkeep")
 const Validate = require("./Validate")
 
@@ -150,10 +152,14 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 		stopListening(listener)
 		return { ok = false, reason = claim.reason }
 	end
-	const record = claim.record
-	record.Data = Codec.unpack(services.codec, record.Data)
-	-- A trade its last server did not finish is settled before anything else (see Trade).
+	local record = claim.record
+	-- A trade its last server did not finish is settled before anything else (see Trade); otherwise a
+	-- server that died may have left newer play in MemoryStore (see Recover).
 	const journal = Record.ours(record.MetaData).trade
+	if journal == nil then
+		record = Recover.run(context, key, claim.loadCount, record, claim.previous)
+	end
+	record.Data = Codec.unpack(services.codec, record.Data)
 	if journal then
 		const settled = Trade.recover(context, state.name, record)
 		if settled == nil then
@@ -204,7 +210,7 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 		storedText = if encoded then encoded.text else "",
 		storedSize = if encoded then encoded.size else 0,
 		lastDataWrite = clock.now(),
-		nextRenew = clock.now() + state.config.renew * (0.5 + offset(key) / 2),
+		nextRenew = clock.now() + state.config.renew * (1 + offset(key)),
 		serial = Serial.new(clock),
 		lastProblem = nil :: string?,
 		inbox = Inbox.new(clock, function()
@@ -218,6 +224,11 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 		listener = listener,
 		pending = nil :: Session.Pending?,
 		clearJournal = journal ~= nil,
+		snapSeq = 0,
+		snapText = "",
+		snapshotted = false,
+		trading = false,
+		good = nil :: Types.Good?,
 	}
 	listener.session = session
 	session.inbox:receive(Messages.list(record))
