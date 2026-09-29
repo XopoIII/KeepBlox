@@ -18,6 +18,7 @@
 --- every renewal (bench/Run.luau holds its budget), and it is compiled natively. Dictionary keys come
 --- in iteration order, which is stable for a table that did not change; a reordered but equal table at
 --- worst costs one extra write. `size` estimates the stored JSON length the 4 MB limit applies to.
+const Services = require("./Services")
 
 export type Encoded = {
 	--> Equal texts mean equal data.
@@ -25,6 +26,9 @@ export type Encoded = {
 	--> The estimated stored size in bytes (JSON; a buffer as its base64 text).
 	size: number,
 }
+
+-- The most CPU time one check spends before it lets a frame pass.
+const SLICE_SECONDS = 0.002
 
 const Validate = {}
 
@@ -210,6 +214,18 @@ const function largest(value: any, root: string, size: number): string
 		current, currentSize = current[bestKey], bestSize
 	end
 	return if path == root then "" else ` (most of it: {path}, {currentSize} bytes)`
+end
+
+--> A `pause` for `check` that lets a frame pass after every `SLICE_SECONDS` of CPU time, so a large
+--> profile is checked over several frames and never stalls one.
+function Validate.slicer(clock: Services.Clock): () -> ()
+	local started = os.clock()
+	return function()
+		if os.clock() - started >= SLICE_SECONDS then
+			clock.wait()
+			started = os.clock()
+		end
+	end
 end
 
 --> Checks `value` and encodes it; `root` names it in errors ("Data"). Returns the encoding, or nil and

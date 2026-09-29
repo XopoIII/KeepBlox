@@ -11,6 +11,7 @@
 --- server's data store budget is spent, so loads and releases are not starved. On shutdown every
 --- session is released in parallel within the deadline.
 const Boards = require("./Boards")
+const Codec = require("./Codec")
 const Config = require("./Config")
 const Edit = require("./Edit")
 const Import = require("./Import")
@@ -62,6 +63,9 @@ export type Options = {
 	--> back with `store:leaderboard` (see Boards).
 	leaderboards: { [string]: Boards.Board }?,
 	leaderboardOptions: Boards.Options?,
+	--> Store profiles over `above` bytes compressed (see Codec). Off by default: ProfileStore cannot
+	--> read a compressed profile.
+	compress: Codec.Options?,
 }
 
 export type LoadOptions = Open.LoadOptions
@@ -147,6 +151,14 @@ function Store.new(name: string, options: Options): Store
 			end
 		end,
 	}
+	if options.compress then
+		assert(services.codec, "KeepBlox: these services cannot compress")
+		assert(
+			type(options.compress.above) == "number" and options.compress.above > 0,
+			"KeepBlox: compress needs `above`, a positive number of bytes"
+		)
+		base.compress = options.compress
+	end
 	const boards = if options.leaderboards
 		then Boards.new(function(): Services.Services
 			return base.services

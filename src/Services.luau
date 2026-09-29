@@ -132,7 +132,19 @@ export type Clock = {
 	spawn: (target: thread | (...any) -> (), ...any) -> (),
 }
 
+--> Serializing and compressing data, for a store that compresses large profiles.
+export type Codec = {
+	--> JSON text of a storable value (`HttpService:JSONEncode`), and back (`JSONDecode`).
+	encode: (value: any) -> string,
+	decode: (text: string) -> any,
+	--> Zstandard (`EncodingService:CompressBuffer`), and back (`DecompressBuffer`).
+	compress: (text: string) -> buffer,
+	decompress: (packed: buffer) -> string,
+}
+
 export type Services = {
+	--> Serialization and compression; nil where there is none (a store cannot compress then).
+	codec: Codec?,
 	dataStores: DataStoreService,
 	messaging: Messaging,
 	clock: Clock,

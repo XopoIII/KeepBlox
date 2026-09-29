@@ -10,6 +10,7 @@
 const Backend = require("./Backend")
 const Budget = require("./Budget")
 const Clock = require("./Clock")
+const Codec = require("./Codec")
 const DataStore = require("./DataStore")
 const Faults = require("./Faults")
 const Messaging = require("./Messaging")
@@ -130,6 +131,7 @@ function World.new(seed: number, epoch: number?): World
 				budget = budget,
 				closing = closing,
 				services = {
+					codec = Codec.new(),
 					dataStores = dataStores :: Services.DataStoreService,
 					messaging = self.bus:handle(name),
 					clock = Clock.new(scheduler, {

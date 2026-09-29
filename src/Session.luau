@@ -10,6 +10,7 @@
 --- still renewed and the last good save stays. So one bad value never blocks the session, its
 --- hand-over or its release (the "poison" scenario), and the error names the value's path.
 const Call = require("./Call")
+const Codec = require("./Codec")
 const Config = require("./Config")
 const Inbox = require("./Inbox")
 const Lock = require("./Lock")
@@ -20,9 +21,6 @@ const Schema = require("./Schema")
 const Serial = require("./Serial")
 const Services = require("./Services")
 const Validate = require("./Validate")
-
--- The most CPU time one write spends before it lets a frame pass.
-const SLICE_SECONDS = 0.002
 
 export type Context = {
 	services: Services.Services,
@@ -39,6 +37,8 @@ export type Context = {
 	forget: (session: Session) -> (),
 	--> Called after each save stored the data (`final` on the release): the leaderboards' mirror.
 	stored: ((key: string, data: any, final: boolean) -> ())?,
+	--> Large profiles are stored compressed (see Codec).
+	compress: Codec.Options?,
 }
 
 export type Session = {
@@ -80,17 +80,6 @@ export type Session = {
 export type Pending = { done: boolean, stored: boolean, waiters: { thread } }
 
 const Session = {}
-
---> A `pause` for `Validate.check` that lets a frame pass after every `SLICE_SECONDS` of CPU time.
-function Session.slicer(clock: Services.Clock): () -> ()
-	local started = os.clock()
-	return function()
-		if os.clock() - started >= SLICE_SECONDS then
-			clock.wait()
-			started = os.clock()
-		end
-	end
-end
 
 --> Ends `session` for `reason`: it stops writing, its data is frozen, and the game is told.
 function Session.finish(context: Context, session: Session, reason: Profile.EndReason)
@@ -136,7 +125,9 @@ const function write(
 			newReceipt = true
 		end
 	end
-	local encoded, problem = Validate.check(snapshot, "Data", nil, Session.slicer(clock))
+	-- A compressing store checks the size of what it stores (Codec), not of the data in memory.
+	local encoded, problem =
+		Validate.check(snapshot, "Data", if context.compress then math.huge else nil, Validate.slicer(clock))
 	const schema = context.plan.schema
 	if encoded and schema and encoded.text ~= session.storedText then
 		-- Only changed data is checked against the schema; unchanged data passed already.
@@ -158,7 +149,11 @@ const function write(
 		const spacing = encoded.size * 60 / context.config.writeBytesPerMinute
 		const urgent = next(consumed) ~= nil or newReceipt or session.clearJournal
 		if not automatic or urgent or clock.now() - session.lastDataWrite >= spacing then
-			data = snapshot
+			data, problem = Codec.pack(context.services.codec, context.compress, snapshot, encoded.size)
+			if problem and problem ~= session.lastProblem then
+				session.lastProblem = problem
+				context.report(session.key, `not saved: {problem}`)
+			end
 		end
 	end
 	const payload: Lock.Payload = {
@@ -211,10 +206,15 @@ const function write(
 		end
 	end
 	session.inbox:receive(result.messages)
-	profile.LastSavedData = Record.copy(result.record.Data)
-	profile.onSaved:fire(Record.copy(result.record.Data))
+	-- What the store holds now, uncompressed: the snapshot just written, or what already was.
+	const saved = if data ~= nil
+		then snapshot
+		elseif Codec.packed(result.record.Data) then profile.LastSavedData
+		else result.record.Data
+	profile.LastSavedData = Record.copy(saved)
+	profile.onSaved:fire(Record.copy(saved))
 	if context.stored then
-		context.stored(session.key, result.record.Data, release)
+		context.stored(session.key, saved, release)
 	end
 	if release then
 		Session.finish(context, session, reason)

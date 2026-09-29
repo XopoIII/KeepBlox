@@ -3,7 +3,7 @@
 --- frame).
 ---
 --- A write copies the profile at once (`Record.copy`), then checks and encodes the copy
---- (`Validate.check`), letting a frame pass every 2 ms of work (`Session.slicer`). So the longest
+--- (`Validate.check`), letting a frame pass every 2 ms of work (`Validate.slicer`). So the longest
 --- stretch any one frame pays is the copy plus one slice, whatever the profile's size. That stretch
 --- has the budget. The total CPU time is reported beside it. Measured on LuneBlox, which runs the Luau
 --- and fast flags Roblox runs; budgets leave room for slower CI machines.

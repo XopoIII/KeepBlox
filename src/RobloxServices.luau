@@ -119,7 +119,26 @@ function RobloxServices.build(): Services.Services
 		end,
 	}
 
+	const httpService = game:GetService("HttpService")
+	const encodingService = game:GetService("EncodingService") :: any
+	const zstd = (Enum :: any).CompressionAlgorithm.Zstd
+	const codec: Services.Codec = {
+		encode = function(value: any): string
+			return httpService:JSONEncode(value)
+		end,
+		decode = function(text: string): any
+			return httpService:JSONDecode(text)
+		end,
+		compress = function(text: string): buffer
+			return encodingService:CompressBuffer(buffer.fromstring(text), zstd, 3)
+		end,
+		decompress = function(packed: buffer): string
+			return buffer.tostring(encodingService:DecompressBuffer(packed, zstd))
+		end,
+	}
+
 	return {
+		codec = codec,
 		dataStores = dataStores :: Services.DataStoreService,
 		messaging = messaging :: Services.Messaging,
 		clock = clock,

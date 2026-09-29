@@ -6,6 +6,7 @@
 --- restore makes an old version's data current again, through the lock: it refuses while any server
 --- holds the key, so it never races a live session. Kick the player first.
 const Call = require("./Call")
+const Codec = require("./Codec")
 const Record = require("./Record")
 const Session = require("./Session")
 
@@ -60,7 +61,7 @@ end
 --> The profile data `key` held at `version`, or nil when that version is not a profile.
 function Versions.read(context: Session.Context, key: string, version: string): any
 	const value = context.dataStore:GetVersionAsync(key, version)
-	return if Record.classify(value) == "profile" then value.Data else nil
+	return if Record.classify(value) == "profile" then Codec.unpack(context.services.codec, value.Data) else nil
 end
 
 --> Makes `version`'s data current for `key`. Everything else in the record (its lock, messages and

@@ -8,6 +8,7 @@
 --- A template store fills keys the stored data lacks with copies from the template, deeply, on every
 --- load (a schema store does the same through its defaults). Existing values are never replaced.
 const Claim = require("./Claim")
+const Codec = require("./Codec")
 const Config = require("./Config")
 const Import = require("./Import")
 const Inbox = require("./Inbox")
@@ -147,6 +148,7 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 		return { ok = false, reason = claim.reason }
 	end
 	const record = claim.record
+	record.Data = Codec.unpack(services.codec, record.Data)
 	-- A trade its last server did not finish is settled before anything else (see Trade).
 	const journal = Record.ours(record.MetaData).trade
 	if journal then
@@ -159,7 +161,7 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 		record.Data = settled
 	end
 	-- The data as stored, before any migration: a profile that did not change is not written again.
-	const stored = if journal then nil else Validate.check(record.Data, "Data", nil, Session.slicer(clock))
+	const stored = if journal then nil else Validate.check(record.Data, "Data", nil, Validate.slicer(clock))
 	const migrated = Migrate.run(plan, record.Data, Migrate.stored(record))
 	if not migrated.ok then
 		-- Never hand out, or write back, data this server cannot make sense of.
