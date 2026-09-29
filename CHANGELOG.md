@@ -27,10 +27,13 @@ semantic versioning.
 - `restore` returns `purchasesSince`, the purchases granted after the restored version. The restored
   data no longer holds them and they stay granted, so the game must make them good; before, they were
   lost silently. The record notes the restore in `MetaData.KeepBlox.restored`.
+- The snapshot a save takes is copied about 3x faster (one engine clone per table): the one step of a
+  save that cannot be spread over frames. A 1 MB profile's longest frame stretch fell from 9.1 ms to
+  5.2 ms.
 
 ### Added
 
-- `tests/Mutate.luau`: mutation adequacy of the suite. 21 mutants, each a slip in code that keeps a
+- `tests/Mutate.luau`: mutation adequacy of the suite. 30 mutants, each a slip in code that keeps a
   guarantee, must each fail the suite.
 - Differential fuzzing of the save check against the store's encoding.
 - Releases you can roll back. A migration may be `{ up, down }`, and a store's `writeVersion` stores

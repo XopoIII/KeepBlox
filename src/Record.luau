@@ -55,9 +55,17 @@ function Record.copy(value: any): any
 		end
 		return value
 	end
-	const result = {}
-	for key, item in value do
-		result[key] = Record.copy(item)
+	-- A shallow clone in one engine call, then only the tables and buffers inside are copied in turn: far
+	-- less work than setting every key (a profile is mostly scalars under a few tables).
+	const result: { [any]: any } = table.clone(value)
+	if getmetatable(result) ~= nil then
+		setmetatable(result :: any, nil)
+	end
+	for key, item in result do
+		const kind = type(item)
+		if kind == "table" or kind == "buffer" then
+			result[key] = Record.copy(item)
+		end
 	end
 	return result
 end

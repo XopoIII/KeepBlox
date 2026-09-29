@@ -6,6 +6,7 @@
 --- or a value refused for no reason.
 const Encoding = require("@fakes/Encoding")
 const Prng = require("@fakes/Prng")
+const Record = require("@keepblox/Record")
 const Spec = require("../Spec")
 const Validate = require("@keepblox/Validate")
 
@@ -103,6 +104,46 @@ Spec.test("Differential: Validate and the store agree on what can be stored, and
 	end
 	-- Both kinds were really exercised.
 	Spec.truthy(accepted > 1000 and refused > 1000, `accepted {accepted}, refused {refused}`)
+end)
+
+-- Every table and buffer in `value`, by identity.
+const function parts(root: any, into: { [any]: boolean }): { [any]: boolean }
+	if type(root) == "table" then
+		into[root] = true
+		for _, item in root do
+			parts(item, into)
+		end
+	elseif type(root) == "buffer" then
+		into[root] = true
+	end
+	return into
+end
+
+Spec.test("Differential: a copy of storable data encodes the same and shares nothing with it", function()
+	for seed = 1, 10 do
+		const random = Prng.new(seed)
+		for case = 1, 200 do
+			const input = value(random, 4)
+			if Validate.check(input, "Data", math.huge) == nil then
+				continue
+			end
+			if type(input) == "table" and random:chance(0.3) then
+				-- Frozen data (a session that ended) and a metatable must not come through.
+				setmetatable(input, { __index = function() end })
+				table.freeze(input :: any)
+			end
+			const copied = Record.copy(input)
+			const where = `seed {seed} case {case}`
+			Spec.equal(Encoding.encode(copied), Encoding.encode(input), where)
+			const original = parts(input, {})
+			for part in parts(copied, {}) do
+				Spec.truthy(not original[part], `{where}: the copy shares a {type(part)}`)
+			end
+			if type(copied) == "table" then
+				Spec.truthy(not table.isfrozen(copied) and getmetatable(copied) == nil, where)
+			end
+		end
+	end
 end)
 
 return nil

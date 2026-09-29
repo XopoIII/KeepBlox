@@ -184,6 +184,18 @@ const MUTANTS: { Mutant } = {
 		breaks = "a down that does not undo its up is refused when the store is made",
 	},
 	{
+		file = "src/Record.luau",
+		from = "\t\tsetmetatable(result, nil)",
+		to = "",
+		breaks = "a copy of the data carries no metatable",
+	},
+	{
+		file = "src/Record.luau",
+		from = 'if kind == "table" or kind == "buffer" then',
+		to = 'if kind == "buffer" then',
+		breaks = "a copy shares no table with the data (a snapshot does not change after it is taken)",
+	},
+	{
 		file = "src/Versions.luau",
 		from = "if not table.find(before, id) then",
 		to = "if false then",
