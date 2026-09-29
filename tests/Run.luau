@@ -14,5 +14,6 @@ require("./unit/Encoding")
 require("./unit/DataStoreBasics")
 require("./unit/DataStoreUpdate")
 require("./unit/Messaging")
+require("./unit/ReferenceProfileStore")
 
 Spec.finish()
