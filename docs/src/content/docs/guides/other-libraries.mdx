@@ -34,6 +34,7 @@ Suphi [t/2425597](https://devforum.roblox.com/t/2425597) (`pN #m` is page N, pos
 | Reading an old version overwrote live data | DataKeep#22 | `readVersion` returns a copy and never writes | `Complaints: reading an old version never changes the live profile` |
 | Autosave after a failed migration | DocS#90 | a failed migration gives the key back and writes nothing | `tests/unit/Migrate.luau` |
 | Number keys silently became strings | Lapis#68 | a table that is neither an array nor a string-keyed dictionary is refused, with its path | `Validate: every refusal names the path of the bad value` |
+| One bad value (bad UTF-8, NaN) fails every save until the game removes it | PStore findings; the `poison` benchmark: 204-258 steps lost, or the player locked out | the value is repaired in what is stored and reported with its path; only a table's shape or the size limit still refuse the write | `Store: a bad value is repaired in what is stored, reported once with its path`, `bench/Benchmarks.md` (poison: 0 lost) |
 | Data lost past 4 MB | PS p40 #848, PS#24 | refused before the write, naming the field that grew; the last save stays | `Complaints: a profile over the size limit is refused with its path` |
 
 ## Shutdown

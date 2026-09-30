@@ -26,7 +26,7 @@ MessagingService and the engine, the same players, faults and seeds (worst case 
 
 | Library | Violations | A crash loses (steps of play) | Slowest open (s) | Failed opens | Requests per player-hour |
 |---|---|---|---|---|---|
-| **KeepBlox** | **0** | **4** | 10.1 | **0** | 13.1 + 13.1 |
+| **KeepBlox** | **0** | **4** | 9.4 | **0** | 13.1 + 13.1 |
 | ProfileStore | 0 | 287 | 46.6 | 20 | 13.6 + 13.6 |
 | ProfileService | 0 | 29 | 65.8 | 27 | 122 + 122 |
 | DocumentService | 0 | 0 (player locked out: 20 of 40 rejoins) | 15.9 | 389 | 25.9 + 25.9 |
@@ -50,8 +50,9 @@ virtual servers and random fault schedules:
 - A crash loses about one 4 s heartbeat of play: each beat carries a snapshot the next server takes.
 - A failed load never writes; data that is not a profile is quarantined, never overwritten.
 - A server that loses the session freezes its copy at once, so trades and purchases stop on stale data.
-- Invalid data (NaN, bad UTF-8, cycles, over 4 MB) is refused before the write, with the path to the bad
-  value; the last good snapshot is stored instead.
+- One bad value (NaN, bad UTF-8, a cycle) never costs the play around it: it is repaired in what is
+  stored and reported with its path. What cannot be repaired (over 4 MB, a mixed table) is refused,
+  and the last good snapshot is stored instead.
 - Offline messages are consumed exactly once; purchases are granted once and never lost.
 - Shutdown releases every profile within the deadline; no call retries forever.
 - Saving is spread across frames and respects the DataStore request budget: a 1 MB profile's save costs

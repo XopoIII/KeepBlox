@@ -21,9 +21,19 @@ semantic versioning.
 - The size estimate counts an empty table as 2 bytes, not 1.
 - A trade right after a migrating load stores the schema version with the migrated data. Before, the
   record kept the old version, and the next load ran the migrations again on migrated data.
+- Data that contains itself no longer breaks every save: the copy a save takes recursed forever on a
+  cycle, before the check could refuse it.
 
 ### Changed
 
+- One bad value no longer costs the play around it. A value a data store cannot hold (a string that is
+  not UTF-8, NaN, a function, a cycle) is repaired in what is stored, and each repair is reported once
+  with its path. Before, every save of the session was refused until the game removed the value. Only
+  a table's shape and the size limit still refuse the write. In the `poison` benchmark this loses 0
+  steps, where it lost 204.
+- Faster hand-overs: while a live owner hands over, the key is tried every half second. A dead owner's
+  beat is looked at again the moment it could be judged dead. Slowest open in the benchmark: hand-over
+  4.5 s to 3.2 s, three servers at once 8.2 s to 4.4 s, after a crash 10.0 s to 9.1 s.
 - `restore` returns `purchasesSince`, the purchases granted after the restored version. The restored
   data no longer holds them and they stay granted, so the game must make them good; before, they were
   lost silently. The record notes the restore in `MetaData.KeepBlox.restored`.

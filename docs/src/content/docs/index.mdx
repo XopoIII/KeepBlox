@@ -54,9 +54,9 @@ every scenario and the methodology.
 | Progress a server crash loses (steps of play) | 4 | 287 | 29 |
 | Data store reads per player-hour | 13.1 | 13.6 | 122.0 |
 | Data store writes per player-hour | 13.1 | 13.6 | 122.0 |
-| Slowest open after a crash (s) | 10.0 | 46.6 | 63.7 |
+| Slowest open after a crash (s) | 9.1 | 46.6 | 63.7 |
 
-A crashed KeepBlox server is known dead within about 10 seconds: every server beats in MemoryStore every
+A crashed KeepBlox server is known dead within about 9 seconds: every server beats in MemoryStore every
 4 seconds, and a beat that stands still for two beats means the server is gone. The same beat carries a
 snapshot of each small profile, so a crash loses about one beat of play instead of an autosave interval.
 [How it works](/KeepBlox/guides/how-it-works/) explains the mechanism.

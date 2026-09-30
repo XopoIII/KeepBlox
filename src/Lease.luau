@@ -229,6 +229,20 @@ function Lease.judge(context: Types.Context, jobId: string, key: string, watch: 
 	return if now - (watch.countSince :: number) >= 2 * context.config.heartbeat then "dead" else "pending"
 end
 
+--> Seconds until `watch`'s verdict could next change (the beat judged dead), at most one: a newcomer
+--> looks again then, not later.
+function Lease.nextLook(context: Types.Context, watch: Watch): number
+	const now = context.services.clock.now()
+	const heartbeat = context.config.heartbeat
+	local due = 1
+	if watch.deadSince then
+		due = watch.deadSince + heartbeat / 2 - now
+	elseif watch.countSince then
+		due = watch.countSince + 2 * heartbeat - now
+	end
+	return math.clamp(due, 0.05, 1)
+end
+
 --> The snapshot the server `jobId` left of `key` for session `loadCount`, when it is newer than the
 --> stored data (snapshot number above `stored`); nil otherwise.
 function Lease.snapshot(

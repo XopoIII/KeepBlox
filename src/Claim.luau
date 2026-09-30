@@ -19,6 +19,7 @@
 --- load fails with "foreign".
 const Call = require("./Call")
 const Lease = require("./Lease")
+const LetGo = require("./LetGo")
 const Lock = require("./Lock")
 const Session = require("./Session")
 
@@ -42,6 +43,10 @@ type Observed = {
 
 const Claim = {}
 
+-- Seconds between tries while a live owner hands over, for the first HAND_OVER_QUICK seconds.
+const HAND_OVER_POLL = 0.5
+const HAND_OVER_QUICK = 15
+
 const function ask(context: Session.Context, owner: Lock.Owner)
 	const guid = owner.session[3]
 	if type(guid) ~= "string" then
@@ -63,46 +68,7 @@ const function quarantine(context: Session.Context, storeName: string, key: stri
 end
 
 --> Lets go of a key this server has just taken but no longer wants (the player left, or shutdown).
-function Claim.giveBack(context: Session.Context, key: string, loadCount: number)
-	pcall(
-		Call.run,
-		context.services.clock,
-		context.config.callTimeout,
-		context.dataStore.UpdateAsync,
-		context.dataStore,
-		key,
-		function(value: any): any
-			return (
-				Lock.save(
-					value,
-					context.identity,
-					loadCount,
-					{ data = nil, release = true },
-					context.services.clock.time()
-				)
-			)
-		end
-	)
-end
-
--- Lets go of `key` in the background if a claim of this load may have landed unanswered: a load that
--- gives up must not leave its live server holding a key it never learnt it had.
-const function disown(context: Session.Context, key: string)
-	const clock = context.services.clock
-	clock.spawn(function()
-		pcall(
-			Call.run,
-			clock,
-			context.config.callTimeout,
-			context.dataStore.UpdateAsync,
-			context.dataStore,
-			key,
-			function(value: any): any
-				return Lock.disown(value, context.identity, clock.time())
-			end
-		)
-	end)
-end
+Claim.giveBack = LetGo.giveBack
 
 -- `mode` for a steal on the word of the owner's beat: it lands only while the record vouches for the
 -- beat (see Lock).
@@ -125,6 +91,10 @@ function Claim.open(
 	const config = context.config
 	const started = clock.now()
 	local delay = config.backoffMin
+	-- While a live owner is asked to hand over, the key is tried every half second: it is freed within a
+	-- few seconds of the request, and a doubling backoff would leave it free for seconds before trying
+	-- again. Past 15 s of that, the tries back off as usual, to spare the request budget.
+	local handOverDelay = HAND_OVER_POLL
 	local steal = false
 	-- The steal is on the word of the owner's beat.
 	local byBeat = false
@@ -133,7 +103,7 @@ function Claim.open(
 	local unsure = false
 	const function fail(reason: Failure): Result
 		if unsure then
-			disown(context, key)
+			LetGo.disown(context, key)
 		end
 		return { ok = false, reason = reason }
 	end
@@ -267,18 +237,18 @@ function Claim.open(
 			if verdict == "dead" then
 				steal = true
 			elseif verdict ~= "unknown" then
-				-- Watching a beat: the data store is tried on its backoff, the beat every second between, so
-				-- its end is caught as it comes.
+				-- Watching a beat: the data store is tried every half second, and the beat looked at again
+				-- the moment it could be judged dead, so a hand-over or the beat's end is caught as it comes.
 				local waited = 0
-				while waited < math.min(delay, 2) and not context.closing() and not (cancel and cancel()) do
-					waited += clock.wait(1)
+				while waited < handOverDelay and not context.closing() and not (cancel and cancel()) do
+					waited += clock.wait(math.min(Lease.nextLook(context, current.beat), handOverDelay - waited))
 					if Lease.judge(context, tostring(owner.session[2]), key, current.beat, true) == "dead" then
 						steal = true
 						break
 					end
 				end
-				if not steal then
-					delay = math.min(delay * 2, config.backoffMax)
+				if not steal and clock.now() - started > HAND_OVER_QUICK then
+					handOverDelay = math.min(handOverDelay * 2, config.backoffMax)
 				end
 				continue
 			elseif current.lease == nil then

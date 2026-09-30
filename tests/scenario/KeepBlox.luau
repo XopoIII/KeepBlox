@@ -17,11 +17,15 @@ const function soak(name: string): Scenarios.Soak
 end
 
 Spec.test("KeepBlox: hand-overs lose nothing and leave no stale owner", function()
-	for _, name in { "rejoin", "handoff", "thirdRequester", "outage" } do
+	-- The bound on each open: a live owner hands over within the message's delivery (1-2 s) and a
+	-- half-second poll; three servers asking at once take turns (baseline: 5.4 s, and 20 of 60 fail).
+	const bounds: { [string]: number } = { rejoin = 2, handoff = 3.5, thirdRequester = 5, outage = 10 }
+	for name, bound in bounds do
 		const metrics = soak(name).metrics
 		Spec.equal(metrics.maxProgressLost, 0, `{name}: progress lost`)
 		Spec.equal(metrics.maxStaleSeconds, 0, `{name}: stale seconds`)
-		Spec.truthy(metrics.maxOpenSeconds < 10, `{name}: open took {metrics.maxOpenSeconds} s`)
+		Spec.equal(metrics.failedOpens, 0, `{name}: failed opens`)
+		Spec.truthy(metrics.maxOpenSeconds < bound, `{name}: open took {metrics.maxOpenSeconds} s`)
 	end
 end)
 
@@ -31,6 +35,9 @@ Spec.test("KeepBlox: a crash loses at most one renewal interval (baseline: 287 s
 	-- The dead owner's lease is watched for `death` seconds, then taken at the next poll.
 	Spec.truthy(metrics.maxOpenSeconds <= DEATH + BACKOFF + 1, `open took {metrics.maxOpenSeconds} s`)
 	Spec.truthy(metrics.maxOpenSeconds < 46, "faster than the baseline's 46 s")
+	-- A dead server is known by its beat standing still for two beats (8 s), looked at again the moment
+	-- it could be judged dead.
+	Spec.truthy(metrics.maxOpenSeconds < 9.3, `open took {metrics.maxOpenSeconds} s`)
 end)
 
 Spec.test("KeepBlox: an owner cut off from messaging hands over at its next renewal (baseline: 244 s stale)", function()

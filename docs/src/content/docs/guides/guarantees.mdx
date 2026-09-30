@@ -115,18 +115,31 @@ trades and purchases must stop on the stale copy.
 - `tests/scenario/KeepBlox.luau`: "KeepBlox: an owner cut off from messaging hands over at its next renewal (baseline: 244 s stale)"
 - `tests/unit/Lease.luau`: "Lease: an owner cut off from MessagingService hands over at its next beat, with a final save"
 
-## Bad data is refused with its path
+## One bad value never costs the play around it
 
-A data store rejects a whole write for one bad value. KeepBlox checks the data before every write and
-refuses NaN and infinities, strings and keys that are not valid UTF-8, mixed or holey tables, cycles,
-engine types, and values over the 4 MB limit. The error names the path, such as
-`Data.inventory[12].name: string is not valid UTF-8`. The lease is still renewed, and the release still
-goes through. When the data turns bad, the last snapshot that could be stored is what gets stored.
+A data store rejects a whole write for one bad value. KeepBlox checks the data before every write. A
+bad value is repaired in what is stored, and the rest of the data is stored as it is:
+- a string that is not valid UTF-8 keeps its text, with U+FFFD for each bad byte;
+- NaN, infinities, and values no data store holds (functions, Instances) are left out;
+- a key that is not valid UTF-8 is left out with its value;
+- a table that contains itself loses the reference that closes the loop.
+
+`store.onError` names each repair once, with its path, such as `stored with a repair:
+Data.inventory[12].name: string is not valid UTF-8; its bad bytes were replaced`. The game's own data
+is not touched. What cannot be repaired, a mixed or holey table or data over the 4 MB limit, is
+refused with its path. Then the last snapshot that could be stored is what gets stored, the lease is
+still renewed, and the release still goes through. In the `poison` benchmark a bad string loses no
+play: 0 steps, against 258 for ProfileStore.
 
 - `tests/unit/Validate.luau`: "Validate: every refusal names the path of the bad value"
 - `tests/unit/Validate.luau`: "Validate: a cycle is refused, a shared table is not"
 - `tests/unit/Validate.luau`: "Validate: the size limit is exact and configurable"
-- `tests/unit/Store.luau`: "Store: bad data is refused with its path, and the release still goes through"
+- `tests/unit/Store.luau`: "Store: a bad value is repaired in what is stored, reported once with its path"
+- `tests/unit/Store.luau`: "Store: a table that contains itself does not break the save; the loop is left out"
+- `tests/unit/Store.luau`: "Store: data whose shape cannot be stored is refused with its path; the release goes through"
+- `tests/unit/Snapshot.luau`: "Snapshot: a bad value does not stop the snapshots; a crash keeps the play around it"
+- `tests/unit/Receipts.luau`: "Receipts: a bad value the data store would refuse does not hold up a purchase: it is repaired"
+- `tests/unit/Differential.luau`: "Differential: repair leaves storable data alone, and leaves nothing but a table's shape to refuse"
 - `tests/unit/Snapshot.luau`: "Snapshot: when the data turns unstorable, the last good snapshot is what gets stored"
 - `tests/unit/Migrate.luau`: "Migrate: a save that breaks the schema is refused with its path"
 - `tests/scenario/KeepBlox.luau`: "KeepBlox: bad data never blocks the release (baseline: the next server waits 46 s)"
