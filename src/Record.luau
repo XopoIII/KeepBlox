@@ -45,21 +45,71 @@ function Record.classify(value: any): Kind
 	return "foreign"
 end
 
---> A deep copy; stored tables are never shared with the game's live data.
-function Record.copy(value: any): any
-	if type(value) ~= "table" then
-		if typeof(value) == "buffer" then
-			const result = buffer.create(buffer.len(value))
-			buffer.copy(result, 0, value)
-			return result
-		end
-		return value
+-- Deeper than this, a table is taken for a cycle, and copied the careful way (`copyShared`).
+const MAX_DEPTH = 200
+
+-- A buffer's own copy.
+const function copyBuffer(value: buffer): buffer
+	const result = buffer.create(buffer.len(value))
+	buffer.copy(result, 0, value)
+	return result
+end
+
+-- `value` copied deeply, fast: a shallow clone in one engine call, then only the tables and buffers
+-- inside are copied in turn (a profile is mostly scalars under a few tables). Throws past MAX_DEPTH.
+const function copyFast(value: { [any]: any }, depth: number): { [any]: any }
+	if depth > MAX_DEPTH then
+		error("KeepBlox: too deep to copy", 0)
 	end
-	const result = {}
-	for key, item in value do
-		result[key] = Record.copy(item)
+	const result: { [any]: any } = table.clone(value)
+	if getmetatable(result) ~= nil then
+		setmetatable(result :: any, nil)
+	end
+	for key, item in result do
+		const kind = type(item)
+		if kind == "table" then
+			result[key] = copyFast(item, depth + 1)
+		elseif kind == "buffer" then
+			result[key] = copyBuffer(item)
+		end
 	end
 	return result
+end
+
+-- `value` copied deeply, remembering every table: one met again (shared, or a cycle) is the same copy,
+-- so a cycle stays a cycle, for the check to refuse or the repair to break.
+const function copyShared(value: { [any]: any }, copies: { [any]: any }): { [any]: any }
+	const seen = copies[value]
+	if seen ~= nil then
+		return seen
+	end
+	const result: { [any]: any } = table.clone(value)
+	copies[value] = result
+	if getmetatable(result) ~= nil then
+		setmetatable(result :: any, nil)
+	end
+	for key, item in result do
+		const kind = type(item)
+		if kind == "table" then
+			result[key] = copyShared(item, copies)
+		elseif kind == "buffer" then
+			result[key] = copyBuffer(item)
+		end
+	end
+	return result
+end
+
+--> A deep copy; stored tables are never shared with the game's live data. Data that contains itself is
+--> copied with the same loop, not recursed into forever.
+function Record.copy(value: any): any
+	const kind = type(value)
+	if kind == "buffer" then
+		return copyBuffer(value)
+	elseif kind ~= "table" then
+		return value
+	end
+	const ok, result = pcall(copyFast, value, 1)
+	return if ok then result else copyShared(value, {})
 end
 
 --> Fills string keys missing from `target` with copies from `template`, recursively into tables both
@@ -115,6 +165,8 @@ function Record.ours(meta: any): {
 	memory: boolean?,
 	--> The owner's latest MemoryStore snapshot number when this data was stored (see Lease).
 	snap: number?,
+	--> The last restore of this key (see Versions): the version it brought back, and when.
+	restored: { from: string, at: number }?,
 }
 	local state = meta.KeepBlox
 	if type(state) ~= "table" then

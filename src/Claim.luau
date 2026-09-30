@@ -19,6 +19,7 @@
 --- load fails with "foreign".
 const Call = require("./Call")
 const Lease = require("./Lease")
+const LetGo = require("./LetGo")
 const Lock = require("./Lock")
 const Session = require("./Session")
 
@@ -42,6 +43,10 @@ type Observed = {
 
 const Claim = {}
 
+-- Seconds between tries while a live owner hands over, for the first HAND_OVER_QUICK seconds.
+const HAND_OVER_POLL = 0.5
+const HAND_OVER_QUICK = 15
+
 const function ask(context: Session.Context, owner: Lock.Owner)
 	const guid = owner.session[3]
 	if type(guid) ~= "string" then
@@ -63,26 +68,14 @@ const function quarantine(context: Session.Context, storeName: string, key: stri
 end
 
 --> Lets go of a key this server has just taken but no longer wants (the player left, or shutdown).
-function Claim.giveBack(context: Session.Context, key: string, loadCount: number)
-	pcall(
-		Call.run,
-		context.services.clock,
-		context.config.callTimeout,
-		context.dataStore.UpdateAsync,
-		context.dataStore,
-		key,
-		function(value: any): any
-			return (
-				Lock.save(
-					value,
-					context.identity,
-					loadCount,
-					{ data = nil, release = true },
-					context.services.clock.time()
-				)
-			)
-		end
-	)
+Claim.giveBack = LetGo.giveBack
+
+-- `mode` for a steal on the word of the owner's beat: it lands only while the record vouches for the
+-- beat (see Lock).
+const function onBeat(mode: Lock.Mode?): Lock.Mode
+	const beat: Lock.Mode = if mode then table.clone(mode) else {}
+	beat.byBeat = true
+	return beat
 end
 
 --> Claims `key`, yielding until it is ours or the claim fails.
@@ -98,16 +91,30 @@ function Claim.open(
 	const config = context.config
 	const started = clock.now()
 	local delay = config.backoffMin
+	-- While a live owner is asked to hand over, the key is tried every half second: it is freed within a
+	-- few seconds of the request, and a doubling backoff would leave it free for seconds before trying
+	-- again. Past 15 s of that, the tries back off as usual, to spare the request budget.
+	local handOverDelay = HAND_OVER_POLL
 	local steal = false
+	-- The steal is on the word of the owner's beat.
+	local byBeat = false
 	local observed: Observed? = nil
+	-- A claim went unanswered, so it may hold the key: a failure must let go of it.
+	local unsure = false
+	const function fail(reason: Failure): Result
+		if unsure then
+			LetGo.disown(context, key)
+		end
+		return { ok = false, reason = reason }
+	end
 
 	while true do
 		if context.closing() then
-			return { ok = false, reason = "closing" }
+			return fail("closing")
 		elseif cancel and cancel() then
-			return { ok = false, reason = "cancelled" }
+			return fail("cancelled")
 		elseif clock.now() - started > config.loadTimeout then
-			return { ok = false, reason = "timeout" }
+			return fail("timeout")
 		end
 
 		local claim: Lock.Claim? = nil
@@ -118,13 +125,22 @@ function Claim.open(
 			context.dataStore,
 			key,
 			function(value: any, info: any): any
-				const record, outcome = Lock.claim(value, context.identity, template, clock.time(), steal, mode, info)
+				const record, outcome = Lock.claim(
+					value,
+					context.identity,
+					template,
+					clock.time(),
+					steal,
+					if steal and byBeat then onBeat(mode) else mode,
+					info
+				)
 				claim = outcome
 				return record
 			end
 		)
 
 		if not ok or claim == nil then
+			unsure = true
 			context.report(key, `load attempt failed: {err}`)
 		else
 			const outcome = claim :: Lock.Claim
@@ -142,7 +158,7 @@ function Claim.open(
 			elseif outcome.kind == "legacyLocked" then
 				-- The library being imported from still holds the key: wait for its release.
 				if clock.now() - started + delay > config.loadTimeout then
-					return { ok = false, reason = "legacyLocked" }
+					return fail("legacyLocked")
 				end
 				clock.wait(delay)
 				delay = math.min(delay * 2, config.backoffMax)
@@ -169,7 +185,7 @@ function Claim.open(
 						lease = owner.lease,
 						since = now,
 						askedAt = now,
-						beat = { asked = false } :: Lease.Watch,
+						beat = { asked = false, loadCount = owner.loadCount } :: Lease.Watch,
 					}
 					observed = watch
 				end
@@ -187,8 +203,9 @@ function Claim.open(
 							then owner.lastUpdate ~= nil and clock.time() - owner.lastUpdate > config.profileStoreDead
 							else now - current.since >= config.death
 				if dead then
-					mode =
-						{ quiet = true, expect = { guid = guid, loadCount = owner.loadCount, lease = owner.lease } } :: Lock.Mode
+					const expect: Lock.Expected =
+						{ guid = guid, loadCount = owner.loadCount, lease = owner.lease, byBeat = verdict == "dead" }
+					mode = { quiet = true, expect = expect } :: Lock.Mode
 					continue
 				elseif owner.lease == nil then
 					return { ok = false, reason = "inUse" }
@@ -203,7 +220,7 @@ function Claim.open(
 					lease = owner.lease,
 					since = now,
 					askedAt = now,
-					beat = { asked = false } :: Lease.Watch,
+					beat = { asked = false, loadCount = owner.loadCount } :: Lease.Watch,
 				}
 				observed = watch
 				ask(context, owner)
@@ -216,21 +233,22 @@ function Claim.open(
 			const verdict = if owner.memory
 				then Lease.judge(context, tostring(owner.session[2]), key, current.beat, true)
 				else "unknown"
+			byBeat = verdict ~= "unknown"
 			if verdict == "dead" then
 				steal = true
 			elseif verdict ~= "unknown" then
-				-- Watching a beat: the data store is tried on its backoff, the beat every second between, so
-				-- its end is caught as it comes.
+				-- Watching a beat: the data store is tried every half second, and the beat looked at again
+				-- the moment it could be judged dead, so a hand-over or the beat's end is caught as it comes.
 				local waited = 0
-				while waited < math.min(delay, 2) and not context.closing() and not (cancel and cancel()) do
-					waited += clock.wait(1)
+				while waited < handOverDelay and not context.closing() and not (cancel and cancel()) do
+					waited += clock.wait(math.min(Lease.nextLook(context, current.beat), handOverDelay - waited))
 					if Lease.judge(context, tostring(owner.session[2]), key, current.beat, true) == "dead" then
 						steal = true
 						break
 					end
 				end
-				if not steal then
-					delay = math.min(delay * 2, config.backoffMax)
+				if not steal and clock.now() - started > HAND_OVER_QUICK then
+					handOverDelay = math.min(handOverDelay * 2, config.backoffMax)
 				end
 				continue
 			elseif current.lease == nil then

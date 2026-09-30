@@ -45,6 +45,9 @@ const ESCAPES: { [string]: string } = {
 	["\t"] = "\\t",
 }
 
+-- Parts joined into one chunk at a time (see State.chunks).
+const CHUNK = 4096
+
 -- How many values are checked between two calls of `pause`.
 const PAUSE_EVERY = 512
 
@@ -78,6 +81,9 @@ end
 type State = {
 	parts: { string },
 	count: number,
+	--> Parts already joined, a chunk at a time, so the text is built inside the sliced walk and no
+	--> frame pays for joining a large profile's text at the end.
+	chunks: { string },
 	size: number,
 	--> The keys down to the value being checked; `depth` of them are current.
 	path: { string | number },
@@ -101,6 +107,10 @@ end
 
 const function walk(state: State, value: any)
 	const parts = state.parts
+	if state.count >= CHUNK then
+		table.insert(state.chunks, table.concat(parts, ",", 1, state.count))
+		state.count = 0
+	end
 	if state.pause then
 		state.untilPause -= 1
 		if state.untilPause <= 0 then
@@ -152,7 +162,8 @@ const function walk(state: State, value: any)
 			end
 			state.count += 1
 			parts[state.count] = "]"
-			state.size += 1 + length
+			-- Two brackets and a comma between items.
+			state.size += if length == 0 then 2 else 1 + length
 		else
 			state.count += 1
 			parts[state.count] = "{"
@@ -236,6 +247,7 @@ function Validate.check(value: any, root: string, limit: number?, pause: (() -> 
 	const state: State = {
 		parts = {},
 		count = 0,
+		chunks = {},
 		size = 0,
 		path = {},
 		depth = 0,
@@ -252,7 +264,11 @@ function Validate.check(value: any, root: string, limit: number?, pause: (() -> 
 	if state.size > cap then
 		return nil, `{root}: about {state.size} bytes, over the {cap} byte limit{largest(value, root, state.size)}`
 	end
-	return { text = table.concat(state.parts, ",", 1, state.count), size = state.size }, nil
+	const chunks = state.chunks
+	if state.count > 0 then
+		table.insert(chunks, table.concat(state.parts, ",", 1, state.count))
+	end
+	return { text = table.concat(chunks, ","), size = state.size }, nil
 end
 
 return Validate

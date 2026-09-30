@@ -21,9 +21,9 @@ hero:
 
 import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="First release">
-KeepBlox 0.1.0 is the first release. It is proven in the simulator against ProfileStore and five other
-libraries, but it has not yet run in a live game: try it in a test place first.
+<Aside type="caution" title="Not yet in a live game">
+KeepBlox 0.2.0 is proven in the simulator against ProfileStore and five other libraries, but it has not
+yet run in a live game: try it in a test place first.
 </Aside>
 
 ## What it is
@@ -54,9 +54,9 @@ every scenario and the methodology.
 | Progress a server crash loses (steps of play) | 4 | 287 | 29 |
 | Data store reads per player-hour | 13.1 | 13.6 | 122.0 |
 | Data store writes per player-hour | 13.1 | 13.6 | 122.0 |
-| Slowest open after a crash (s) | 10.0 | 46.6 | 63.7 |
+| Slowest open after a crash (s) | 9.1 | 46.6 | 63.7 |
 
-A crashed KeepBlox server is known dead within about 10 seconds: every server beats in MemoryStore every
+A crashed KeepBlox server is known dead within about 9 seconds: every server beats in MemoryStore every
 4 seconds, and a beat that stands still for two beats means the server is gone. The same beat carries a
 snapshot of each small profile, so a crash loses about one beat of play instead of an autosave interval.
 [How it works](/KeepBlox/guides/how-it-works/) explains the mechanism.
@@ -122,12 +122,13 @@ The [quick start](/KeepBlox/getting-started/quick-start/) walks through a comple
 		[Purchases](/KeepBlox/guides/purchases/).
 	</Card>
 	<Card title="Schema and migrations" icon="setting">
-		Describe the data with `KeepBlox.schema`, and move old data forward with numbered migrations.
+		Describe the data with `KeepBlox.schema`, and move old data forward with numbered migrations. Give
+		them a way back and `writeVersion`, and a release can be rolled back without locking anyone out.
 		[Schema and migrations](/KeepBlox/guides/schema-and-migrations/).
 	</Card>
 	<Card title="Versions and rollback" icon="open-book">
-		List a key's past versions, read one, and restore it safely.
-		[Versions and rollback](/KeepBlox/guides/versions-and-rollback/).
+		List a key's past versions, read one, and restore it safely. A restore names the purchases it
+		took back, so none is lost quietly. [Versions and rollback](/KeepBlox/guides/versions-and-rollback/).
 	</Card>
 	<Card title="Compression" icon="rocket">
 		Profiles over a threshold are stored compressed, so data past the 4 MB limit still saves.

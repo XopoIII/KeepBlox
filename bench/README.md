@@ -7,13 +7,13 @@ A write first copies the profile in one go. It then checks and encodes the copy,
 after every 2 ms of CPU. The longest stretch any single frame pays is therefore the copy plus one
 slice, whatever the profile's size. That stretch is what the budget limits.
 
-Measured on an Apple M1, LuneBlox 0.10.11:
+Measured on an Apple M1, LuneBlox 0.10.12:
 
 | Profile | Size | Copy | Longest slice | Longest stretch | Budget (CI) | Total CPU |
 |---|---|---|---|---|---|---|
-| 10 KB | 8,090 B | 0.05 ms | 0.34 ms | 0.39 ms | 1.5 ms | 0.39 ms |
-| 100 KB | 82,151 B | 0.56 ms | 2.05 ms | 2.61 ms | 6 ms | 3.97 ms |
-| 1 MB | 841,594 B | 5.8 ms | 3.3 ms | 9.1 ms | 16 ms | 41 ms |
+| 10 KB | 8,090 B | 0.02 ms | 0.35 ms | 0.37 ms | 1.5 ms | 0.37 ms |
+| 100 KB | 82,151 B | 0.17 ms | 2.13 ms | 2.30 ms | 6 ms | 3.85 ms |
+| 1 MB | 841,594 B | 1.7 ms | 2.6 ms | 4.3 ms | 16 ms | 41 ms |
 
 The budgets leave room for slower CI machines. The copy is the one part that cannot be split: until it
 is done, the game could change the data mid-snapshot.

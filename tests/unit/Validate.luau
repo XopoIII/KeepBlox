@@ -96,4 +96,16 @@ Spec.test("Validate: a buffer counts as base64, and its bytes decide equality", 
 	Spec.equal(first.size, #'{"blob":}' + #'{"m":null,"t":"buffer","base64":""}' + 4)
 end)
 
+Spec.test("Validate: a value of many parts is joined exactly as a small one", function()
+	-- Past a few thousand parts the text is joined a chunk at a time, inside the sliced walk.
+	for _, count in { 4094, 4095, 4096, 4097, 10_000 } do
+		const items = table.create(count)
+		for index = 1, count do
+			items[index] = index
+		end
+		const encoded = Validate.check(items, "Data", nil, function() end)
+		Spec.equal((encoded :: any).text, "[," .. table.concat(items, ",") .. ",]", `{count} items`)
+	end
+end)
+
 return nil

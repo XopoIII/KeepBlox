@@ -103,4 +103,54 @@ Spec.test("Lock: a session that no longer owns the key writes nothing", function
 	Spec.equal((lost :: any).owner, { 1, "job-B", "guid-B" })
 end)
 
+Spec.test("Lock: a quiet takeover lands only on the very lease it watched stand still", function()
+	const record = claimed(nil, THERE)
+	const function quiet(expect: Lock.Expected): string
+		const _, claim = Lock.claim(table.clone(record), HERE, TEMPLATE, 1100, false, { quiet = true, expect = expect })
+		return claim.kind
+	end
+	-- The owner renewed, is another session, or is another server since it was watched: left alone.
+	Spec.equal(quiet({ guid = "guid-B", loadCount = 1, lease = 0 }), "busy")
+	Spec.equal(quiet({ guid = "guid-B", loadCount = 2, lease = 1 }), "busy")
+	Spec.equal(quiet({ guid = "guid-C", loadCount = 1, lease = 1 }), "busy")
+	Spec.equal(quiet({ guid = "guid-B", loadCount = 1, lease = 1 }), "taken")
+end)
+
+Spec.test("Lock: a takeover on the beat's word lands only while the record vouches for the beat", function()
+	-- The owner beats; this server has asked it to hand over.
+	const beating = Lock.claim(nil, THERE, TEMPLATE, 1000, false, { memory = true })
+	const asked = claimed(beating, HERE)
+	const withdrawn = table.clone(asked)
+	withdrawn.MetaData = table.clone(asked.MetaData)
+	withdrawn.MetaData.KeepBlox = table.clone(asked.MetaData.KeepBlox)
+	withdrawn.MetaData.KeepBlox.memory = nil
+	const function steal(record: any): string
+		const _, claim = Lock.claim(table.clone(record), HERE, TEMPLATE, 1100, true, { byBeat = true })
+		return claim.kind
+	end
+	const function quiet(record: any): string
+		const expect: Lock.Expected = { guid = "guid-B", loadCount = 1, lease = 1, byBeat = true }
+		const _, claim = Lock.claim(table.clone(record), HERE, TEMPLATE, 1100, false, { quiet = true, expect = expect })
+		return claim.kind
+	end
+	Spec.equal(steal(asked), "taken")
+	Spec.equal(quiet(asked), "taken")
+	-- The owner found its beats failing and said so: the lease rule decides instead.
+	Spec.equal(steal(withdrawn), "busy")
+	Spec.equal(quiet(withdrawn), "busy")
+end)
+
+Spec.test("Lock: disown frees the key only for the very load that holds it", function()
+	const record = claimed(nil, HERE)
+	-- Another load on the same server, another server, and a value that is not a profile: nothing.
+	Spec.equal(Lock.disown(table.clone(record), { placeId = 1, jobId = "job-A", guid = "guid-A2" }, 1100), nil)
+	Spec.equal(Lock.disown(table.clone(record), THERE, 1100), nil)
+	Spec.equal(Lock.disown("text", HERE, 1100), nil)
+	const freed = Lock.disown(record, HERE, 1100)
+	Spec.equal(freed.MetaData.ActiveSession, nil)
+	Spec.equal(freed.MetaData.LastUpdate, 1100)
+	Spec.equal(freed.MetaData.KeepBlox, { lease = 2, owner = "guid-A" })
+	Spec.equal(Lock.disown(freed, HERE, 1200), nil)
+end)
+
 return nil

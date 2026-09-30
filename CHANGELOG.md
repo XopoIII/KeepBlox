@@ -5,8 +5,54 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.2.0 - 2026-09-30
+
+### Fixed
+
+- A hand-over request left in a server's MemoryStore entry no longer ends a later session of the same
+  key. A player hopping from A to B and back to A within one beat lost their new session on A. Requests
+  now name the owner's load count.
+- A load that gave up (cancelled, closing, timeout) after a claim whose answer was lost no longer
+  leaves its live server holding the key. Before, no other server could load the player while that
+  server lived.
+- `restore` brings back the restored version's schema version, so the migrations since then run on
+  it. Before, a renamed field came back as its default.
+- A live owner whose MemoryStore beats hang is no longer taken for dead by a quiet edit or a newcomer.
+  The owner withdraws its beat from its records first, and a takeover on the beat's word lands only
+  while the record still vouches for it.
+- The size estimate counts an empty table as 2 bytes, not 1.
+- A trade right after a migrating load stores the schema version with the migrated data. Before, the
+  record kept the old version, and the next load ran the migrations again on migrated data.
+- Data that contains itself no longer breaks every save: the copy a save takes recursed forever on a
+  cycle, before the check could refuse it.
+
+### Changed
+
+- One bad value no longer costs the play around it. A value a data store cannot hold (a string that is
+  not UTF-8, NaN, a function, a cycle) is repaired in what is stored, and each repair is reported once
+  with its path. Before, every save of the session was refused until the game removed the value. Only
+  a table's shape and the size limit still refuse the write. In the `poison` benchmark this loses 0
+  steps, where it lost 204.
+- Faster hand-overs: while a live owner hands over, the key is tried every half second. A dead owner's
+  beat is looked at again the moment it could be judged dead. Slowest open in the benchmark: hand-over
+  4.5 s to 3.2 s, three servers at once 8.2 s to 4.4 s, after a crash 10.0 s to 9.1 s.
+- `restore` returns `purchasesSince`, the purchases granted after the restored version. The restored
+  data no longer holds them and they stay granted, so the game must make them good; before, they were
+  lost silently. The record notes the restore in `MetaData.KeepBlox.restored`.
+- The snapshot a save takes is copied about 3x faster (one engine clone per table): the one step of a
+  save that cannot be spread over frames. The check's text is also joined a chunk at a time inside the
+  sliced walk, not all at once at its end. A 1 MB profile's longest frame stretch fell from 9.1 ms to
+  4.3 ms.
+
 ### Added
 
+- `tests/Mutate.luau`: mutation adequacy of the suite. 37 mutants, each a slip in code that keeps a
+  guarantee, must each fail the suite.
+- Differential fuzzing of the save check against the store's encoding.
+- Releases you can roll back. A migration may be `{ up, down }`, and a store's `writeVersion` stores
+  data at an older version: saves, trades, new profiles and MemoryStore snapshots alike. The release
+  before it then reads everything, so a rollback locks no player out. `KeepBlox.migrateDown` tests the
+  down steps on fixtures.
 - The Wally and pesde packages, `xopoiii/keepblox` (0.1.0 is published on both).
 
 ## 0.1.0 - 2026-09-29

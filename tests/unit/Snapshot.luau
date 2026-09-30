@@ -8,6 +8,13 @@ const World = require("@fakes/World")
 
 const TEMPLATE = { coins = 0, gifts = {} }
 
+-- A table with an array part and a string key: a shape no data store holds, and no repair makes one.
+const function mixed(): any
+	const shape: any = { 1 }
+	shape.x = 2
+	return shape
+end
+
 const function stored(world: World.World, key: string): any
 	return (world.backend:latest("Profiles/global", key) :: any).value
 end
@@ -84,6 +91,21 @@ Spec.test("Snapshot: one older than the stored data is not used", function()
 	Spec.equal(reload(world, store(world, "B")).Data.coins, 9)
 end)
 
+Spec.test("Snapshot: one left by another session of the same server is not used", function()
+	const world = World.new(3)
+	const a = store(world, "A")
+	playThenCrash(world, a, 20)
+	crash(world, "A")
+	-- The dead server's entry holds a snapshot of this key from a session that is not the one holding it.
+	const snapshot = (world.memory.maps["sorted:KB_servers"]["job-A"] :: any).value.s["Profiles/u_1"]
+	snapshot.c -= 1
+	snapshot.q += 100
+	snapshot.d.coins = 999
+	const coins = reload(world, store(world, "B")).Data.coins
+	Spec.equal(coins, stored(world, "u_1").Data.coins)
+	Spec.truthy(coins ~= 999, "the other session's snapshot was used")
+end)
+
 Spec.test("Snapshot: a purchase granted into it is not granted again after the crash", function()
 	const world = World.new(3)
 	const a = store(world, "A")
@@ -153,10 +175,30 @@ Spec.test("Snapshot: when the data turns unstorable, the last good snapshot is w
 		assert(result.ok, "A loaded")
 		result.profile.Data.coins = 40
 		world.scheduler:wait(6)
-		result.profile.Data.coins = 0 / 0
+		result.profile.Data.coins = mixed()
 		result.profile:release()
 	end, world.scheduler.now + 60)
 	Spec.equal(stored(world, "u_1").Data.coins, 40)
+end)
+
+Spec.test("Snapshot: a bad value does not stop the snapshots; a crash keeps the play around it", function()
+	const world = World.new(7)
+	const a = store(world, "A")
+	local played = 0
+	Sim.run(world.scheduler, "A", function()
+		const result = a:load("u_1")
+		assert(result.ok, "A loaded")
+		result.profile.Data.gifts = { "bad\xFF" }
+		for _ = 1, 25 do
+			world.scheduler:wait(1)
+			played += 1
+			result.profile.Data.coins = played
+		end
+	end, world.scheduler.now + 30)
+	crash(world, "A")
+	const profile = reload(world, store(world, "B"))
+	Spec.truthy(played - profile.Data.coins <= 5, `played {played}, got {profile.Data.coins}`)
+	Spec.equal(profile.Data.gifts, { `bad{utf8.char(0xFFFD)}` })
 end)
 
 Spec.test("Snapshot: a profile too large for one is written every renewFallback instead", function()

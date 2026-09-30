@@ -66,7 +66,10 @@ declare namespace KeepBlox {
 		limit?: number;
 	}
 
-	type Restored = { ok: true } | { ok: false; reason: "inUse" | "notAProfile" | "failed" };
+	/** `purchasesSince`: purchase ids granted after the version, which the restored data no longer holds. */
+	type Restored =
+		| { ok: true; purchasesSince: string[] }
+		| { ok: false; reason: "inUse" | "notAProfile" | "failed" };
 	type Sent = { ok: true } | { ok: false; reason: "full" | "foreign" | "failed" };
 	type EditResult<T> = { ok: true; data: T } | { ok: false; reason: LoadFailure | "error" | "refused" | "failed"; message?: string };
 	type TradeResult = { ok: true } | { ok: false; reason: "notHere" | "error" | "refused" | "lost" | "failed"; message?: string };
@@ -116,11 +119,16 @@ declare namespace KeepBlox {
 		lockSeconds?: number;
 	}
 
+	/** A step up, or a step up and back down (for a release that can be rolled back). */
+	type Migration = ((data: any) => unknown) | { up: (data: any) => unknown; down: (data: any) => unknown };
+
 	interface StoreOptions<T extends object> {
 		template?: T;
 		schema?: SchemaNode;
 		version?: number;
-		migrations?: Record<number, (data: any) => unknown>;
+		migrations?: Record<number, Migration>;
+		/** The version data is stored at; below `version`, the release can be rolled back. */
+		writeVersion?: number;
 		config?: Partial<Record<keyof Defaults, number>>;
 		mock?: boolean | string;
 		reconcile?: boolean;
@@ -217,10 +225,15 @@ interface KeepBlox {
 	readonly schema: KeepBlox.Schema;
 	readonly importers: KeepBlox.Importers;
 	migrate(
-		options: { schema?: KeepBlox.SchemaNode; version?: number; migrations?: Record<number, (data: any) => unknown> },
+		options: { schema?: KeepBlox.SchemaNode; version?: number; migrations?: Record<number, KeepBlox.Migration> },
 		data: unknown,
 		from: number,
 	): { ok: true; data: unknown; changed: boolean } | { ok: false; reason: "newerSchema" | "migration" | "schema"; message: string };
+	migrateDown(
+		options: { schema?: KeepBlox.SchemaNode; version?: number; migrations?: Record<number, KeepBlox.Migration> },
+		data: unknown,
+		to: number,
+	): { ok: true; data: unknown } | { ok: false; message: string };
 	processReceipt<T extends object>(
 		store: KeepBlox.Store<T>,
 		options: KeepBlox.ReceiptOptions<T>,

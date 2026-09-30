@@ -7,6 +7,13 @@ const World = require("@fakes/World")
 
 const TEMPLATE = { coins = 0, items = {} }
 
+-- A table with an array part and a string key: a shape no data store holds, and no repair makes one.
+const function mixed(): any
+	const shape: any = { 1 }
+	shape.x = 2
+	return shape
+end
+
 const function setup(seed: number?): (World.World, World.Server, KeepBlox.Store, { string })
 	const world = World.new(seed or 1)
 	const server = world:server({ name = "A", players = 1 })
@@ -84,7 +91,47 @@ Spec.test("Store: unchanged data is not written again; changed data is, on the r
 	Spec.equal(writesAfterLoad, 1)
 end)
 
-Spec.test("Store: bad data is refused with its path, and the release still goes through", function()
+Spec.test("Store: a bad value is repaired in what is stored, reported once with its path", function()
+	const world, _, store, errors = setup()
+	local data: any = nil
+	Sim.run(world.scheduler, "A", function()
+		const result = store:load("u_1")
+		assert(result.ok, "loaded")
+		const profile = result.profile
+		data = profile.Data
+		profile.Data.coins = 3
+		profile.Data.items = { { name = "bad\xFFname" }, { name = "ok", power = 0 / 0 }, print }
+		Spec.equal(profile:save(), true)
+		profile.Data.coins = 4
+		Spec.equal(profile:save(), true)
+		profile:release()
+	end, 60)
+	Spec.equal(errors, {
+		"u_1: stored with a repair: Data.items[1].name: string is not valid UTF-8; its bad bytes were replaced (and 2 more)",
+	})
+	const record = stored(world, "u_1")
+	Spec.equal(record.Data, { coins = 4, items = { { name = `bad{utf8.char(0xFFFD)}name` }, { name = "ok" } } })
+	Spec.equal(data.items[1].name, "bad\xFFname", "the game's own data is untouched")
+	Spec.equal(record.MetaData.ActiveSession, nil)
+end)
+
+Spec.test("Store: a table that contains itself does not break the save; the loop is left out", function()
+	const world, _, store, errors = setup()
+	Sim.run(world.scheduler, "A", function()
+		const result = store:load("u_1")
+		assert(result.ok, "loaded")
+		const data = result.profile.Data
+		data.coins = 5
+		data.items = { { name = "a" } }
+		data.items[1].owner = data.items
+		Spec.equal(result.profile:save(), true)
+		result.profile:release()
+	end, 60)
+	Spec.equal(errors, { "u_1: stored with a repair: Data.items[1].owner: table contains itself (a cycle); left out" })
+	Spec.equal(stored(world, "u_1").Data, { coins = 5, items = { { name = "a" } } })
+end)
+
+Spec.test("Store: data whose shape cannot be stored is refused with its path; the release goes through", function()
 	const world, _, store, errors = setup()
 	Sim.run(world.scheduler, "A", function()
 		const result = store:load("u_1")
@@ -92,11 +139,11 @@ Spec.test("Store: bad data is refused with its path, and the release still goes 
 		const profile = result.profile
 		profile.Data.coins = 3
 		Spec.equal(profile:save(), true)
-		profile.Data.items = { { name = "\xFF" } }
+		profile.Data.items = mixed()
 		Spec.equal(profile:save(), true, "the lease still renews")
 		profile:release()
 	end, 60)
-	Spec.equal(errors, { "u_1: not saved: Data.items[1].name: string is not valid UTF-8" })
+	Spec.equal(errors, { "u_1: not saved: Data.items.1: number key in a table that is not an array" })
 	const record = stored(world, "u_1")
 	Spec.equal(record.Data, { coins = 3, items = {} })
 	Spec.equal(record.MetaData.ActiveSession, nil)

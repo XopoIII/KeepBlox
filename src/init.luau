@@ -64,13 +64,32 @@ function KeepBlox.migrate(
 	options: {
 		read schema: Schema.Node?,
 		read version: number?,
-		read migrations: { [number]: Migrate.Migration }?,
+		read migrations: { read [number]: Migrate.Migration }?,
 	},
 	data: any,
 	from: number
 ): Migrate.Outcome
 	const plan = Migrate.plan(options.schema, options.version, options.migrations)
 	return Migrate.run(plan, Record.copy(data), from)
+end
+
+--> Runs a store's down steps on a copy of `data`, at `version`, down to version `to`: what a release
+--> with `writeVersion = to` stores. For testing that each `down` undoes its `up`.
+function KeepBlox.migrateDown(
+	options: {
+		read schema: Schema.Node?,
+		read version: number?,
+		read migrations: { read [number]: Migrate.Migration }?,
+	},
+	data: any,
+	to: number
+): { ok: true, data: any } | { ok: false, message: string }
+	const plan = Migrate.plan(options.schema, options.version, options.migrations)
+	const turned, problem = Migrate.down(plan, Record.copy(data), to)
+	if problem then
+		return { ok = false, message = problem }
+	end
+	return { ok = true, data = turned }
 end
 
 --> The callback for `MarketplaceService.ProcessReceipt`, over `store:receipts(options)`: it returns the

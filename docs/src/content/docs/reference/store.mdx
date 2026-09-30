@@ -208,10 +208,12 @@ The profile data the key held at `version`, or nil when that version is not a pr
 ### restore
 
 ```lua
-store:restore(key: string, version: string): { ok: true } | { ok: false, reason: "inUse" | "notAProfile" | "failed" }
+store:restore(key: string, version: string): { ok: true, purchasesSince: { string } } | { ok: false, reason: "inUse" | "notAProfile" | "failed" }
 ```
 
 Makes a version's data current. Refuses with `"inUse"` while any server holds the key.
+`purchasesSince` names the purchases granted after that version: the restored data no longer holds
+them, and they are not granted again.
 
 ### leaderboard
 

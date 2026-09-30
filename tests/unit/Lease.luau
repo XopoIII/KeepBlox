@@ -96,4 +96,27 @@ Spec.test("Lease: a live owner's beat keeps a quiet edit out; a dead one's does 
 	Spec.equal(dead, { ok = true, data = { coins = 2 } })
 end)
 
+Spec.test("Lease: a live owner whose beats hang is not taken for dead", function()
+	-- Its beat stands still for newcomers long before its own call times out (callTimeout, 20 s). The
+	-- owner withdraws its beat from the record once none has landed soon after being sent, and a
+	-- takeover on the beat's word lands only while the record still vouches for it (PaxosLease
+	-- Revisited, arXiv 2609.14640: the holder must give up before the other side may conclude).
+	for seed = 1, 8 do
+		const world = held(seed, 1)
+		world.faults:add({ op = "MemoryStoreUpdateAsync", server = "A", hang = true })
+		const other =
+			KeepBlox.store("Profiles", { template = TEMPLATE, services = world:server({ name = "B" }).services })
+		local edited: any = nil
+		Sim.run(world.scheduler, "B", function()
+			edited = other:edit("u_1", function(data: any)
+				data.coins += 1
+			end)
+		end, world.scheduler.now + 150)
+		Spec.equal(edited and edited.ok, false, `seed {seed}: the edit took the key from a live owner`)
+		const record = stored(world, "u_1")
+		Spec.equal(record.MetaData.ActiveSession[2], "job-A", `seed {seed}: A still holds the key`)
+		Spec.equal(record.Data.coins, 1, `seed {seed}`)
+	end
+end)
+
 return nil

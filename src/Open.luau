@@ -46,6 +46,8 @@ export type LoadResult = { ok: true, profile: Profile.Profile } | { ok: false, r
 export type State = {
 	name: string,
 	template: { [any]: any },
+	--> The template as a new profile is stored: at the plan's `write` version (see Migrate).
+	storedTemplate: { [any]: any },
 	--> Fill missing keys from the template on load (a template store; off for the ProfileStore shim).
 	reconcile: boolean,
 	plan: Migrate.Plan,
@@ -124,9 +126,9 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 	const mode: Lock.Mode = {
 		force = options ~= nil and options.steal == true,
 		quiet = options ~= nil and options.quiet == true,
-		version = plan.version,
+		version = plan.write,
 	}
-	local template = state.template
+	local template = state.storedTemplate
 	const importer = state.importer
 	if importer then
 		const prepared = Import.prepare(context, key, importer, cancel)

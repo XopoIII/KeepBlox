@@ -10,6 +10,8 @@
 --- - `save` writes only while `ActiveSession` is this server and `SessionLoadCount` is this session's.
 ---   Otherwise it writes nothing and reports the session lost. Every save bumps our lease and
 ---   `LastUpdate`, and reports another server's pending `ForceLoadSession`, so the owner hands over.
+--- - `disown` lets go of a key a claim may have taken without learning it did (its answer was lost),
+---   and only if that very claim holds it.
 ---
 --- A transform returns the record to write, or nil to write nothing, plus an outcome for the caller.
 --- The engine may run it more than once; the last run's outcome is the one that counts.
@@ -56,9 +58,14 @@ export type Mode = {
 	--> The schema version a new profile's data is at: the template is written for the current schema,
 	--> so no migration may run on it. Imported data gets none (it is from before every migration).
 	version: number?,
+	--> A steal on the word of the owner's MemoryStore beat: it lands only while the record still says
+	--> the owner beats. An owner whose beats stop landing says otherwise first (see Upkeep.beat).
+	byBeat: boolean?,
 }
 
-export type Expected = { guid: string, loadCount: number, lease: number? }
+--> The owner a quiet claim watched long enough to know it is dead. `byBeat`: it was judged by its beat,
+--> which the record must still vouch for.
+export type Expected = { guid: string, loadCount: number, lease: number?, byBeat: boolean? }
 
 --> The session a claim took the key from (a server that died or was cut off): where its snapshots are.
 export type Previous = { jobId: string, loadCount: number, snap: number }
@@ -173,13 +180,16 @@ function Lock.claim(
 			and expect.guid == tostring(active[3])
 			and expect.loadCount == owner.loadCount
 			and expect.lease == owner.lease
+			and (not expect.byBeat or owner.memory)
 		then
 			return record, take(record, identity, now, mode)
 		end
 		return nil, { kind = "busy", owner = owner }
 	end
 	if steal then
-		if Record.isHere(request, identity) then
+		if mode and mode.byBeat and not owner.memory then
+			return nil, { kind = "busy", owner = owner }
+		elseif Record.isHere(request, identity) then
 			const claim = take(record, identity, now, mode)
 			return record, claim
 		end
@@ -243,6 +253,23 @@ function Lock.save(
 	end
 	value.WasOverwritten = false
 	return value, { kind = "saved", handOver = handOver, record = value, messages = Messages.list(value) }
+end
+
+--> The disown transform: frees the key if the load `identity` (its GUID) holds it, and writes nothing
+--> otherwise.
+function Lock.disown(value: any, identity: Record.Identity, now: number): any?
+	if Record.classify(value) ~= "profile" then
+		return nil
+	end
+	const meta = value.MetaData
+	const active = meta.ActiveSession
+	if not Record.isHere(active, identity) or active[3] ~= identity.guid then
+		return nil
+	end
+	meta.ActiveSession = nil
+	meta.LastUpdate = now
+	Record.ours(meta).lease += 1
+	return value
 end
 
 return Lock

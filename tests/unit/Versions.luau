@@ -46,12 +46,47 @@ Spec.test("Versions: restore brings back old data, and refuses while the key is 
 		assert(held.ok, "held")
 		Spec.equal(store:restore("u_1", oldest), { ok = false, reason = "inUse" })
 		held.profile:release()
-		Spec.equal(store:restore("u_1", oldest), { ok = true })
+		Spec.equal(store:restore("u_1", oldest), { ok = true, purchasesSince = {} })
 		const result = store:load("u_1")
 		assert(result.ok, "loaded")
 		Spec.equal(result.profile.Data.coins, 1)
 		result.profile:release()
 	end, world.scheduler.now + 60)
+end)
+
+Spec.test("Versions: a restored version keeps its schema version, so later migrations run on it", function()
+	const world = World.new(2)
+	const server = world:server({ name = "A" })
+	-- The game before and after migration 1 renamed "gold" to "coins".
+	const before = KeepBlox.store("Profiles", { template = { gold = 0 }, services = server.services })
+	const after = KeepBlox.store("Profiles", {
+		template = { coins = 0 },
+		services = server.services,
+		migrations = {
+			[1] = function(data: any)
+				data.coins = data.gold
+				data.gold = nil
+			end,
+		},
+	})
+	Sim.run(world.scheduler, "A", function()
+		const old = before:load("u_1")
+		assert(old.ok, "loaded before")
+		old.profile.Data.gold = 7
+		old.profile:release()
+		world.scheduler:wait(3600)
+		const new = after:load("u_1")
+		assert(new.ok, "loaded after")
+		Spec.equal(new.profile.Data, { coins = 7 })
+		new.profile.Data.coins = 9
+		new.profile:release()
+		world.scheduler:wait(3600)
+		Spec.equal(after:restore("u_1", after:versions("u_1")[1].version), { ok = true, purchasesSince = {} })
+		const restored = after:load("u_1")
+		assert(restored.ok, "loaded restored")
+		Spec.equal(restored.profile.Data, { coins = 7 })
+		restored.profile:release()
+	end, 3 * 3600)
 end)
 
 Spec.test("Compat API: VersionQuery walks the versions as view profiles", function()

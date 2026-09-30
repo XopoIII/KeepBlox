@@ -63,7 +63,7 @@ Beside the lock in the data store, every server keeps one entry in a MemoryStore
 
 - `n` counts the beats. While it moves, the server lives. A newcomer that sees it stand still for two
   beats, or finds no entry at two looks half a beat apart, knows the server died and takes its keys.
-  That is how a crashed server is known dead within about 10 seconds.
+  That is how a crashed server is known dead within about 9 seconds.
 - `r` holds hand-over requests, keyed `"<store>/<key>"`. The owner hands those keys over at its next
   beat. This carries requests when MessagingService is down.
 - `s` holds snapshots of open profiles whose data changed since it was last stored.
@@ -146,7 +146,7 @@ The newcomer's next poll finds the key free and takes it with the saved data.
 
 A crashed server stops beating. The newcomer asks it to hand over, watches its beat, and after two
 beats with no movement takes the key. It then stores the dead server's newer snapshot, if there is one.
-In the benchmark's crash scenario, the slowest open took 10.0 s and the most play lost was 4 steps.
+In the benchmark's crash scenario, the slowest open took 9.1 s and the most play lost was 4 steps.
 
 If MemoryStore is down too, the lease rule takes over: the key is taken once its lease has not moved for
 `death` (605 s). Every write before the crash was acknowledged, so nothing acknowledged is lost; the play

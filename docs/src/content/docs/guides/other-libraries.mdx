@@ -34,6 +34,7 @@ Suphi [t/2425597](https://devforum.roblox.com/t/2425597) (`pN #m` is page N, pos
 | Reading an old version overwrote live data | DataKeep#22 | `readVersion` returns a copy and never writes | `Complaints: reading an old version never changes the live profile` |
 | Autosave after a failed migration | DocS#90 | a failed migration gives the key back and writes nothing | `tests/unit/Migrate.luau` |
 | Number keys silently became strings | Lapis#68 | a table that is neither an array nor a string-keyed dictionary is refused, with its path | `Validate: every refusal names the path of the bad value` |
+| One bad value (bad UTF-8, NaN) fails every save until the game removes it | PStore findings; the `poison` benchmark: 204-258 steps lost, or the player locked out | the value is repaired in what is stored and reported with its path; only a table's shape or the size limit still refuse the write | `Store: a bad value is repaired in what is stored, reported once with its path`, `bench/Benchmarks.md` (poison: 0 lost) |
 | Data lost past 4 MB | PS p40 #848, PS#24 | refused before the write, naming the field that grew; the last save stays | `Complaints: a profile over the size limit is refused with its path` |
 
 ## Shutdown
@@ -77,6 +78,8 @@ Suphi [t/2425597](https://devforum.roblox.com/t/2425597) (`pN #m` is page N, pos
 | No way off DataStore2, DocumentService, Lapis, DataKeep or Suphi's module | DS2#147 | `KeepBlox.importers`: each key moves on its first load, the old value is only read, the old lock is honoured | `tests/unit/Import.luau` |
 | A failed read during a move starts the player from scratch | PStore p10 #195 | a failed read of the old store is retried until the load times out; nothing is written meanwhile | `Import: a failed read of the old store is retried` |
 | Migrations must be safe to write and test | DocS#90, DocS#91 | numbered migrations, `KeepBlox.migrate` for fixtures; a new player's template is never migrated; imported data runs every migration | `tests/unit/Migrate.luau` |
+| Rolling back a release locks out every player who played on it | Lapis 0.3.3 and DocumentService 1.2.2: their `backwardsCompatible` lets old servers read newer data only as it is, so it fits added fields, not renames | `{ up, down }` migrations and `writeVersion`: the release stores data at the old version, turned back by `down` (saves, trades, new players, crash snapshots), so the release before reads everything; a `down` that does not undo its `up` is refused when the store is made | `tests/unit/Releases.luau` |
+| A trade right after a migration migrates the data twice | found in KeepBlox itself (fixed before any release had it) | every write stores the schema version with its data | `Releases: a trade right after a migrating load stores the schema version with its data` |
 
 ## Features users keep asking for
 
@@ -86,7 +89,7 @@ Suphi [t/2425597](https://devforum.roblox.com/t/2425597) (`pN #m` is page N, pos
 | Atomic trades between players | DocS#127, ProfileStore findings #9 | `store:trade(a, b, fn)`: both or neither, whatever dies when, via a trade record and journals | `tests/unit/Trade.luau` (a crash after every write, a lost answer, 40 seeds of failures) |
 | Shared, unlocked documents (guilds, clans, global keys) | Lapis#58, DocS#89, PStore p3 #55-59 | `KeepBlox.shared`: `update` in one UpdateAsync from any server, `watch` for changes | `tests/unit/Shared.luau` |
 | Compression for large profiles | PStore#7, DocS#112, PS#24 | `compress = { above = n }`, Zstandard through EncodingService; opt-in because ProfileStore cannot read it | `tests/unit/Codec.luau` |
-| Rollback to an old version | PStore p6 #108, DataKeep#4 | `versions`, `readVersion`, `restore` (refused while a server holds the key) | `tests/unit/Versions.luau` |
+| Rollback to an old version | PStore p6 #108, DataKeep#4 | `versions`, `readVersion`, `restore` (refused while a server holds the key); `restore` names the purchases it took back (`purchasesSince`), which stay granted, so support can make them good | `tests/unit/Versions.luau`, `Receipts: a restore names the purchases granted since the version it brings back` |
 | Saved / ended / error signals | PS#5, PS#11, DocS#107, Lapis#38 | `onSaving`, `onSaved`, `onEnded(reason)`, `store.onError` | `tests/unit/Store.luau` |
 | UserIds for GDPR | DS2#143, Lapis#21 | `addUserId` / `removeUserId`, kept through imports | `tests/unit/Import.luau` |
 | Read-only views that cannot corrupt live data | Lapis#44, DataKeep#22 | `readVersion` returns a copy; `load(key, { quiet = true })` never kicks | `tests/unit/Edit.luau` |

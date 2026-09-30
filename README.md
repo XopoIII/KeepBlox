@@ -8,12 +8,12 @@ new servers side by side during the rollout, and switch back.
 
 **Documentation: [xopoiii.github.io/KeepBlox](https://xopoiii.github.io/KeepBlox/)**
 
-> **Status: 0.1.0, the first release.** Everything below is proven in the simulator, against ProfileStore
-> and five other libraries. It has not yet run in a live game: try it in a test place first.
+> **Status: 0.2.0.** Everything below is proven in the simulator, against ProfileStore and five other
+> libraries. It has not yet run in a live game: try it in a test place first.
 
 ## Install
 
-- **Wally:** `KeepBlox = "xopoiii/keepblox@0.1.0"` under `[server-dependencies]`.
+- **Wally:** `KeepBlox = "xopoiii/keepblox@0.2.0"` under `[server-dependencies]`.
 - **pesde:** `pesde add xopoiii/keepblox -t roblox_server -a KeepBlox`.
 - **Studio:** `KeepBlox.rbxm` from the [latest release](https://github.com/XopoIII/KeepBlox/releases/latest).
 
@@ -26,7 +26,7 @@ MessagingService and the engine, the same players, faults and seeds (worst case 
 
 | Library | Violations | A crash loses (steps of play) | Slowest open (s) | Failed opens | Requests per player-hour |
 |---|---|---|---|---|---|
-| **KeepBlox** | **0** | **4** | 10.1 | **0** | 13.1 + 13.1 |
+| **KeepBlox** | **0** | **4** | 9.4 | **0** | 13.1 + 13.1 |
 | ProfileStore | 0 | 287 | 46.6 | 20 | 13.6 + 13.6 |
 | ProfileService | 0 | 29 | 65.8 | 27 | 122 + 122 |
 | DocumentService | 0 | 0 (player locked out: 20 of 40 rejoins) | 15.9 | 389 | 25.9 + 25.9 |
@@ -45,14 +45,22 @@ Each promise is a spec, and the simulation checks the data invariants after ever
 virtual servers and random fault schedules:
 
 - An acknowledged save is never lost, and only one server can write a profile at a time.
+- A hand-over request never ends the wrong session, a load that gives up never leaves its server holding
+  the key, and a live server whose MemoryStore hangs is never taken for dead.
 - A crash loses about one 4 s heartbeat of play: each beat carries a snapshot the next server takes.
 - A failed load never writes; data that is not a profile is quarantined, never overwritten.
 - A server that loses the session freezes its copy at once, so trades and purchases stop on stale data.
-- Invalid data (NaN, bad UTF-8, cycles, over 4 MB) is refused before the write, with the path to the bad
-  value; the last good snapshot is stored instead.
+- One bad value (NaN, bad UTF-8, a cycle) never costs the play around it: it is repaired in what is
+  stored and reported with its path. What cannot be repaired (over 4 MB, a mixed table) is refused,
+  and the last good snapshot is stored instead.
 - Offline messages are consumed exactly once; purchases are granted once and never lost.
 - Shutdown releases every profile within the deadline; no call retries forever.
-- Saving is spread across frames and respects the DataStore request budget.
+- Saving is spread across frames and respects the DataStore request budget: a 1 MB profile's save costs
+  at most about 4.3 ms in any one frame.
+- A release can be rolled back without locking out a player who played on it (`writeVersion`).
+
+The checker is checked too: 31 small slips in the code that keeps these promises each make the suite
+fail (`tests/Mutate.luau`), and the save check is fuzzed against the store's encoding.
 
 ## What it gives you
 
@@ -61,8 +69,12 @@ virtual servers and random fault schedules:
 - Shared documents for guilds and clans, updated atomically from any server (`KeepBlox.shared`).
 - Leaderboards mirrored to ordered data stores (`leaderboards`).
 - A schema with numbered, testable migrations; deep defaults for template stores.
-- Purchases through `KeepBlox.processReceipt`, version history with a safe restore, optional
-  compression for large profiles, and Studio modes that never touch live data.
+- Releases you can roll back: migrations with a way back (`{ up, down }`) and `writeVersion`, so the
+  release before reads everything, renames included. Lapis and DocumentService's `backwardsCompatible`
+  covers only changes old code can read as they are.
+- Purchases through `KeepBlox.processReceipt`, and version history with a safe restore that names the
+  purchases it takes back. Optional compression for large profiles, and Studio modes that never touch
+  live data.
 - Types for Luau (`--!strict` throughout) and roblox-ts (`types/index.d.ts`).
 
 ## Moving to KeepBlox
@@ -89,6 +101,7 @@ local store = KeepBlox.store("Profiles", {
 rokit install          # the pinned toolchain
 lefthook install       # the gates, before every commit
 sh scripts/run-tests.sh
+luneblox run tests/Mutate --yes   # mutation adequacy: every slip must fail the suite (about 16 min)
 luneblox run bench/download && luneblox run bench/Report 20   # the benchmarks
 npm ci --prefix docs && npm run build --prefix docs          # the documentation site
 ```

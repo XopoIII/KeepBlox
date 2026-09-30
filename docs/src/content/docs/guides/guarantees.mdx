@@ -32,6 +32,12 @@ deliberately unsafe library and require it to catch each breach:
 - `tests/unit/Ledger.luau`: "Ledger: a load count that goes down is caught"
 - `tests/unit/Ledger.luau`: "Ledger: the owner's own save is not a foreign write"
 
+A green suite can still miss a fault. So the specs themselves are tested: `tests/Mutate.luau` makes 31
+small slips, each in code that keeps a guarantee (a lock check dropped, a schema version not written,
+a copy that shares a table), and runs the whole suite once per slip. Every one must fail it, and every
+one does. The save check is also fuzzed against the store's encoding with thousands of hostile values
+(`tests/unit/Differential.luau`).
+
 ## One writer per key
 
 Only the server that holds the lock can write a profile. Every write is an `UpdateAsync` transform that
@@ -39,8 +45,23 @@ decides from the stored record alone: it writes only while `ActiveSession` is th
 `SessionLoadCount` is this session's. Otherwise it writes nothing, and the session ends as lost.
 
 - `tests/unit/Lock.luau`: "Lock: a session that no longer owns the key writes nothing"
+- `tests/unit/Fencing.luau`: "Fencing: a key removed and claimed afresh elsewhere is never written by its old session"
 - `tests/scenario/KeepBlox.luau`: "KeepBlox: hand-overs lose nothing and leave no stale owner"
 - `tests/scenario/KeepBlox.luau`: "KeepBlox: random play with crashes keeps every invariant"
+
+## A hand-over never ends the wrong session
+
+A request to hand a key over names the session it was made to, by its load count, whether it comes by
+MessagingService or through the owner's MemoryStore beat. A request that outlives its session is
+ignored. A load whose claim went unanswered and then gave up lets go of the key, but only if that very
+load holds it, so no live server keeps a key it never learnt it had. And a live owner whose MemoryStore
+beats hang says so in its record before a newcomer could judge it dead. A takeover on the beat's word
+lands only while the record still vouches for the beat.
+
+- `tests/unit/Fencing.luau`: "Fencing: a hand-over request made to an old session never ends the owner's next one"
+- `tests/unit/Fencing.luau`: "Fencing: a claim that landed unanswered and was then given up leaves the key free"
+- `tests/unit/Lease.luau`: "Lease: a live owner whose beats hang is not taken for dead"
+- `tests/unit/Lock.luau`: "Lock: a takeover on the beat's word lands only while the record vouches for the beat"
 
 ## An acknowledged save is never lost
 
@@ -94,18 +115,31 @@ trades and purchases must stop on the stale copy.
 - `tests/scenario/KeepBlox.luau`: "KeepBlox: an owner cut off from messaging hands over at its next renewal (baseline: 244 s stale)"
 - `tests/unit/Lease.luau`: "Lease: an owner cut off from MessagingService hands over at its next beat, with a final save"
 
-## Bad data is refused with its path
+## One bad value never costs the play around it
 
-A data store rejects a whole write for one bad value. KeepBlox checks the data before every write and
-refuses NaN and infinities, strings and keys that are not valid UTF-8, mixed or holey tables, cycles,
-engine types, and values over the 4 MB limit. The error names the path, such as
-`Data.inventory[12].name: string is not valid UTF-8`. The lease is still renewed, and the release still
-goes through. When the data turns bad, the last snapshot that could be stored is what gets stored.
+A data store rejects a whole write for one bad value. KeepBlox checks the data before every write. A
+bad value is repaired in what is stored, and the rest of the data is stored as it is:
+- a string that is not valid UTF-8 keeps its text, with U+FFFD for each bad byte;
+- NaN, infinities, and values no data store holds (functions, Instances) are left out;
+- a key that is not valid UTF-8 is left out with its value;
+- a table that contains itself loses the reference that closes the loop.
+
+`store.onError` names each repair once, with its path, such as `stored with a repair:
+Data.inventory[12].name: string is not valid UTF-8; its bad bytes were replaced`. The game's own data
+is not touched. What cannot be repaired, a mixed or holey table or data over the 4 MB limit, is
+refused with its path. Then the last snapshot that could be stored is what gets stored, the lease is
+still renewed, and the release still goes through. In the `poison` benchmark a bad string loses no
+play: 0 steps, against 258 for ProfileStore.
 
 - `tests/unit/Validate.luau`: "Validate: every refusal names the path of the bad value"
 - `tests/unit/Validate.luau`: "Validate: a cycle is refused, a shared table is not"
 - `tests/unit/Validate.luau`: "Validate: the size limit is exact and configurable"
-- `tests/unit/Store.luau`: "Store: bad data is refused with its path, and the release still goes through"
+- `tests/unit/Store.luau`: "Store: a bad value is repaired in what is stored, reported once with its path"
+- `tests/unit/Store.luau`: "Store: a table that contains itself does not break the save; the loop is left out"
+- `tests/unit/Store.luau`: "Store: data whose shape cannot be stored is refused with its path; the release goes through"
+- `tests/unit/Snapshot.luau`: "Snapshot: a bad value does not stop the snapshots; a crash keeps the play around it"
+- `tests/unit/Receipts.luau`: "Receipts: a bad value the data store would refuse does not hold up a purchase: it is repaired"
+- `tests/unit/Differential.luau`: "Differential: repair leaves storable data alone, and leaves nothing but a table's shape to refuse"
 - `tests/unit/Snapshot.luau`: "Snapshot: when the data turns unstorable, the last good snapshot is what gets stored"
 - `tests/unit/Migrate.luau`: "Migrate: a save that breaks the schema is refused with its path"
 - `tests/scenario/KeepBlox.luau`: "KeepBlox: bad data never blocks the release (baseline: the next server waits 46 s)"
@@ -152,10 +186,13 @@ Every data store call has a deadline (`callTimeout`, 20 seconds), and every load
 ## Saving never stalls a frame
 
 Before a write, the data is copied at once, then checked and encoded in slices: after every 2 ms of CPU
-time the check lets a frame pass. A large profile is checked over several frames. The frame cost is
-measured in `bench/Run.luau`.
+time the check lets a frame pass, and the text is joined a chunk at a time within them. A large profile
+is checked over several frames. The frame cost is measured in `bench/Run.luau`: the longest single
+frame a 1 MB profile's save takes is about 4.3 ms on an Apple M1, 1.7 ms of it the copy.
 
 - `tests/unit/Validate.luau`: "Validate: pause is called while a large value is checked"
+- `tests/unit/Validate.luau`: "Validate: a value of many parts is joined exactly as a small one"
+- `tests/unit/Differential.luau`: "Differential: a copy of storable data encodes the same and shares nothing with it"
 
 ## The request budget is respected
 
@@ -180,6 +217,20 @@ steps of play at worst, against 287 for ProfileStore.
 - `tests/unit/Lease.luau`: "Lease: a crashed owner is taken over within its beat's expiry, not the lease's 35 s"
 - `tests/unit/Lease.luau`: "Lease: with MemoryStore down, the lease rule still takes over a crashed owner, safely"
 - `tests/scenario/KeepBlox.luau`: "KeepBlox: a crash loses at most one renewal interval (baseline: 287 s)"
+
+## A release can be rolled back
+
+A migration may have a way back, `{ up, down }`, and a store's `writeVersion` then stores data at the
+older version, whatever writes it: a save, a new player, a trade and its journal, or a crash snapshot.
+The release before reads all of it, so rolling a release back locks no player out. The store refuses a
+`down` that does not undo its `up`, checked on its template when it is made. Every write stores the
+schema version with its data, so no migration runs twice.
+
+- `tests/unit/Releases.luau`: "Releases: a release with writeVersion can be rolled back, and back again, losing nothing"
+- `tests/unit/Releases.luau`: "Releases: a crashed release-2 server's snapshot is taken over by release 1"
+- `tests/unit/Releases.luau`: "Releases: a trade on release 2 is read by release 1"
+- `tests/unit/Releases.luau`: "Releases: a trade right after a migrating load stores the schema version with its data"
+- `tests/unit/Releases.luau`: "Releases: writeVersion is checked, and migrateDown runs the down steps on a fixture"
 
 ## ProfileStore compatibility
 
