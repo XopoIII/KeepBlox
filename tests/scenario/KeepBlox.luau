@@ -19,7 +19,7 @@ end
 Spec.test("KeepBlox: hand-overs lose nothing and leave no stale owner", function()
 	-- The bound on each open: a live owner hands over within the message's delivery (1-2 s) and a
 	-- half-second poll; three servers asking at once take turns (baseline: 5.4 s, and 20 of 60 fail).
-	const bounds: { [string]: number } = { rejoin = 2, handoff = 3.5, thirdRequester = 5, outage = 10 }
+	const bounds: { [string]: number } = { rejoin = 2, handoff = 3.05, thirdRequester = 5, outage = 10 }
 	for name, bound in bounds do
 		const metrics = soak(name).metrics
 		Spec.equal(metrics.maxProgressLost, 0, `{name}: progress lost`)

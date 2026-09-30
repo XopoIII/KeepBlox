@@ -246,16 +246,22 @@ in a separate, empty experience, never from a live game's Studio: one did thrott
 
 ## A crash loses about one beat of play
 
-Every server beats in MemoryStore every 4 seconds, and the beat carries a snapshot of each profile up
-to `snapshotBytes` (1000 bytes) whose data changed since it was stored. A newcomer that takes over from
-a dead server stores that snapshot first. A profile too large for a snapshot is written every
-`renewFallback` (30 seconds) instead, so that is the most it can lose. In the benchmark, a crash lost 4
-steps of play at worst, against 287 for ProfileStore. On Roblox's real services a crashed owner was
-taken over in 11.6-12.9 s, losing at most one beat.
+Every server beats in MemoryStore every 4 seconds, and the beat carries a snapshot of each profile whose
+data changed since it was stored: the whole data up to `snapshotBytes` (1000 bytes), and for a larger
+profile its edits since it was stored. A newcomer that takes over from a dead server stores that
+snapshot first; edits only onto the data they were made against. A profile whose edits are too large
+for a snapshot is written every `renewFallback` (30 seconds) instead, so that is the most it can lose.
+In the benchmark, a crash lost 4 steps of play at worst, against 287 for ProfileStore. On Roblox's
+real services a crashed owner was taken over in 11.6-12.9 s, losing at most one beat.
 
 - `tests/unit/Snapshot.luau`: "Snapshot: a crash loses about one beat of play, not a renewal"
 - `tests/unit/Snapshot.luau`: "Snapshot: one older than the stored data is not used"
-- `tests/unit/Snapshot.luau`: "Snapshot: a profile too large for one is written every renewFallback instead"
+- `tests/unit/SnapshotDelta.luau`: "SnapshotDelta: a large profile loses about one beat of play to a crash, not a renewal"
+- `tests/unit/SnapshotDelta.luau`: "SnapshotDelta: things added and removed between writes come back after a crash"
+- `tests/unit/SnapshotDelta.luau`: "SnapshotDelta: edits made against other data than the record's are not used"
+- `tests/unit/SnapshotDelta.luau`: "SnapshotDelta: a large profile whose edits do not fit is written every renewFallback"
+- `tests/unit/SnapshotDelta.luau`: "SnapshotDelta: a purchase granted into a large profile's edits is not granted again"
+- `tests/unit/Delta.luau`: "Delta: applying the edits to the base gives the new value, through JSON too"
 - `tests/unit/Lease.luau`: "Lease: a crashed owner is taken over within its beat's expiry, not the lease's 35 s"
 - `tests/unit/Lease.luau`: "Lease: with MemoryStore down, the lease rule still takes over a crashed owner, safely"
 - `tests/scenario/KeepBlox.luau`: "KeepBlox: a crash loses at most one renewal interval (baseline: 287 s)"

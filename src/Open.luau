@@ -21,6 +21,7 @@ const Recover = require("./Recover")
 const Serial = require("./Serial")
 const Session = require("./Session")
 const Signal = require("./Signal")
+const Snapshots = require("./Snapshots")
 const Trade = require("./Trade")
 const Types = require("./Types")
 const Upkeep = require("./Upkeep")
@@ -234,7 +235,11 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 		snapshotted = false,
 		trading = false,
 		good = nil :: Types.Good?,
+		base = nil :: Types.Base?,
 	}
+	if encoded then
+		Snapshots.stored(context, session, encoded, record.Data)
+	end
 	listener.session = session
 	session.inbox:receive(Messages.list(record))
 	for _, id in session.receipts do

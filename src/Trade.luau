@@ -29,6 +29,7 @@ const Record = require("./Record")
 const Schema = require("./Schema")
 const Services = require("./Services")
 const Session = require("./Session")
+const Snapshots = require("./Snapshots")
 const Validate = require("./Validate")
 
 export type Failure = "notHere" | "error" | "refused" | "lost" | "failed"
@@ -112,8 +113,7 @@ const function write(context: Session.Context, session: Session.Session, data: a
 	if ok and not lost and data ~= nil then
 		const encoded = Validate.check(data, "Data")
 		if encoded then
-			session.storedText = encoded.text
-			session.storedSize = encoded.size
+			Snapshots.stored(context, session, encoded, data)
 		end
 	end
 	return ok and not lost

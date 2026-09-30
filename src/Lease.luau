@@ -12,19 +12,16 @@
 ---   its session never ends the next one. A bare GUID (written by an older KeepBlox) is not fenced.
 --- - `s["<store>/<key>"] = { c, q, v, d, rc, m }` is a snapshot of one open profile whose data changed
 ---   since it was last stored: load count, snapshot number, schema version, data, receipt ids and the
----   messages already processed into it. Profiles over `snapshotBytes`, holding buffers, or in a trade
----   have none; they are written at `renewFallback` instead.
+---   messages already processed into it. A profile over `snapshotBytes` has one in `x` instead, holding
+---   only its edits since it was stored (see Snapshots). Profiles whose edits do not fit either, holding
+---   buffers, or in a trade have none; they are written at `renewFallback` instead.
 --- A newcomer that takes over a server's key takes its snapshot too, when it is newer than the stored
 --- data (see Open). One entry for all of a server's profiles keeps the cost to one call a beat per store.
 --- The data store transform still decides who may write, so a wrong verdict here can at worst end a
 --- live session early, never let two servers write (guarantee 2).
 const Call = require("./Call")
-const Codec = require("./Codec")
-const Migrate = require("./Migrate")
-const Record = require("./Record")
-const Repair = require("./Repair")
+const Snapshots = require("./Snapshots")
 const Types = require("./Types")
-const Validate = require("./Validate")
 
 --> What a newcomer has seen of one owner's beat. `loadCount` is the owner's session it watches: the
 --> hand-over request it writes names it.
@@ -34,13 +31,16 @@ export type Watch = {
 	deadSince: number?,
 	count: number?,
 	countSince: number?,
+	--> When the beat was last looked at, and the verdict then.
+	lookedAt: number?,
+	verdict: string?,
 }
 
 --> The keys a beat was asked to hand over, each with the load count of the session asked for (true for
 --> a request that names none).
 export type Requests = { [string]: number | true }
 
-export type Snapshot = { c: number, q: number, v: number, d: any, rc: { string }, m: { number } }
+export type Snapshot = Snapshots.Snapshot
 
 const MAP = "KB_servers"
 -- What one store's snapshots may take of a server's entry (an entry holds at most 32 KB).
@@ -63,88 +63,6 @@ function Lease.available(context: Types.Context): boolean
 	return context.services.memory ~= nil
 end
 
--- The snapshots this beat carries, and which sessions are covered: by a snapshot, or because the store
--- already holds their data.
-const function snapshots(
-	context: Types.Context,
-	sessions: { [string]: Types.Session },
-	final: boolean?
-): ({ [string]: Snapshot }, { [Types.Session]: boolean })
-	-- The last beat of a server whose releases cannot land takes what it can, up to the entry's share.
-	const cap = if final then ENTRY_SHARE else context.config.snapshotBytes
-	const taken: { [string]: Snapshot } = {}
-	const covered: { [Types.Session]: boolean } = {}
-	local total = 0
-	for key, session in sessions do
-		if
-			not session.active
-			or (session.releasing and not final)
-			or session.trading
-			or session.storedSize > 4 * cap
-		then
-			continue
-		end
-		-- A beat is a snapshot too: a game whose play lives outside `Data` writes it in `onSaving`. A release
-		-- already had its own, final one.
-		if not session.releasing then
-			session.profile.onSaving:fire(false, nil)
-		end
-		const play = session.profile.Data
-		-- Stored as the data store would store it, at the version this server writes (see Migrate), so a
-		-- server of the release before can take it over too.
-		local data: any = play
-		if context.plan.write < context.plan.version then
-			data = Migrate.store(context.plan, Record.copy(play))
-		end
-		local encoded = if data == nil then nil else Validate.check(data, "Data", cap)
-		if encoded == nil and data ~= nil then
-			-- Stored repaired, as a save would store it (see Repair).
-			const repaired = Record.copy(data)
-			if #Repair.run(repaired, "Data") > 0 then
-				encoded = Validate.check(repaired, "Data", cap)
-				data = repaired
-			end
-		end
-		if encoded == nil or Codec.hasBuffer(data) then
-			continue
-		elseif encoded.text == session.storedText then
-			covered[session] = true
-			continue
-		elseif total + encoded.size > ENTRY_SHARE then
-			continue
-		end
-		if encoded.text ~= session.snapText then
-			session.snapSeq += 1
-			session.snapText = encoded.text
-		end
-		const processed = session.inbox:processed()
-		const consumed = {}
-		for index in processed do
-			table.insert(consumed, index)
-		end
-		const copied = Record.copy(data)
-		session.good = {
-			text = encoded.text,
-			size = encoded.size,
-			data = copied,
-			play = if data == play then copied else Record.copy(play),
-			consumed = table.clone(processed),
-			receipts = table.clone(session.receipts),
-		}
-		taken[key] = {
-			c = session.loadCount,
-			q = session.snapSeq,
-			v = context.plan.write,
-			d = Record.copy(data),
-			rc = table.clone(session.receipts),
-			m = consumed,
-		}
-		total += encoded.size
-		covered[session] = true
-	end
-	return taken, covered
-end
-
 --> One beat of this server for the store of `context`: the count moves, this store's snapshots are
 --> replaced, and its requests are taken out and returned (the store hands over the sessions they
 --> name). Each session learns whether it is covered. Nil when the beat failed. `final`: the last beat of
@@ -155,13 +73,13 @@ function Lease.beat(context: Types.Context, sessions: { [string]: Types.Session 
 		return nil
 	end
 	const prefix = `{context.storeName}/`
-	const taken, covered = snapshots(context, sessions, final)
+	const taken = Snapshots.take(context, sessions, ENTRY_SHARE, final)
 	local requested: Requests = {}
 	const ok = call(context, function(): any
 		return store:UpdateAsync(context.identity.jobId, function(current: any): any
 			requested = {}
 			const entry = if type(current) == "table" then current else {}
-			const requests, kept = {}, {}
+			const requests = {}
 			for id, requester in if type(entry.r) == "table" then entry.r else {} do
 				if string.sub(id, 1, #prefix) == prefix then
 					const fence = if type(requester) == "table" then tonumber(requester.c) else nil
@@ -170,19 +88,29 @@ function Lease.beat(context: Types.Context, sessions: { [string]: Types.Session 
 					requests[id] = requester
 				end
 			end
-			for id, snapshot in if type(entry.s) == "table" then entry.s else {} do
-				if string.sub(id, 1, #prefix) ~= prefix then
-					kept[id] = snapshot
+			-- Other stores' snapshots stay; this store's are replaced.
+			const function replace(old: any, new: { [string]: Snapshot }): { [string]: any }
+				const kept = {}
+				for id, snapshot in if type(old) == "table" then old else {} do
+					if string.sub(id, 1, #prefix) ~= prefix then
+						kept[id] = snapshot
+					end
 				end
+				for key, snapshot in new do
+					kept[prefix .. key] = snapshot
+				end
+				return kept
 			end
-			for key, snapshot in taken do
-				kept[prefix .. key] = snapshot
-			end
-			return { n = (tonumber(entry.n) or 0) + 1, r = requests, s = kept }
+			return {
+				n = (tonumber(entry.n) or 0) + 1,
+				r = requests,
+				s = replace(entry.s, taken.whole),
+				x = replace(entry.x, taken.edits),
+			}
 		end, context.config.snapshotTtl)
 	end)
 	for _, session in sessions do
-		session.snapshotted = ok and covered[session] == true
+		session.snapshotted = ok and taken.covered[session] == true
 	end
 	return if ok then requested else nil
 end
@@ -218,7 +146,7 @@ end
 --> looks at least half a `heartbeat` apart, or its count standing still for two beats), "alive" (the
 --> count moves), "pending" (look again), or "unknown" (no answer). The server is asked to hand over
 --> once.
-function Lease.judge(context: Types.Context, jobId: string, key: string, watch: Watch, ask: boolean): string
+const function look(context: Types.Context, jobId: string, key: string, watch: Watch, ask: boolean): string
 	const clock = context.services.clock
 	const now = clock.now()
 	const entry = Lease.read(context, jobId, key, ask and not watch.asked, watch.loadCount)
@@ -240,6 +168,25 @@ function Lease.judge(context: Types.Context, jobId: string, key: string, watch: 
 	end
 	-- Standing still proves nothing until two beats have passed: only a move proves a live server.
 	return if now - (watch.countSince :: number) >= 2 * context.config.heartbeat then "dead" else "pending"
+end
+
+function Lease.judge(context: Types.Context, jobId: string, key: string, watch: Watch, ask: boolean): string
+	const verdict = look(context, jobId, key, watch, ask)
+	if verdict ~= "unknown" then
+		watch.lookedAt, watch.verdict = context.services.clock.now(), verdict
+	end
+	return verdict
+end
+
+--> The verdict `watch` had when its beat was looked at less than a second ago, not yet "dead"; nil when
+--> the beat must be looked at again. A newcomer that just looked while waiting need not look again right
+--> after trying the data store: a hand-over it waits for is caught by that try a moment sooner.
+function Lease.recent(context: Types.Context, watch: Watch): string?
+	const lookedAt = watch.lookedAt
+	if not watch.asked or lookedAt == nil or watch.verdict == "dead" then
+		return nil
+	end
+	return if context.services.clock.now() - lookedAt < 1 then watch.verdict else nil
 end
 
 --> Seconds until `watch`'s verdict could next change (the beat judged dead), at most one: a newcomer
@@ -266,8 +213,12 @@ function Lease.snapshot(
 	stored: number
 ): Snapshot?
 	const entry = Lease.read(context, jobId, key, false)
-	const all = if type(entry) == "table" and type(entry.s) == "table" then entry.s else nil
-	const snapshot = if all then all[`{context.storeName}/{key}`] else nil
+	const id = `{context.storeName}/{key}`
+	local snapshot: any = nil
+	for _, field in { "s", "x" } do
+		const all = if type(entry) == "table" and type(entry[field]) == "table" then entry[field] else nil
+		snapshot = snapshot or (if all then all[id] else nil)
+	end
 	if type(snapshot) ~= "table" or snapshot.c ~= loadCount or type(snapshot.q) ~= "number" or snapshot.q <= stored then
 		return nil
 	end

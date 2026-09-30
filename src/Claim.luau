@@ -237,9 +237,16 @@ function Claim.open(
 				watch.since = now
 			end
 			const current = watch :: Observed
-			-- The owner's MemoryStore beat, when it keeps one, decides (see Lease).
+			-- The owner's MemoryStore beat, when it keeps one, decides (see Lease): as just looked at while
+			-- waiting, or looked at now.
 			const verdict = if owner.memory
-				then Lease.judge(context, tostring(owner.session[2]), key, current.beat, true)
+				then Lease.recent(context, current.beat) or Lease.judge(
+					context,
+					tostring(owner.session[2]),
+					key,
+					current.beat,
+					true
+				)
 				else "unknown"
 			byBeat = verdict ~= "unknown"
 			if verdict == "dead" then

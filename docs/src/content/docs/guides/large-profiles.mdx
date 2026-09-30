@@ -65,9 +65,17 @@ changed profiles. After a crash, the server that takes over a key starts from th
 newer than the stored data, so a crash loses seconds of play instead of a `renew` interval (see
 [How it works](/KeepBlox/guides/how-it-works/)).
 
-MemoryStore is small, so only small profiles get a snapshot. A profile has none when:
+MemoryStore is small: an experience's holds about 1 KB per player in all. A profile up to
+`snapshotBytes` (default 1000 bytes) is snapshotted whole. A larger one carries only its edits since it
+was last stored: coins and counters that moved, things added or taken out of a list (`src/Delta.luau`).
+The server that takes over applies them to the record it claimed, and only when that record is the
+data they were made against; otherwise it keeps the stored data. A player with fifty things on a base
+still loses about one beat to a crash.
 
-- its data is over `snapshotBytes` (default 1000 bytes);
+A profile has no snapshot when:
+
+- its edits since it was stored are over `snapshotBytes`;
+- its stored data is over 128 KB (it is not walked at every beat);
 - it holds a buffer;
 - it is in a [trade](/KeepBlox/guides/trades/);
 - the store's snapshots already fill its share of the server's entry (about 24 KB per store);

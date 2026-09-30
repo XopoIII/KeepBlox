@@ -69,6 +69,8 @@ Beside the lock in the data store, every server keeps one entry in a MemoryStore
 - `r` holds hand-over requests, keyed `"<store>/<key>"`. The owner hands those keys over at its next
   beat. This carries requests when MessagingService is down.
 - `s` holds snapshots of open profiles whose data changed since it was last stored.
+- `x` holds the snapshots of larger profiles: their edits since they were stored. KeepBlox before 0.5
+  does not read `x`, so a server of an older release taking over never mistakes edits for data.
 
 A record written while its server beats says so, so a newcomer knows to trust the beat. One entry holds
 all of a server's profiles, so the cost is one MemoryStore call per beat per store.
@@ -86,7 +88,7 @@ rules apply:
 
 ## Snapshots
 
-Each beat carries a snapshot of every open profile up to `snapshotBytes` (1000 bytes) whose data
+Each beat carries a whole snapshot of every open profile up to `snapshotBytes` (1000 bytes) whose data
 changed since it was stored: its load count, a snapshot number, its schema version, the data, the
 receipt ids granted into it, and the messages already processed into it. The entry outlives the last
 beat by `snapshotTtl` (900 s).
@@ -97,8 +99,17 @@ lock-guarded write, together with its receipts and processed messages, so neithe
 processed again. If that write fails, the snapshot is not used: a few seconds of play are lost rather
 than a purchase granted twice.
 
-A profile gets no snapshot when it is over the size, holds buffers, or is in a trade. Such a profile is
-written every `renewFallback` (30 s) instead, and that is the most play a crash can lose for it.
+A profile over `snapshotBytes` gets a snapshot of its edits instead (`src/Snapshots.luau`,
+`src/Delta.luau`): what changed since the data was last stored, and a fingerprint of that stored data.
+Lists are aligned, so a thing taken out of the middle of fifty is one edit, not fifty. The newcomer
+applies the edits to the record it claimed only when the record's fingerprint is the one they were made
+against. The fingerprint does not depend on the order a table's keys were built in, or on the last
+digits a JSON round trip may change; any other difference, such as a write the dead server made but
+never heard back about, means the edits are ignored and the stored data is used.
+
+A profile gets no snapshot when its edits are over the size, its stored data is over 128 KB, it holds
+buffers, or it is in a trade. Such a profile is written every `renewFallback` (30 s) instead, and that
+is the most play a crash can lose for it.
 
 ## Renewals and the request budget
 

@@ -17,6 +17,7 @@ const Profile = require("./Profile")
 const Record = require("./Record")
 const Repair = require("./Repair")
 const Schema = require("./Schema")
+const Snapshots = require("./Snapshots")
 const Types = require("./Types")
 const Validate = require("./Validate")
 
@@ -183,8 +184,7 @@ const function write(
 		session.clearJournal = false
 	end
 	if data ~= nil and encoded then
-		session.storedText = encoded.text
-		session.storedSize = encoded.size
+		Snapshots.stored(context, session, encoded, data)
 		session.lastDataWrite = clock.now()
 	end
 	if data ~= nil then

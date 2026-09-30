@@ -22,7 +22,7 @@ hero:
 import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
 
 <Aside type="caution" title="Not yet in a live game">
-KeepBlox 0.4.1 is proven in the simulator against ProfileStore, five other libraries and a game with no
+KeepBlox 0.5.0 is proven in the simulator against ProfileStore, five other libraries and a game with no
 library, and checked on Roblox's real services in a private test experience, overload included. It has
 not yet run in a live game with players: try it in a test place first.
 </Aside>
@@ -61,7 +61,8 @@ On Roblox's real services (the live check) a hand-over took 4.2-4.6 s and a cras
 live calls take 0.3-0.6 s each. A crashed KeepBlox server is known dead within about 9 seconds in the
 simulator: every server beats in MemoryStore every
 4 seconds, and a beat that stands still for two beats means the server is gone. The same beat carries a
-snapshot of each small profile, so a crash loses about one beat of play instead of an autosave interval.
+snapshot of each changed profile (a large one as its edits since it was stored), so a crash loses about one
+beat of play instead of an autosave interval.
 [How it works](/KeepBlox/guides/how-it-works/) explains the mechanism.
 
 ## A first look

@@ -1,6 +1,9 @@
 --!strict
---- KeepBlox's cost against its crash loss, for several `renew` intervals: the one trade-off no library
---- escapes (data store writes an hour x the seconds a crash can lose is about constant).
+--- KeepBlox's cost against its crash loss, for several `renew` intervals. A library with only the data
+--- store cannot escape the trade-off: data store writes an hour x the seconds a crash can lose is about
+--- constant. KeepBlox's heartbeat snapshots (see Snapshots) step out of it: the loss stays about one beat
+--- at every `renew` (2026-09-30, 10 seeds: 3-4 steps from 15 s to 300 s), so `renew` sets only the cost.
+--- A loss that grows with `renew` here means the snapshots stopped covering the crash.
 ---
 ---     luneblox run bench/Frontier [seeds]
 const Cost = require("./Cost")
