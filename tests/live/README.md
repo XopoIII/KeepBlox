@@ -19,7 +19,11 @@ game throttles its players' saves. `Env.init` refuses to run anywhere else.
 4. Start Play, and run `Start.luau` on the server with `WHICH` set to `"functional"` (about 5 minutes)
    or `"stress"` (about 15). Progress is in `ServerStorage.KB_LiveCheck.Log.Value`; the last line
    starts with `DONE`.
-5. Stop Play and delete `ServerStorage.KB_LiveCheck` before the place is saved or published.
+5. Clean up: `Cleanup.run(print, { perMinute = 300 })` from Edit mode in the test experience (974 keys
+   took 4 minutes). In a live game keep `perMinute` at 20: the experience's limit is shared with the
+   players' saves. A removed key stops counting toward storage at once; Roblox keeps its old versions
+   30 days, outside the limit.
+6. Stop Play and delete `ServerStorage.KB_LiveCheck` before the place is saved or published.
 
 ## What it checks
 
@@ -29,7 +33,7 @@ game throttles its players' saves. `Env.init` refuses to run anywhere else.
 | `Features.luau` | messages, receipts, versions and restore, releases that roll back, trades, compression, mixed ProfileStore servers |
 | `Conformance.luau` | what the fakes model because it was measured: encoding of odd tables and numbers, version ids and tombstones, message limits, ordered ties. A failure means Roblox changed; fix the fake first |
 | `Stress.luau` | 300 profiles on one player's budget, moves, crashes: never two owners, no loss, every load answers within its deadline |
-| `Cleanup.luau` | removes every key of every `KB_LiveCheck_*` data store, 20 a minute |
+| `Cleanup.luau` | removes everything a check left: every live key of every `KB_LiveCheck_*` data store (8 at once, paced by `perMinute` and the server's budget), the runs' ordered stores, and the virtual servers' MemoryStore entries; then lists again and reports what is left, which must be 0. Runs in Edit mode too |
 
 ## Results, 2026-09-30
 
