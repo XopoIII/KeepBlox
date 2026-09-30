@@ -5,6 +5,8 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.3.0 - 2026-09-30
+
 The first live check, in Studio against real DataStore, MessagingService and MemoryStore (2026-09-30),
 in a private test experience: 113 of 113 checks. Loads, hand-overs, a three-server race, crash
 takeovers, shutdown, messages (each handled once), receipts, versions and restore, migrations with
@@ -28,6 +30,9 @@ whole experience.
   final saves were throttled and hand-overs stalled (a metastable loop, seen live with 300 profiles on
   one player's budget). A load now waits for the server's budget, and its later tries leave a reserve to
   saves. In the overload spec, 683-692 loads land instead of 383-396, and none runs past its deadline.
+- A shutdown whose releases cannot land (a spent budget, a failing data store) no longer loses the play
+  since the last beat. Three seconds before the deadline, the data of every release still pending goes
+  into one last MemoryStore beat (profiles up to 24 KB), and the next server stores it first.
 - `restore` of a version that no longer exists, or of an id that is not one, answers `"noVersion"`.
   Before, a version overwritten later in its hour answered `"notAProfile"`, and a mistyped id threw out
   of `restore`. `readVersion` answers nil for both.
