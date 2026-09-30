@@ -245,6 +245,12 @@ const MUTANTS: { Mutant } = {
 		to = "\n",
 		breaks = "a load answers within loadTimeout in all, not per step",
 	},
+	{
+		file = "src/Lease.luau",
+		from = "or (session.releasing and not final)",
+		to = "or session.releasing",
+		breaks = "a release that cannot land by the shutdown deadline leaves its data in a last beat",
+	},
 }
 
 return MUTANTS

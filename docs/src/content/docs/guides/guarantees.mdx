@@ -189,10 +189,13 @@ after that write succeeded. See [Purchases](/KeepBlox/guides/purchases/).
 
 On shutdown every store refuses new loads and releases all of its profiles in parallel. It waits at
 most `shutdownDeadline` seconds (25 by default; Roblox allows 30). Live, 5 profiles were released in
-1.35 s. A release that cannot write before the deadline (the budget is spent) leaves its lock; the next
-server takes the key over once this server's beat stops, with the data of its last save.
+1.35 s. A release that cannot write before the deadline (the budget is spent, or the data store fails)
+leaves its lock, and its data goes into one last MemoryStore beat 3 s before the deadline, for profiles
+up to 24 KB. The next server takes the key over once this server's beat stops, and stores that data
+first: nothing played before the shutdown is lost.
 
 - `tests/unit/Store.luau`: "Store: shutdown releases every profile in parallel"
+- `tests/unit/Snapshot.luau`: "Snapshot: a release that cannot land by the shutdown deadline leaves its data in a last beat"
 - `tests/scenario/KeepBlox.luau`: "KeepBlox: shutdown with 50 players on a slow data store fits the deadline"
 - `tests/unit/Complaints.luau`: "Complaints: a game BindToClose that spends the budget does not cost saves (ProfileStore p5 #104)"
 

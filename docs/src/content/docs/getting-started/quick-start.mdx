@@ -30,12 +30,20 @@ local function keyFor(player)
 end
 
 local function onPlayerAdded(player)
-	local result = store:load(keyFor(player), {
-		-- Polled while the load waits: stop if the player left.
-		cancel = function()
-			return player.Parent == nil
-		end,
-	})
+	local result
+	-- A timeout loses nothing: the data waits in the store, and nobody else can write it meanwhile. So
+	-- load again while the player is still here, and kick only after a few tries.
+	for _ = 1, 3 do
+		result = store:load(keyFor(player), {
+			-- Polled while the load waits: stop if the player left.
+			cancel = function()
+				return player.Parent == nil
+			end,
+		})
+		if result.ok or result.reason ~= "timeout" then
+			break
+		end
+	end
 	if not result.ok then
 		if result.reason ~= "cancelled" then
 			player:Kick(`Your data could not be loaded ({result.reason}). Please rejoin.`)
@@ -103,7 +111,7 @@ The reasons you are most likely to see:
 | Reason | Meaning |
 |---|---|
 | `"cancelled"` | `cancel()` returned true: the player left. Nothing was kept. |
-| `"timeout"` | The load did not finish within `loadTimeout` (120 seconds by default). |
+| `"timeout"` | The load did not finish within `loadTimeout` (120 seconds by default). Nothing is lost: load again while the player is still here. |
 | `"closing"` | The server began shutting down. |
 | `"open"` | This server already has a live session for that key. |
 | `"foreign"` | The key holds something that is not a profile. It was copied to quarantine and left untouched. |

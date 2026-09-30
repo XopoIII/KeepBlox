@@ -17,6 +17,9 @@ export type Listener = { session: Session.Session?, connection: Services.Connect
 
 const Upkeep = {}
 
+-- Seconds before the shutdown deadline when releases still pending leave their data in a last beat.
+const LAST_BEAT = 3
+
 --> Beats this server's MemoryStore entry every `heartbeat` seconds, from the start (see Lease), and
 --> hands over the sessions another server asked for there. `beating.ok` says whether newcomers may
 --> trust the beat: only then does a session's record say so.
@@ -140,7 +143,22 @@ function Upkeep.shutdown(internals: Internals, close: () -> ()): () -> ()
 			end)
 		end
 		const started = clock.now()
-		while pending > 0 and clock.now() - started < context.config.shutdownDeadline do
+		const deadline = context.config.shutdownDeadline
+		local lastBeat = false
+		while pending > 0 and clock.now() - started < deadline do
+			-- Releases the budget could not land yet leave their data in one last beat, which the next
+			-- server takes (see Lease, Recover). A release that lands after it stores the same snapshot
+			-- number, so then the record wins.
+			if not lastBeat and clock.now() - started >= deadline - LAST_BEAT and Lease.available(context) then
+				lastBeat = true
+				const left: { [string]: Session.Session } = {}
+				for key, session in internals.sessions do
+					if session.active then
+						left[key] = session
+					end
+				end
+				clock.spawn(Lease.beat, context, left, true)
+			end
 			clock.wait(0.1)
 		end
 	end
