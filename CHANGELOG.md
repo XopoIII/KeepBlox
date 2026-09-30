@@ -5,6 +5,8 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.4.0 - 2026-09-30
+
 ### Fixed
 
 - A heartbeat snapshot fires `onSaving` first, as every save does. A game whose play lives outside
