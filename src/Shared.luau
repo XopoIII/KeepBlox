@@ -35,7 +35,7 @@ export type Result =
 	| { ok: false, reason: "error" | "refused" | "foreign" | "locked" | "failed", message: string? }
 
 export type SharedStore = {
-	read name: string,
+	name: string,
 	--> The document's data now (a copy); the template when it does not exist yet.
 	read: (self: SharedStore, key: string) -> Result,
 	--> Changes the document in one UpdateAsync (see the header). Returns the data stored.

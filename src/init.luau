@@ -38,6 +38,8 @@ export type SharedStore = Shared.SharedStore
 export type Profile = Profile.Profile
 export type LoadResult = Store.LoadResult
 export type Config = Config.Config
+--> One migration: a step, or `{ up, down }` for a release that can be rolled back (see Migrate).
+export type Migration = Migrate.Migration
 
 const KeepBlox = {}
 
