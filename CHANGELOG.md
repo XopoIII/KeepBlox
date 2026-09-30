@@ -5,6 +5,8 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.2.0 - 2026-09-30
+
 ### Fixed
 
 - A hand-over request left in a server's MemoryStore entry no longer ends a later session of the same
@@ -44,7 +46,7 @@ semantic versioning.
 
 ### Added
 
-- `tests/Mutate.luau`: mutation adequacy of the suite. 30 mutants, each a slip in code that keeps a
+- `tests/Mutate.luau`: mutation adequacy of the suite. 37 mutants, each a slip in code that keeps a
   guarantee, must each fail the suite.
 - Differential fuzzing of the save check against the store's encoding.
 - Releases you can roll back. A migration may be `{ up, down }`, and a store's `writeVersion` stores
