@@ -43,6 +43,17 @@ function Errors.rejected(): string
 	return "502: API Services rejected request with error. HTTP 500 (Internal Server Error)"
 end
 
+--> A version id that is not well formed (live check, 2026-09-30). A well-formed id the key does not
+--> have answers nil instead.
+function Errors.invalidVersion(): string
+	return "502: API Services rejected request with error. Error code: 25 Reason: The provided version is not valid."
+end
+
+--> A boolean key in a stored table (live check, 2026-09-30; the engine gives no code).
+function Errors.invalidKeyType(): string
+	return "Invalid table key type used"
+end
+
 function Errors.keyThrottled(): string
 	return "KeyThrottled: the key's write throughput over the last 60 seconds is above its limit."
 end

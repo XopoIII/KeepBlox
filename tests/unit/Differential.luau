@@ -1,9 +1,13 @@
 --!strict
 --- Differential fuzzing of the save check (PickleFuzzer, arXiv 2605.15084): random and hostile values go
---- through `Validate.check` and through the fake data store's `Encoding`, which models what
---- `HttpService:JSONEncode` stores. They must agree on what can be stored, and on its size, since the
---- 4 MB limit is enforced from Validate's estimate. Any disagreement is a write that fails at the store
---- or a value refused for no reason.
+--- through `Validate.check` and through the fake data store's `Encoding`, which models what a data store
+--- keeps (checked live). Validate must accept exactly the values the store keeps without loss, at the
+--- same size, since the 4 MB limit is enforced from Validate's estimate. The store keeps a mixed table
+--- by dropping keys, silently, so a value Validate let through that the store changes is lost data; a
+--- value refused that the store keeps is play lost for no reason. Two refusals are by choice: NaN and
+--- infinities, which the store keeps but which break every sum they touch; and an array with holes,
+--- which the store keeps only when the length operator happens to reach past them, an accident of how
+--- the table was built.
 const Encoding = require("@fakes/Encoding")
 const Prng = require("@fakes/Prng")
 const Record = require("@keepblox/Record")
@@ -80,31 +84,109 @@ const function value(random: Prng.Prng, depth: number): any
 	return result
 end
 
+-- Whether `a` and `b` hold the same data: the same keys, NaN equal to NaN, buffers by content.
+const function same(a: any, b: any): boolean
+	if type(a) == "table" and type(b) == "table" then
+		for key, item in a do
+			if not same(item, b[key]) then
+				return false
+			end
+		end
+		for key in b do
+			if a[key] == nil then
+				return false
+			end
+		end
+		return true
+	elseif typeof(a) == "buffer" and typeof(b) == "buffer" then
+		return buffer.tostring(a) == buffer.tostring(b)
+	elseif a ~= a then
+		return b ~= b
+	end
+	return a == b
+end
+
+-- Whether `input` holds NaN or an infinity anywhere.
+const function nonFinite(input: any, seen: { [any]: boolean }?): boolean
+	if type(input) == "number" then
+		return input ~= input or input == math.huge or input == -math.huge
+	elseif type(input) == "table" then
+		const visited = seen or {}
+		if visited[input] then
+			return false
+		end
+		visited[input] = true
+		for _, item in input do
+			if nonFinite(item, visited) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- Whether `input` holds an array with a hole anywhere (t[1] set, and some index up to #t nil).
+const function holes(input: any, seen: { [any]: boolean }?): boolean
+	if type(input) ~= "table" then
+		return false
+	end
+	const visited = seen or {}
+	if visited[input] then
+		return false
+	end
+	visited[input] = true
+	if input[1] ~= nil then
+		for index = 1, #input do
+			if input[index] == nil then
+				return true
+			end
+		end
+	end
+	for _, item in input do
+		if holes(item, visited) then
+			return true
+		end
+	end
+	return false
+end
+
+-- The store's verdict: whether it keeps `input` without loss, and at what size.
+const function kept(input: any): (boolean, number?)
+	const ok, size = pcall(Encoding.size, input)
+	if not ok then
+		return false, nil
+	end
+	return same(input, Encoding.stored(input)), size
+end
+
 const function describe(input: any): string
 	const ok, text = pcall(Encoding.encode, input)
 	return if ok then text else `({typeof(input)}, not encodable: {text})`
 end
 
-Spec.test("Differential: Validate and the store agree on what can be stored, and its exact size", function()
-	local accepted, refused = 0, 0
+Spec.test("Differential: Validate accepts exactly what the store keeps without loss, at its exact size", function()
+	local accepted, refused, byChoice = 0, 0, 0
 	for seed = 1, 20 do
 		const random = Prng.new(seed)
 		for case = 1, 400 do
 			const input = value(random, 4)
 			const encoded = Validate.check(input, "Data", math.huge)
-			const ok, size = pcall(Encoding.size, input)
+			const lossless, size = kept(input)
 			const where = `seed {seed} case {case}: {describe(input)}`
-			Spec.equal(encoded ~= nil, ok, `accepted by one side only, {where}`)
-			if encoded and ok then
+			if encoded then
+				Spec.truthy(lossless, `accepted, but the store changes it: {where}`)
 				Spec.equal(encoded.size, size, `size, {where}`)
 				accepted += 1
+			elseif lossless then
+				Spec.truthy(nonFinite(input) or holes(input), `refused, but the store keeps it: {where}`)
+				byChoice += 1
 			else
 				refused += 1
 			end
 		end
 	end
-	-- Both kinds were really exercised.
-	Spec.truthy(accepted > 1000 and refused > 1000, `accepted {accepted}, refused {refused}`)
+	-- Every kind was really exercised.
+	Spec.truthy(accepted > 1000 and refused > 1000 and byChoice > 100, `{accepted}, {refused}, {byChoice}`)
 end)
 
 -- Every table and buffer in `value`, by identity.
@@ -167,9 +249,8 @@ Spec.test(
 					continue -- a bad value at the root is not repaired
 				end
 				const encoded, problem = Validate.check(copied, "Data", math.huge)
-				const ok = pcall(Encoding.size, copied)
-				Spec.equal(encoded ~= nil, ok, `the store disagrees after repair, {where}`)
 				if encoded then
+					Spec.truthy((kept(copied)), `repaired, but the store changes it: {where}`)
 					repaired += 1
 				else
 					Spec.truthy(

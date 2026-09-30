@@ -5,6 +5,35 @@ semantic versioning.
 
 ## Unreleased
 
+The first live check, in Studio against real DataStore, MessagingService and MemoryStore (2026-09-30):
+loads, hand-overs, a three-server race, crash takeovers, shutdown, messages, receipts, migrations with
+rollback, trades, compression and mixed ProfileStore servers all held. Measured live: hand-over from a
+live owner 3.9-4.2 s, crash takeover 11.6-12.9 s with at most one beat of play lost, shutdown of 5
+profiles 1.4 s.
+
+### Fixed
+
+- `restore` of a version that no longer exists, or of an id that is not one, answers `"noVersion"`.
+  Before, a version overwritten later in its hour answered `"notAProfile"`, and a mistyped id threw out
+  of `restore`. `readVersion` answers nil for both.
+
+### Changed
+
+- The test fakes follow what the live check measured, and every spec that depended on the old guesses
+  was seen failing first:
+  - a data store keeps NaN and infinities; it keeps a table with `[1]` as its array part and drops
+    every other key without an error; it turns number keys of a dictionary into integer text;
+  - a remove adds its tombstone as a version of its own; a version id that is not well formed is error
+    25, and a well-formed one the key does not have reads nil;
+  - a string message may have 1024 bytes and any other message 940 bytes of JSON; `Sent` has
+    milliseconds;
+  - ordered ties come in a fixed order that is not by key;
+  - a new server starts with a burst (600 reads and writes with one player) and its budget is not
+    capped; the experience-level limits (300 + 40 per user reads a minute, and the rest) are shared by
+    every server, and going over them is refused as unmodelled.
+- The differential fuzzing of the save check now asks for more: Validate accepts exactly what the store
+  keeps without loss. The two refusals by choice are NaN and infinities, and arrays with holes.
+
 ## 0.2.0 - 2026-09-30
 
 ### Fixed

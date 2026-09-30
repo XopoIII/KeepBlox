@@ -69,7 +69,8 @@ It returns `{ ok = true, purchasesSince = { ... } }` or `{ ok = false, reason = 
 |---|---|
 | `"inUse"` | A server holds the key. Nothing is written. |
 | `"notAProfile"` | The version, or the key's current value, is not a profile record. |
-| `"failed"` | The write did not succeed. |
+| `"noVersion"` | The key has no such version now. Roblox keeps one version per UTC hour, so a version listed a moment ago is gone once the key is written again in that hour; an id that is not well formed names none. |
+| `"failed"` | A call did not succeed. |
 
 ## Refused while in use
 

@@ -107,7 +107,7 @@ export type DataStoreService = {
 	GetRequestBudgetForRequestType: (self: DataStoreService, requestType: RequestType) -> number,
 }
 
---> What a MessagingService subscriber receives. `Sent` is the sender's Unix time in seconds.
+--> What a MessagingService subscriber receives. `Sent` is the sender's Unix time in seconds, with milliseconds.
 export type Message = { Data: any, Sent: number }
 
 export type Connection = {

@@ -70,7 +70,7 @@ function DataStore.new(context: Context, store: string): Services.DataStore
 	end
 
 	const function remember(key: string, value: any, info: Services.KeyInfo?)
-		cache[key] = { value = Encoding.copy(value), info = info, expires = scheduler.now + CACHE_SECONDS }
+		cache[key] = { value = Encoding.stored(value), info = info, expires = scheduler.now + CACHE_SECONDS }
 	end
 
 	const function current(key: string): (any, Services.KeyInfo?)
@@ -107,7 +107,7 @@ function DataStore.new(context: Context, store: string): Services.DataStore
 	): string
 		checkKey(key)
 		if value == nil then
-			error(Errors.unmodelled("SetAsync with a nil value"), 0)
+			error("Argument 2 missing or nil", 0) -- the engine's text, live check 2026-09-30
 		end
 		Encoding.encode(value)
 		budget:acquire({ "StandardWrite" }, "Set", Errors.queueFull(302, "SetAsync"))
@@ -164,7 +164,7 @@ function DataStore.new(context: Context, store: string): Services.DataStore
 				fault("UpdateAsync", key, true)
 				const written = VersionPages.keyInfo(version, backend:createdMs(store, key) or 0)
 				remember(key, newValue, written)
-				return Encoding.copy(newValue), written
+				return Encoding.stored(newValue), written
 			end
 		end
 	end
@@ -219,8 +219,12 @@ function DataStore.new(context: Context, store: string): Services.DataStore
 		travel()
 		const version = backend:version(store, key, id)
 		travel()
-		if version == nil or version.deleted then
-			error(Errors.unmodelled("GetVersionAsync for a missing or deleted version"), 0)
+		-- Live check (2026-09-30): an id that is not well formed is an error; a well-formed id the key
+		-- does not have (made up, overwritten later in its hour, or a tombstone) answers nil.
+		if not string.match(id, "^%x+%.%d+%.%x+%.%d+$") then
+			error(Errors.invalidVersion(), 0)
+		elseif version == nil or version.deleted then
+			return nil, nil
 		end
 		return Encoding.copy(version.value), VersionPages.keyInfo(version, backend:createdMs(store, key) or 0)
 	end

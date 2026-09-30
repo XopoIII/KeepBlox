@@ -30,9 +30,11 @@ export type Query = {
 --> `purchasesSince`: the purchase ids granted after `version`, oldest first. The restored data is from
 --> before them, and they stay granted (a restore never replays a purchase), so the game must make them
 --> good. Only ids still in the kept history (see Receipts) are known.
+--> `noVersion`: the key has no such version now. A version is overwritten by later writes in its UTC
+--> hour, and an id that is not well formed names none (both seen live).
 export type Restored =
 	{ ok: true, purchasesSince: { string } }
-	| { ok: false, reason: "inUse" | "notAProfile" | "failed" }
+	| { ok: false, reason: "inUse" | "notAProfile" | "noVersion" | "failed" }
 
 const DEFAULT_LIMIT = 100
 
@@ -64,10 +66,33 @@ function Versions.list(context: Session.Context, key: string, query: Query?): { 
 	end
 end
 
---> The profile data `key` held at `version`, or nil when that version is not a profile.
+-- The value `key` held at `version`: "found" and the value, "noVersion" (none, or an id that is not
+-- one: the engine's error 25), or "failed" and the error.
+const function fetch(context: Session.Context, key: string, version: string): (string, any)
+	const ok, value = Call.run(
+		context.services.clock,
+		context.config.callTimeout,
+		context.dataStore.GetVersionAsync,
+		context.dataStore,
+		key,
+		version
+	)
+	if not ok then
+		return if string.find(tostring(value), "Error code: 25", 1, true) then "noVersion" else "failed", value
+	end
+	return if value == nil then "noVersion" else "found", value
+end
+
+--> The profile data `key` held at `version`, or nil when there is no such version or it is not a
+--> profile. A failed call throws.
 function Versions.read(context: Session.Context, key: string, version: string): any
-	const value = context.dataStore:GetVersionAsync(key, version)
-	return if Record.classify(value) == "profile" then Codec.unpack(context.services.codec, value.Data) else nil
+	const status, value = fetch(context, key, version)
+	if status == "failed" then
+		error(`KeepBlox: could not read version {version} of {key}: {value}`, 2)
+	end
+	return if status == "found" and Record.classify(value) == "profile"
+		then Codec.unpack(context.services.codec, value.Data)
+		else nil
 end
 
 --> Makes `version`'s data current for `key`, with the schema version it was stored at, so the
@@ -76,8 +101,10 @@ end
 --> result names the purchases it rolled back (a rollback is an audited new version, as in Rebound,
 --> IEEE S&P 2026).
 function Versions.restore(context: Session.Context, key: string, version: string): Restored
-	const old = context.dataStore:GetVersionAsync(key, version)
-	if Record.classify(old) ~= "profile" then
+	const status, old = fetch(context, key, version)
+	if status ~= "found" then
+		return { ok = false, reason = status } :: Restored
+	elseif Record.classify(old) ~= "profile" then
 		return { ok = false, reason = "notAProfile" }
 	end
 	const clock = context.services.clock

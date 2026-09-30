@@ -8,8 +8,10 @@
 ---   `{key, value}`, pageSize at most 100;
 --- - per-server budgets: OrderedRead 60 + players x 40, OrderedWrite 30 + players x 5, OrderedList
 ---   5 + players x 2, OrderedRemove 30 + players x 5 (Budget). UpdateAsync is a read and a write.
---- Every call yields and can fault, as the standard store's calls do. Ties are ordered by key, which the
---- docs do not specify; nothing may rely on it.
+--- Every call yields and can fault, as the standard store's calls do. Ties: the docs are silent; live
+--- (2026-09-30) they come in a fixed order that is neither by key nor by insertion, ascending the exact
+--- reverse of descending. Here that order is a hash of the key, so nothing can come to rely on
+--- alphabetical ties.
 const Budget = require("./Budget")
 const Errors = require("./Errors")
 const Faults = require("./Faults")
@@ -17,6 +19,16 @@ const Scheduler = require("./Scheduler")
 const Services = require("@keepblox/Services")
 
 export type Shared = { [string]: { [string]: number } }
+
+-- FNV-1a of the key: where a key falls among equal values.
+const function tieRank(key: string): number
+	local hash = 2166136261
+	for index = 1, #key do
+		hash = bit32.bxor(hash, string.byte(key, index))
+		hash = (hash * 16777619) % 4294967296
+	end
+	return hash
+end
 
 export type Context = {
 	scheduler: Scheduler.Scheduler,
@@ -102,7 +114,11 @@ function Ordered.new(context: Context, store: string): Services.OrderedDataStore
 			if a.value ~= b.value then
 				return if ascending then a.value < b.value else a.value > b.value
 			end
-			return a.key < b.key
+			const ha, hb = tieRank(a.key), tieRank(b.key)
+			if ha ~= hb then
+				return if ascending then ha > hb else ha < hb
+			end
+			return if ascending then a.key > b.key else a.key < b.key
 		end)
 		local page = 1
 		const pages = {}

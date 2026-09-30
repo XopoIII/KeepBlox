@@ -150,8 +150,8 @@ Spec.test("Complaints: a game BindToClose that spends the budget does not cost s
 	end, 20)
 	const other = server.services.dataStores:GetDataStore("GameStats")
 	Sim.run(world.scheduler, "A", function()
-		-- The game's own handler floods the write budget first.
-		for index = 1, 120 do
+		-- The game's own handler floods the write budget first: all of it, and a full queue beyond.
+		for index = 1, server.budget:available("StandardWrite") + 120 do
 			world.scheduler:spawn(function()
 				pcall(other.SetAsync, other, `stat_{index}`, index)
 			end, "A")

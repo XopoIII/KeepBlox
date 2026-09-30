@@ -51,6 +51,33 @@ Spec.test("Ordered: pages come sorted, bounded by value, and advance until finis
 	end)
 end)
 
+-- Live (2026-09-30) six keys at one value came back x,c,a,b,m,q, and ascending q,m,b,a,c,x.
+Spec.test("Ordered: ties come in a fixed order that is not by key, ascending the reverse", function()
+	const world = World.new(1)
+	const server = world:server({ name = "A", players = 1 })
+	Sim.run(world.scheduler, "A", function()
+		const store = server.services.dataStores:GetOrderedDataStore("Board")
+		for _, key in { "m", "b", "x", "a", "q", "c" } do
+			store:SetAsync(key, 5)
+		end
+		const order = function(ascending: boolean): { string }
+			const found = {}
+			for _, entry in store:GetSortedAsync(ascending, 10):GetCurrentPage() do
+				table.insert(found, entry.key)
+			end
+			return found
+		end
+		const descending = order(false)
+		Spec.equal(order(false), descending, "the same each time")
+		const reversed = {}
+		for index = #descending, 1, -1 do
+			table.insert(reversed, descending[index])
+		end
+		Spec.equal(order(true), reversed)
+		Spec.truthy(table.concat(descending) ~= "abcmqx" and table.concat(descending) ~= "xqmcba", "not by key")
+	end)
+end)
+
 Spec.test("Ordered: every server sees one store, and each call draws its own budget", function()
 	const world = World.new(1)
 	const a = world:server({ name = "A", players = 1 })
@@ -76,11 +103,17 @@ Spec.test("Ordered: a value that is not an integer is refused", function()
 	Spec.truthy(caught ~= nil and string.find(caught, "104", 1, true) ~= nil, tostring(caught))
 end)
 
-Spec.test("Ordered: the write budget is 30 + 5 per player a minute", function()
+Spec.test("Ordered: the write budget refills at 30 + 5 per player a minute", function()
 	const world = World.new(1)
-	const server = world:server({ name = "A", players = 2 })
-	Spec.equal(server.services.dataStores:GetRequestBudgetForRequestType("OrderedWrite"), 40)
-	Spec.equal(server.services.dataStores:GetRequestBudgetForRequestType("OrderedList"), 9)
+	const server = world:server({ name = "A", players = 2, emptyBudget = true })
+	local write, list = -1, -1
+	Sim.run(world.scheduler, "A", function()
+		world.scheduler:wait(60)
+		write = server.services.dataStores:GetRequestBudgetForRequestType("OrderedWrite")
+		list = server.services.dataStores:GetRequestBudgetForRequestType("OrderedList")
+	end)
+	Spec.equal(write, 40)
+	Spec.equal(list, 9)
 end)
 
 Spec.test("Ordered: the in-memory store sorts and pages the same way", function()

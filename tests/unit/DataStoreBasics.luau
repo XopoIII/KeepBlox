@@ -100,7 +100,7 @@ Spec.test("DataStore: refused values write nothing", function()
 		end, "104:")
 		Spec.throws(function()
 			a:SetAsync("k", nil)
-		end, "UNMODELLED")
+		end, "Argument 2 missing or nil")
 		Spec.equal(a:GetAsync("k", false), { ok = true })
 	end)
 	Spec.equal(#world.backend:versions("Profiles/global", "k"), 1)
@@ -131,6 +131,45 @@ Spec.test("DataStore: writes within one UTC hour keep one backup version", funct
 		Spec.equal(values, { 3, 4, 5 })
 		const newest = a:ListVersionsAsync("k", false):GetCurrentPage()
 		Spec.equal(newest[1].Version, versions[3].Version)
+	end)
+end)
+
+-- The same steps, with the same answers, as the live check (Studio, 2026-09-30).
+Spec.test("DataStore: versions as seen live: overwritten ids, tombstones, made-up and malformed ids", function()
+	const world, a = setup()
+	Sim.run(world.scheduler, "A", function()
+		const ids = function(): { string }
+			const found = {}
+			for _, entry in a:ListVersionsAsync("k"):GetCurrentPage() do
+				table.insert(found, entry.Version .. (if entry.IsDeleted then " deleted" else ""))
+			end
+			return found
+		end
+		a:SetAsync("k", 1)
+		const first = ids()[1]
+		a:SetAsync("k", 2)
+		const second = ids()
+		Spec.equal(#second, 1)
+		Spec.equal(table.pack(a:GetVersionAsync("k", first)).n, 2)
+		Spec.equal(a:GetVersionAsync("k", first), nil, "an id overwritten in its hour reads nil")
+		a:RemoveAsync("k")
+		const removed = ids()
+		Spec.equal(#removed, 2, "the tombstone is a version of its own")
+		Spec.equal(removed[1], second[1])
+		Spec.truthy(string.find(removed[2], " deleted", 1, true) ~= nil, "the second is the tombstone")
+		Spec.equal(a:GetVersionAsync("k", second[1]), 2)
+		Spec.equal(a:GetVersionAsync("k", (string.gsub(removed[2], " deleted", ""))), nil)
+		Spec.equal(a:GetAsync("k", false), nil)
+		a:SetAsync("k", 3)
+		const after = ids()
+		Spec.equal(#after, 2, "the next write replaces the tombstone")
+		Spec.equal(after[1], second[1])
+		Spec.equal(a:GetVersionAsync("k", second[1]), 2)
+		Spec.equal(a:GetVersionAsync("k", "08DF1E8F7889F793.0000999999.08DF1E8F7960BF6A.01"), nil)
+		Spec.equal(a:GetVersionAsync("never", second[1]), nil)
+		Spec.throws(function()
+			a:GetVersionAsync("k", "not-a-version")
+		end, "Error code: 25")
 	end)
 end)
 

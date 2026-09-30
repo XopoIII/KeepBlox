@@ -77,5 +77,5 @@ See [Trades](/KeepBlox/guides/trades/).
 | Call | Reasons |
 |---|---|
 | `store:message` | `"full"`: the key's queue holds its most messages (1000); nothing queued is dropped. `"foreign"`: the key holds a value that is not a profile. `"failed"`: the data store kept failing. |
-| `store:restore` | `"inUse"`: a server holds the key. `"notAProfile"`: the version or the current value is not a profile. `"failed"`: the write did not succeed. |
+| `store:restore` | `"inUse"`: a server holds the key. `"notAProfile"`: the version or the current value is not a profile. `"noVersion"`: the key has no such version now (overwritten later in its UTC hour, or an id that is not one). `"failed"`: a call did not succeed. |
 | Shared `read`, `update` | `"error"`, `"refused"`, `"foreign"`, `"locked"` (the key is a profile), `"failed"`. See [Shared documents](/KeepBlox/guides/shared-documents/). |
