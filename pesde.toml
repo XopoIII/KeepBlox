@@ -4,7 +4,7 @@ description = "Player data for Roblox that loses nothing, fails loudly, and neve
 authors = ["XopoIII"]
 repository = "https://github.com/XopoIII/KeepBlox"
 license = "MIT"
-includes = ["src", "pesde.toml", "README.md", "LICENSE"]
+includes = ["src/**", "pesde.toml", "README.md", "LICENSE"]
 
 [target]
 environment = "roblox_server"
