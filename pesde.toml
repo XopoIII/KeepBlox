@@ -1,5 +1,5 @@
 name = "xopoiii/keepblox"
-version = "0.4.1"
+version = "0.5.0"
 description = "Player data for Roblox that loses nothing, fails loudly, and never stutters a frame"
 authors = ["XopoIII"]
 repository = "https://github.com/XopoIII/KeepBlox"
