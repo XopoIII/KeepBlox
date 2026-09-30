@@ -84,6 +84,11 @@ const function snapshots(
 		then
 			continue
 		end
+		-- A beat is a snapshot too: a game whose play lives outside `Data` writes it in `onSaving`. A release
+		-- already had its own, final one.
+		if not session.releasing then
+			session.profile.onSaving:fire(false, nil)
+		end
 		const play = session.profile.Data
 		-- Stored as the data store would store it, at the version this server writes (see Migrate), so a
 		-- server of the release before can take it over too.

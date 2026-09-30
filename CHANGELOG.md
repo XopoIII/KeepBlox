@@ -5,6 +5,18 @@ semantic versioning.
 
 ## Unreleased
 
+### Fixed
+
+- A heartbeat snapshot fires `onSaving` first, as every save does. A game whose play lives outside
+  `Data` and writes it in `onSaving` had heartbeats carrying the data as last written, which matched
+  the stored copy, so a crash lost the play since the last renewal (up to `renew`, 300 s) instead of
+  about one beat. Found integrating KeepBlox into a game.
+
+### Changed
+
+- `onSaving` fires every `heartbeat` seconds (4 by default) for each profile a heartbeat snapshot
+  covers, not only before data store writes. Keep its listeners cheap.
+
 ## 0.3.1 - 2026-09-30
 
 ### Fixed
