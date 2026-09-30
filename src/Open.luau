@@ -81,9 +81,8 @@ const function offset(key: string): number
 end
 
 -- Waits while this server is still releasing `key`. Returns a failure when the wait must stop.
-const function awaitRelease(state: State, key: string, cancel: (() -> boolean)?): Claim.Failure?
+const function awaitRelease(state: State, key: string, cancel: (() -> boolean)?, deadline: number): Claim.Failure?
 	const clock = state.base.services.clock
-	const started = clock.now()
 	while true do
 		const existing = state.sessions[key]
 		if existing == nil or not existing.releasing then
@@ -92,10 +91,10 @@ const function awaitRelease(state: State, key: string, cancel: (() -> boolean)?)
 			return "closing"
 		elseif cancel and cancel() then
 			return "cancelled"
-		elseif clock.now() - started > state.config.loadTimeout then
+		elseif clock.now() >= deadline then
 			return "timeout"
 		end
-		clock.wait(RELEASE_POLL)
+		clock.wait(math.min(RELEASE_POLL, deadline - clock.now()))
 	end
 end
 
@@ -109,7 +108,10 @@ end
 function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 	assert(type(key) == "string" and #key > 0 and #key <= 50, "KeepBlox: a key is 1-50 characters")
 	const cancel = options and options.cancel
-	const waited = awaitRelease(state, key, cancel)
+	-- One deadline for the whole load: waiting for a release here, the import, the claim and a trade's
+	-- settling all count against it, so the load answers within `loadTimeout`.
+	const deadline = state.base.services.clock.now() + state.config.loadTimeout
+	const waited = awaitRelease(state, key, cancel, deadline)
 	if waited then
 		return { ok = false, reason = waited }
 	end
@@ -123,6 +125,7 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 	const plan = state.plan
 	const context = table.clone(state.base)
 	context.identity = { placeId = services.placeId, jobId = services.jobId, guid = services.guid() }
+	context.deadline = deadline
 	const mode: Lock.Mode = {
 		force = options ~= nil and options.steal == true,
 		quiet = options ~= nil and options.quiet == true,
@@ -238,6 +241,7 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 		session.storedReceipts[id] = true
 	end
 	state.sessions[key] = session
+	context.deadline = nil -- the session lives on in this context; the load's deadline does not
 	return { ok = true, profile = profile }
 end
 

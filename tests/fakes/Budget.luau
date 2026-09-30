@@ -13,7 +13,6 @@
 --- without a size): the budget refills continuously at the documented rates; a new server starts with
 --- the burst in START; and nothing caps it (after 18 minutes it held 1767 writes, still growing by the
 --- rate). How the burst scales with players was not measured: here it does not.
-const Errors = require("./Errors")
 const Scheduler = require("./Scheduler")
 const Services = require("@keepblox/Services")
 
@@ -62,10 +61,9 @@ const Budget = {}
 
 --> The experience's own limit, shared by all its servers (error-codes-and-limits, "Experience-level
 --> limits"): per minute, 300 + concurrent users x 40 reads, x 20 writes, x 2 lists, x 40 removes, the
---> same for ordered stores. Live (2026-09-30) a Studio server over it logged both
---> "StandardReadExperienceThrottled: ... request was throttled by experience limits" and "... rate
---> exceeds the allowed maximum": whether a request over it waits or fails is not known, so the fake
---> refuses it as unmodelled. Assumed: a minute's worth at most, full at the start.
+--> same for ordered stores. A request over it fails, as the calls of a load test in GP_TEST did
+--> (2026-09-30): "StandardReadExperienceThrottled: StandardRead request was throttled by experience
+--> limits." Assumed: a minute's worth at most, full at the start.
 export type Experience = {
 	take: (self: Experience, types: { RequestType }) -> (),
 }
@@ -97,7 +95,10 @@ function Budget.experience(scheduler: Scheduler.Scheduler, users: () -> number):
 			end
 			for _, requestType in types do
 				if tokens[requestType] < 1 then
-					error(Errors.unmodelled(`{requestType} over the experience's {rate(requestType)} a minute`), 0)
+					error(
+						`{requestType}ExperienceThrottled: {requestType} request was throttled by experience limits.`,
+						0
+					)
 				end
 			end
 			for _, requestType in types do

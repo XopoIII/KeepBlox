@@ -138,12 +138,12 @@ Spec.test("Budget: a new server starts with the live burst, and reads beyond it 
 	end)
 end)
 
-Spec.test("Budget: going over the experience's limit is refused as unmodelled, whichever server asks", function()
+Spec.test("Budget: a request over the experience's limit fails, whichever server asks", function()
 	const world = World.new(1)
 	world.faults.latency = { min = 0, max = 0 }
 	const a = world:server({ name = "A", players = 1 }).services.dataStores:GetDataStore("P")
 	const b = world:server({ name = "B", players = 1 }).services.dataStores:GetDataStore("P")
-	-- Two users: 300 + 2 x 40 = 380 reads a minute for the whole experience.
+	-- Two users: 300 + 2 x 40 = 380 reads a minute for the whole experience; the 381st fails.
 	Sim.run(world.scheduler, "A", function()
 		for _ = 1, 200 do
 			a:GetAsync("k", false)
@@ -155,7 +155,9 @@ Spec.test("Budget: going over the experience's limit is refused as unmodelled, w
 		end
 	end)
 	Spec.truthy(
-		caught ~= nil and string.find(caught, "UNMODELLED: StandardRead over the experience's 380", 1, true) ~= nil,
+		caught ~= nil
+			and string.find(caught, "StandardReadExperienceThrottled: StandardRead request was throttled", 1, true)
+				~= nil,
 		tostring(caught)
 	)
 end)

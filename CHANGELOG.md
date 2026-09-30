@@ -13,6 +13,13 @@ profiles 1.4 s.
 
 ### Fixed
 
+- A load answers within `loadTimeout` in all, as documented. Each of its steps counted the timeout
+  afresh: a player back on a server still releasing them, then waiting on another owner, could wait
+  twice as long, and one load in the live stress test ran past 300 s.
+- Under overload, saves get the budget first. Loads polled a spent data store budget, so the owners'
+  final saves were throttled and hand-overs stalled (a metastable loop, seen live with 300 profiles on
+  one player's budget). A load now waits for the server's budget, and its later tries leave a reserve to
+  saves. In the overload spec, 683-692 loads land instead of 383-396, and none runs past its deadline.
 - `restore` of a version that no longer exists, or of an id that is not one, answers `"noVersion"`.
   Before, a version overwritten later in its hour answered `"notAProfile"`, and a mistyped id threw out
   of `restore`. `readVersion` answers nil for both.

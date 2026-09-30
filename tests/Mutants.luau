@@ -227,6 +227,24 @@ const MUTANTS: { Mutant } = {
 		to = "if false then",
 		breaks = "a restore names the purchases it rolled back",
 	},
+	{
+		file = "src/Versions.luau",
+		from = 'if string.find(tostring(value), "Error code: 25", 1, true) then "noVersion" else "failed"',
+		to = '"failed"',
+		breaks = "a version id that is not one answers noVersion",
+	},
+	{
+		file = "src/Claim.luau",
+		from = "Spare.wait(context, if tries == 0 then 1 else Spare.RESERVE, deadline,",
+		to = "Spare.wait(context, 0, deadline,",
+		breaks = "under overload, loads leave the budget to saves, so hand-overs keep going",
+	},
+	{
+		file = "src/Open.luau",
+		from = "\tcontext.deadline = deadline\n",
+		to = "\n",
+		breaks = "a load answers within loadTimeout in all, not per step",
+	},
 }
 
 return MUTANTS

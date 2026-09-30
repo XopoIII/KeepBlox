@@ -178,10 +178,19 @@ most `shutdownDeadline` seconds (25 by default; Roblox allows 30).
 ## No call waits forever
 
 Every data store call has a deadline (`callTimeout`, 20 seconds), and every load has one in all
-(`loadTimeout`, 120 seconds). A load that cannot finish returns `"timeout"`; it does not hang.
+(`loadTimeout`, 120 seconds). A load that cannot finish returns `"timeout"`; it does not hang. Every
+step of a load counts against that one deadline: waiting for this server to finish a release, the
+import, the claim and a trade's settling.
+
+Under overload the budget goes to saves first. A load waits for the server's data store budget instead
+of firing requests that can only be throttled, and its later tries leave some of the budget to saves:
+a save is what frees a key being handed over. The live check found the opposite loop, with loads polling
+a spent budget so the owners' final saves failed and hand-overs stalled; the overload spec runs three
+servers of 100 profiles on one player's budget each, with a player moving every quarter second.
 
 - `tests/unit/Store.luau`: "Store: a load that cannot finish fails with a timeout instead of hanging"
 - `tests/unit/Import.luau`: "Import: an old lock that never goes fails the load, and nothing is written"
+- `tests/unit/Overload.luau`: "Overload: every load answers within loadTimeout and one call, however spent the budget"
 
 ## Saving never stalls a frame
 

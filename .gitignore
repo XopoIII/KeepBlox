@@ -31,3 +31,6 @@ docs/.astro/
 
 # pesde publish --dry-run output
 package.tar.gz
+
+# Local ids and keys (see roblox.env.example)
+roblox.env
