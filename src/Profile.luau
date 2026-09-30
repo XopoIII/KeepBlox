@@ -22,19 +22,19 @@ export type Profile = {
 	LastSavedData: any,
 	UserIds: { number },
 	RobloxMetaData: { [string]: any },
-	read key: string,
+	key: string,
 	--> How many sessions this key has had, this one included.
-	read loadCount: number,
+	loadCount: number,
 	--> When the profile was first created, in Unix seconds (ProfileCreateTime).
-	read createdAt: number,
+	createdAt: number,
 	--> Fires right before each save takes its snapshot: the last chance to write into `Data`. A heartbeat
 	--> snapshot is one too, so it fires every `heartbeat` seconds (4 by default). `final` is true for the
 	--> release, with the reason it ends. A listener must not yield, or its later writes miss the save.
-	read onSaving: Signal.Signal<boolean, EndReason?>,
+	onSaving: Signal.Signal<boolean, EndReason?>,
 	--> Fires with a copy of the stored data after every successful save.
-	read onSaved: Signal.Signal<any>,
+	onSaved: Signal.Signal<any>,
 	--> Fires once, when the session ends. `Data` is frozen by then.
-	read onEnded: Signal.Signal<EndReason>,
+	onEnded: Signal.Signal<EndReason>,
 	isActive: (self: Profile) -> boolean,
 	--> Saves now and yields until it is stored: true, or false if it could not be.
 	save: (self: Profile) -> boolean,

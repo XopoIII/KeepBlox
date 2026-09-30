@@ -49,7 +49,10 @@ what it offers:
 - **The new type solver.** `scripts/type-check.sh` runs luau-lsp with `LuauSolverV2`, as Studio checks
   games.
 - **`read` / `write` property modifiers** in types, where a field must not be written through that
-  type.
+  type -- but never on a property of a type a game reads (`Profile`, `Store`, `SharedStore`, ...). The
+  old solver, which some games still check with, drops such a property entirely ("Key not found").
+  `read` on an indexer of a parameter (`{ read [number]: Migration }`) is fine and keeps it covariant.
+  `tests/consumer/` holds a game's use of the API, checked under both solvers by `scripts/type-check.sh`.
 - **Not in the language yet:** `if local` (RFC #238, open). Do not use it until Roblox ships it.
 
 When a newer Luau ships on Roblox, LuneBlox is bumped to it first, then the tools. Every tool must parse

@@ -5,6 +5,23 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.4.1 - 2026-09-30
+
+### Fixed
+
+- A game checked with Luau's old type solver sees the whole public API. The properties of `Profile`
+  (`key`, `loadCount`, `createdAt`, `onSaving`, `onSaved`, `onEnded`), `Store` (`name`, `onError`) and
+  `SharedStore` (`name`) were written with the `read` modifier, which the old solver drops: using them
+  failed with "Key not found". Found integrating KeepBlox into a game still on the old solver.
+
+### Added
+
+- `KeepBlox.Migration`, the type of one migration. On the old solver, annotate a list that mixes steps
+  and `{ up, down }` pairs with it (`{ KeepBlox.Migration }`): that solver takes a list literal's element
+  type from its first element.
+- `tests/consumer/`: a game's use of the public API, type-checked under both solvers, and misuse that must
+  fail on exactly the marked lines under each (`scripts/type-check.sh`, in CI and before a commit).
+
 ## 0.4.0 - 2026-09-30
 
 ### Fixed

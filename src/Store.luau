@@ -76,9 +76,9 @@ export type LoadOptions = Open.LoadOptions
 export type LoadResult = Open.LoadResult
 
 export type Store = {
-	read name: string,
+	name: string,
 	--> Fires `(key, message)` for every problem worth logging: failed calls, refused data, quarantine.
-	read onError: Signal.Signal<string, string>,
+	onError: Signal.Signal<string, string>,
 	load: (self: Store, key: string, options: LoadOptions?) -> LoadResult,
 	--> The open profiles, by key.
 	profiles: (self: Store) -> { [string]: Profile.Profile },
