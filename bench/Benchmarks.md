@@ -10,7 +10,7 @@ Worst case over seeds 1-20 for each scenario.
 
 | Library | Violations | Crash: progress lost (steps) | Longest stale owner (s) | Slowest open (s) | Failed opens | Library errors |
 |---|---|---|---|---|---|---|
-| KeepBlox | 0 | 4 | 0.0 | 9.4 | 0 of 2577 | 0 |
+| KeepBlox | 0 | 4 | 0.0 | 9.3 | 0 of 2584 | 0 |
 | ProfileStore | 0 | 287 | 244.5 | 46.6 | 20 of 2485 | 0 |
 | ProfileService | 0 | 29 | 0.0 | 65.8 | 27 of 2458 | 0 |
 | DocumentService | 0 | 0 (player locked out: 20 of 40 rejoins) | 0.0 | 15.9 | 389 of 2539 | 40 |
@@ -41,14 +41,14 @@ Requests per player per hour of play (20 players, one hour), and 50 players join
 | Scenario | Progress lost (steps) | Stale owner (s) | Slowest open (s) | Failed opens | Shutdown (s) | Violations | Library errors |
 |---|---|---|---|---|---|---|---|
 | rejoin | 0 | 0.0 | 1.2 | 0 of 40 | - | none | 0 |
-| handoff | 0 | 0.0 | 3.2 | 0 of 40 | - | none | 0 |
+| handoff | 0 | 0.0 | 2.9 | 0 of 40 | - | none | 0 |
 | crash | 4 | 0.0 | 9.1 | 0 of 40 | - | none | 0 |
-| partitioned | 0 | 0.0 | 4.5 | 0 of 40 | - | none | 0 |
-| thirdRequester | 0 | 0.0 | 4.4 | 0 of 60 | - | none | 0 |
+| partitioned | 0 | 0.0 | 4.2 | 0 of 40 | - | none | 0 |
+| thirdRequester | 0 | 0.0 | 4.5 | 0 of 60 | - | none | 0 |
 | shutdown | 0 | 0.0 | 0.5 | 0 of 1000 | 3.1 | none | 0 |
 | outage | 0 | 0.0 | 0.5 | 0 of 60 | - | none | 0 |
 | poison | 0 | 0.0 | 0.5 | 0 of 40 | - | none | 0 |
-| soup | 4 | 0.0 | 9.4 | 0 of 1257 | - | none | 0 |
+| soup | 4 | 0.0 | 9.3 | 0 of 1264 | - | none | 0 |
 
 ### ProfileStore
 

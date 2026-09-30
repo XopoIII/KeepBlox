@@ -144,7 +144,7 @@ const MUTANTS: { Mutant } = {
 		breaks = "a release that can be rolled back stores its data turned down",
 	},
 	{
-		file = "src/Lease.luau",
+		file = "src/Snapshots.luau",
 		from = "v = context.plan.write,",
 		to = "v = context.plan.version,",
 		breaks = "a snapshot is at the version this server stores",
@@ -192,8 +192,8 @@ const MUTANTS: { Mutant } = {
 		breaks = "one bad value does not cost the play around it (poison)",
 	},
 	{
-		file = "src/Lease.luau",
-		from = 'if #Repair.run(repaired, "Data") > 0 then',
+		file = "src/Snapshots.luau",
+		from = 'if #Repair.run(data, "Data") > 0 then',
 		to = "if false then",
 		breaks = "a bad value does not stop the crash snapshots",
 	},
@@ -246,17 +246,22 @@ const MUTANTS: { Mutant } = {
 		breaks = "a load answers within loadTimeout in all, not per step",
 	},
 	{
-		file = "src/Lease.luau",
+		file = "src/Snapshots.luau",
 		from = "or (session.releasing and not final)",
 		to = "or session.releasing",
 		breaks = "a release that cannot land by the shutdown deadline leaves its data in a last beat",
 	},
 	{
-		file = "src/Lease.luau",
+		file = "src/Snapshots.luau",
 		from = "\t\tif not session.releasing then\n\t\t\tsession.profile.onSaving:fire(false, nil)\n\t\tend\n",
 		to = "\n",
 		breaks = "a game that writes Data only in onSaving loses about one beat to a crash",
 	},
 }
+
+-- The heartbeat snapshots of large profiles and the hand-over's reused verdict (0.5).
+for _, mutant in require("./MutantsSnapshots") do
+	table.insert(MUTANTS, mutant)
+end
 
 return MUTANTS

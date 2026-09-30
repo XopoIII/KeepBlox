@@ -27,7 +27,7 @@ Change them only for a reason you can name.
 | `renew` | 300 | Seconds between an owner's writes of a profile. Every write renews the lease and saves the data if it changed. What a crash can lose meanwhile is covered by the MemoryStore snapshot in each beat, so this sets the data store cost (at 300 s, about 13 reads and 13 writes per player-hour), not the loss. |
 | `renewFallback` | 30 | Seconds between writes of a profile no MemoryStore snapshot covers (too large, holding buffers, or MemoryStore down). For such a profile, this is the most play a crash can lose. |
 | `heartbeat` | 4 | Seconds between a server's MemoryStore beats. Each beat carries the snapshots of its changed profiles and picks up hand-over requests. |
-| `snapshotBytes` | 1000 | Bytes of data up to which a profile is snapshotted in MemoryStore at every beat. The experience's MemoryStore holds about 1.2 KB per player in all. |
+| `snapshotBytes` | 1000 | Bytes a profile's snapshot in MemoryStore may take at every beat: its whole data up to this size, or for a larger profile its edits since it was stored. The experience's MemoryStore holds about 1.2 KB per player in all. |
 | `snapshotTtl` | 900 | Seconds a server's MemoryStore entry, with its snapshots, outlives its last beat: how late after a crash a player can come back and still get them. |
 
 ### Taking over a key

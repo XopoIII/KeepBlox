@@ -2,6 +2,7 @@
 --- The MemoryStore heartbeat beside the data store lock (Lease): a dead owner is known in seconds, a
 --- live one hears a request without MessagingService, and an outage falls back to the lease rule.
 const KeepBlox = require("@keepblox")
+const Lease = require("@keepblox/Lease")
 const Sim = require("./Sim")
 const Spec = require("../Spec")
 const World = require("@fakes/World")
@@ -117,6 +118,30 @@ Spec.test("Lease: a live owner whose beats hang is not taken for dead", function
 		Spec.equal(record.MetaData.ActiveSession[2], "job-A", `seed {seed}: A still holds the key`)
 		Spec.equal(record.Data.coins, 1, `seed {seed}`)
 	end
+end)
+
+-- A newcomer that just looked at the beat while waiting reuses that verdict right after trying the data
+-- store, and only then: a verdict a second old, a dead one, or one before the owner was asked is looked
+-- at again.
+Spec.test("Lease: a verdict is reused for a second after the beat was looked at, never longer", function()
+	local now = 100
+	const context: any = { services = { clock = {
+		now = function(): number
+			return now
+		end,
+	} } }
+	const watch: Lease.Watch = { asked = true, loadCount = 1, lookedAt = 100, verdict = "alive" }
+	Spec.equal(Lease.recent(context, watch), "alive")
+	now = 100.9
+	Spec.equal(Lease.recent(context, watch), "alive")
+	now = 101
+	Spec.equal(Lease.recent(context, watch), nil, "a second old")
+	now = 100.5
+	watch.verdict = "dead"
+	Spec.equal(Lease.recent(context, watch), nil, "dead")
+	watch.verdict, watch.asked = "pending", false
+	Spec.equal(Lease.recent(context, watch), nil, "not asked yet")
+	Spec.equal(Lease.recent(context, { asked = true, loadCount = 1 }), nil, "never looked at")
 end)
 
 return nil

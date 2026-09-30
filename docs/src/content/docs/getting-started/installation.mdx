@@ -6,7 +6,7 @@ description: How to add KeepBlox to a Roblox game with Wally, pesde, a release m
 import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
 
 <Aside type="caution" title="Not yet in a live game">
-KeepBlox 0.4.1 is proven in the simulator and checked on Roblox's real services in a private test
+KeepBlox 0.5.0 is proven in the simulator and checked on Roblox's real services in a private test
 experience, but it has not yet run in a live game with players: try it in a test place first.
 </Aside>
 
@@ -16,7 +16,7 @@ KeepBlox is a server package, so it goes under `[server-dependencies]` in your `
 
 ```toml
 [server-dependencies]
-KeepBlox = "xopoiii/keepblox@0.4.1"
+KeepBlox = "xopoiii/keepblox@0.5.0"
 ```
 
 Run `wally install`. The module lands in `ServerPackages/KeepBlox`; map `ServerPackages` somewhere

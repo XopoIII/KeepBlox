@@ -35,8 +35,9 @@ export type Config = {
 	--> Seconds between writes of a profile no MemoryStore snapshot covers (too large, holding buffers,
 	--> or MemoryStore down): then this, not `renew`, is the most play a crash can lose.
 	renewFallback: number,
-	--> Bytes of data up to which a profile is snapshotted in MemoryStore at every beat (see Lease). The
-	--> experience's MemoryStore holds about 1.2 KB per player in all.
+	--> Bytes a profile's snapshot in MemoryStore may take at every beat: its whole data up to this size,
+	--> or for a larger profile its edits since it was stored (see Snapshots). The experience's MemoryStore
+	--> holds about 1.2 KB per player in all.
 	snapshotBytes: number,
 	--> Seconds a server's snapshots outlive its last beat: how late after a crash a player can come back
 	--> and still get them.

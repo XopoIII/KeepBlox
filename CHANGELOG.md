@@ -5,6 +5,34 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.5.0 - 2026-09-30
+
+### Fixed
+
+- A profile over `snapshotBytes` (1000 bytes) is covered by the heartbeat snapshots too, so a crash
+  loses about one beat of it, not up to `renewFallback` (30 s). Its snapshot holds only its edits since
+  it was last stored, with a fingerprint of that data; the server taking over applies them only to the
+  record they were made against, and otherwise keeps the stored data. Lists are aligned, so a thing
+  taken out of the middle of fifty is one edit. Measured on a game's profile shape (about 230 bytes of
+  JSON per thing), the whole data passes 1000 bytes with the first few things and no compression brings
+  fifty under the MemoryStore quota of about 1 KB per player; the edits between two writes do fit.
+
+### Changed
+
+- A hand-over to a live owner takes 2.9 s in the benchmark, not 3.2: a newcomer that looked at the
+  owner's beat less than a second ago while waiting reuses that verdict right after trying the data
+  store, instead of one more MemoryStore call before its next wait.
+- Each beat walks every open profile stored under 128 KB (it used to stop at `4 * snapshotBytes`), over
+  as many frames as it needs.
+- A server entry in `KB_servers` gains `x`, the edit snapshots. KeepBlox before 0.5 does not read it,
+  so during a rollout an older server taking over a large profile keeps the stored data, as before.
+
+### Added
+
+- `bench/Heartbeat.luau`: every story at `heartbeat` 4 and 2. At 2 s a crashed owner is taken over in
+  5.0 s instead of 9.1, losing 2 steps instead of 4, with no violation, for 87 MemoryStore units a
+  player-hour instead of 45.
+
 ## 0.4.1 - 2026-09-30
 
 ### Fixed

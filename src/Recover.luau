@@ -2,14 +2,19 @@
 --- Taking over a key from a server that died (or was cut off) with the play it had not stored yet:
 --- the snapshot its last beat left in MemoryStore (see Lease), when that is newer than the record.
 ---
+--- A snapshot of a large profile holds only its edits since it was stored; they are applied to the record
+--- claimed, when that is the data they were made against.
+---
 --- The snapshot is written at once, in one lock-guarded write, with what goes with it: the purchase
 --- receipt ids granted into it and the messages processed into it, so neither is granted or processed
 --- again. If that write fails, the snapshot is not used: a few seconds of play are lost rather than a
 --- purchase granted twice.
 const Call = require("./Call")
+const Codec = require("./Codec")
 const Lease = require("./Lease")
 const Lock = require("./Lock")
 const Record = require("./Record")
+const Snapshots = require("./Snapshots")
 const Types = require("./Types")
 
 const Recover = {}
@@ -24,6 +29,12 @@ function Recover.run(context: Types.Context, key: string, loadCount: number, rec
 	if snapshot == nil then
 		return record
 	end
+	-- Edits apply only to the data they were made against (see Snapshots).
+	const data = Snapshots.data(snapshot, Codec.unpack(context.services.codec, record.Data))
+	if data == nil then
+		context.report(key, "a newer snapshot was found but was made against other data; the stored data is used")
+		return record
+	end
 	const receipts = Record.receipts(record.MetaData)
 	for _, id in snapshot.rc or {} do
 		if not table.find(receipts, id) then
@@ -35,7 +46,7 @@ function Recover.run(context: Types.Context, key: string, loadCount: number, rec
 		consumed[index] = true
 	end
 	const payload: Lock.Payload = {
-		data = snapshot.d,
+		data = data,
 		release = false,
 		receipts = receipts,
 		consumed = consumed,

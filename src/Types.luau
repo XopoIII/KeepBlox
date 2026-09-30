@@ -78,8 +78,12 @@ export type Session = {
 	trading: boolean,
 	--> The latest snapshot that could be stored, with what went with it: what a write stores when the
 	--> data in memory can no longer be (see Lease).
-	good: Good?,
+	good: Good?, --> A copy of the data as last stored, and its fingerprint once needed: what a snapshot's edits are
+	--> made against (see Snapshots). Nil for a profile too large to walk at every beat.
+	base: Base?,
 }
+
+export type Base = { text: string, data: any, print: string? }
 
 export type Pending = { done: boolean, stored: boolean, waiters: { thread } }
 

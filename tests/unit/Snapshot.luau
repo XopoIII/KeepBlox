@@ -249,23 +249,4 @@ Spec.test("Snapshot: a bad value does not stop the snapshots; a crash keeps the 
 	Spec.equal(profile.Data.gifts, { `bad{utf8.char(0xFFFD)}` })
 end)
 
-Spec.test("Snapshot: a profile too large for one is written every renewFallback instead", function()
-	const world = World.new(6)
-	const a = store(world, "A")
-	local coins = 0
-	Sim.run(world.scheduler, "A", function()
-		const result = a:load("u_1")
-		assert(result.ok, "A loaded")
-		result.profile.Data.gifts = { note = string.rep("x", 5000) }
-		for second = 1, 200 do
-			world.scheduler:wait(1)
-			result.profile.Data.coins = second
-		end
-		coins = result.profile.Data.coins
-	end, world.scheduler.now + 210)
-	crash(world, "A")
-	const got = reload(world, store(world, "B")).Data.coins
-	Spec.truthy(coins - got <= 32, `played {coins}, got {got}`)
-end)
-
 return nil
