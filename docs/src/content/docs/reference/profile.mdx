@@ -41,8 +41,13 @@ profile.onSaving:connect(function(final: boolean, reason: EndReason?) ... end)
 ```
 
 Fires right before each save takes its snapshot of `Data`: the last chance to write into it. `final`
-is `false` for a save or renewal. For the release it fires once, with `final = true` and the reason
-the session ends, right before the data freezes.
+is `false` for a save, a renewal, or a heartbeat snapshot, which the server takes every `heartbeat`
+seconds (4 by default) for a crash to lose no more than that. For the release it fires once, with
+`final = true` and the reason the session ends, right before the data freezes.
+
+A game whose play lives outside `Data` (in instances or attributes) can write it here and nowhere
+else: every snapshot, heartbeat included, then holds the play up to that moment. Keep the listener
+cheap, since it runs every few seconds for each profile.
 
 <Aside type="caution">
 A listener must not yield. Writes made after it yields miss that save, and after a final `onSaving`

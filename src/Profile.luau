@@ -27,9 +27,9 @@ export type Profile = {
 	read loadCount: number,
 	--> When the profile was first created, in Unix seconds (ProfileCreateTime).
 	read createdAt: number,
-	--> Fires right before each save takes its snapshot: the last chance to write into `Data`. `final` is
-	--> true for the release, with the reason it ends. A listener must not yield, or its later writes
-	--> miss the save.
+	--> Fires right before each save takes its snapshot: the last chance to write into `Data`. A heartbeat
+	--> snapshot is one too, so it fires every `heartbeat` seconds (4 by default). `final` is true for the
+	--> release, with the reason it ends. A listener must not yield, or its later writes miss the save.
 	read onSaving: Signal.Signal<boolean, EndReason?>,
 	--> Fires with a copy of the stored data after every successful save.
 	read onSaved: Signal.Signal<any>,

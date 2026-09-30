@@ -251,6 +251,12 @@ const MUTANTS: { Mutant } = {
 		to = "or session.releasing",
 		breaks = "a release that cannot land by the shutdown deadline leaves its data in a last beat",
 	},
+	{
+		file = "src/Lease.luau",
+		from = "\t\tif not session.releasing then\n\t\t\tsession.profile.onSaving:fire(false, nil)\n\t\tend\n",
+		to = "\n",
+		breaks = "a game that writes Data only in onSaving loses about one beat to a crash",
+	},
 }
 
 return MUTANTS
