@@ -203,7 +203,8 @@ milliseconds; `limit` defaults to 100. See [Versions and rollback](/KeepBlox/gui
 store:readVersion(key: string, version: string): any
 ```
 
-The profile data the key held at `version`, or nil when that version is not a profile.
+The profile data the key held at `version`, or nil when there is no such version now (replaced later
+in its UTC hour, or an id that is not well formed) or it is not a profile. A failed call raises an error.
 
 ### restore
 

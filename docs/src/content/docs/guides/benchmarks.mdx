@@ -1,6 +1,6 @@
 ---
 title: Benchmarks
-description: KeepBlox against ProfileStore, ProfileService, DocumentService, Lapis, DataStore2 and Suphi's DataStore Module, all run unmodified in the same simulator over the same seeds -- data safety, crash loss, load times and request cost.
+description: KeepBlox against ProfileStore, ProfileService, DocumentService, Lapis, DataStore2, Suphi's DataStore Module and a game's own GetAsync / SetAsync code, all run unmodified in the same simulator over the same seeds -- data safety, crash loss, load times and request cost.
 ---
 
 Every library runs unmodified in the same simulator, against the same fakes of DataStore, MemoryStore,
@@ -12,6 +12,11 @@ explains every column. To run it yourself:
 luneblox run bench/download       # the rivals, at their pinned versions
 luneblox run bench/Report 20      # every scenario over seeds 1-20, then the cost
 ```
+
+These are simulator figures. The KeepBlox rows did not change when the benchmarks were re-measured on
+2026-09-30 with the budget model measured live. On Roblox's real services calls take 0.3-0.6 s each, so
+hand-overs (4.2-4.6 s against 3.2 s) and crash takeovers (11.6-12.9 s against 9.1 s) are slower. The
+*No library* row is a game's own `GetAsync` / `SetAsync` code, as the Roblox guides teach.
 
 import Benchmarks from '../../../../../bench/Benchmarks.md';
 

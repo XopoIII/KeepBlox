@@ -38,6 +38,22 @@ a copy that shares a table), and runs the whole suite once per slip. Every one m
 one does. The save check is also fuzzed against the store's encoding with thousands of hostile values
 (`tests/unit/Differential.luau`).
 
+## Checked on Roblox's real services
+
+The fakes follow what Roblox measurably does, and `tests/live` runs the same guarantees on the real
+DataStore, MessagingService and MemoryStore, from a Studio play server in a private test experience.
+113 of 113 checks passed on 2026-09-30: the session lock, a hand-over from a live owner in 4.2-4.6 s (simulator 3.2 s),
+a crash takeover in 11.6-12.9 s with at most one beat lost (simulator 9.1 s), shutdown of 5 profiles in
+1.35 s, messages handled exactly once, receipts, versions, releases that roll back, trades, compression,
+and ProfileStore and KeepBlox servers handing keys over both ways. Live calls take 0.3-0.6 s each, which
+is why live is slower. Its conformance checks confirm what the fakes model: how odd tables and numbers
+are stored, version ids and tombstones, message limits, and the order of ordered-store ties.
+
+A load test there put 300 profiles on one player's budget: 10 virtual servers, a player moving every
+second, two crashes. It saw no double owner; hand-overs carried the data exactly, a crash lost at most
+one step, and what was stored was each key's last owner's. Many loads timed out with `"timeout"` there,
+as they must: 300 profiles are far beyond what one server's budget can move.
+
 ## One writer per key
 
 Only the server that holds the lock can write a profile. Every write is an `UpdateAsync` transform that
@@ -117,17 +133,20 @@ trades and purchases must stop on the stale copy.
 
 ## One bad value never costs the play around it
 
-A data store rejects a whole write for one bad value. KeepBlox checks the data before every write. A
-bad value is repaired in what is stored, and the rest of the data is stored as it is:
+A data store rejects a whole write for one value it cannot encode (bad UTF-8, a function, an Instance),
+and silently changes others (measured live): it stores `{1, 2, x = 3}` as `{1, 2}`, drops the keys past
+a hole, and turns number keys into strings. KeepBlox checks the data before every write. A bad value is
+repaired in what is stored, and the rest of the data is stored as it is:
 - a string that is not valid UTF-8 keeps its text, with U+FFFD for each bad byte;
-- NaN, infinities, and values no data store holds (functions, Instances) are left out;
+- NaN and infinities (Roblox stores them, but they break every sum they touch), and values no data store
+  holds (functions, Instances), are left out;
 - a key that is not valid UTF-8 is left out with its value;
 - a table that contains itself loses the reference that closes the loop.
 
 `store.onError` names each repair once, with its path, such as `stored with a repair:
 Data.inventory[12].name: string is not valid UTF-8; its bad bytes were replaced`. The game's own data
-is not touched. What cannot be repaired, a mixed or holey table or data over the 4 MB limit, is
-refused with its path. Then the last snapshot that could be stored is what gets stored, the lease is
+is not touched. What cannot be repaired, a mixed table, an array with holes, a dictionary with number
+keys or data over the 4 MB limit, is refused with its path. Then the last snapshot that could be stored is what gets stored, the lease is
 still renewed, and the release still goes through. In the `poison` benchmark a bad string loses no
 play: 0 steps, against 258 for ProfileStore.
 
@@ -169,7 +188,9 @@ after that write succeeded. See [Purchases](/KeepBlox/guides/purchases/).
 ## Shutdown finishes within the deadline
 
 On shutdown every store refuses new loads and releases all of its profiles in parallel. It waits at
-most `shutdownDeadline` seconds (25 by default; Roblox allows 30).
+most `shutdownDeadline` seconds (25 by default; Roblox allows 30). Live, 5 profiles were released in
+1.35 s. A release that cannot write before the deadline (the budget is spent) leaves its lock; the next
+server takes the key over once this server's beat stops, with the data of its last save.
 
 - `tests/unit/Store.luau`: "Store: shutdown releases every profile in parallel"
 - `tests/scenario/KeepBlox.luau`: "KeepBlox: shutdown with 50 players on a slow data store fits the deadline"
@@ -183,21 +204,24 @@ step of a load counts against that one deadline: waiting for this server to fini
 import, the claim and a trade's settling.
 
 Under overload the budget goes to saves first. A load waits for the server's data store budget instead
-of firing requests that can only be throttled, and its later tries leave some of the budget to saves:
+of firing requests that can only be throttled, and its later tries leave 10 requests of each kind to saves:
 a save is what frees a key being handed over. The live check found the opposite loop, with loads polling
 a spent budget so the owners' final saves failed and hand-overs stalled; the overload spec runs three
-servers of 100 profiles on one player's budget each, with a player moving every quarter second.
+servers of 100 profiles on one player's budget each, with a player moving every quarter second. There
+683-692 loads land instead of 383-396, and none runs past its deadline. Before the fix each step of a
+load counted `loadTimeout` afresh, and one load in the live test ran past 300 s.
 
 - `tests/unit/Store.luau`: "Store: a load that cannot finish fails with a timeout instead of hanging"
 - `tests/unit/Import.luau`: "Import: an old lock that never goes fails the load, and nothing is written"
 - `tests/unit/Overload.luau`: "Overload: every load answers within loadTimeout and one call, however spent the budget"
+- `tests/unit/Overload.luau`: "Overload: a load's waits share one deadline: this server's release, then another owner"
 
 ## Saving never stalls a frame
 
 Before a write, the data is copied at once, then checked and encoded in slices: after every 2 ms of CPU
 time the check lets a frame pass, and the text is joined a chunk at a time within them. A large profile
 is checked over several frames. The frame cost is measured in `bench/Run.luau`: the longest single
-frame a 1 MB profile's save takes is about 4.3 ms on an Apple M1, 1.7 ms of it the copy.
+frame a 1 MB profile's save takes is about 4.1 ms on an Apple M1, 1.7 ms of it the copy.
 
 - `tests/unit/Validate.luau`: "Validate: pause is called while a large value is checked"
 - `tests/unit/Validate.luau`: "Validate: a value of many parts is joined exactly as a small one"
@@ -207,6 +231,11 @@ frame a 1 MB profile's save takes is about 4.3 ms on an Apple M1, 1.7 ms of it t
 
 The renewal loop stops starting writes while the server's read or write budget is spent, so loads and
 releases are not starved. A profile whose data did not change is not written again.
+
+That is the server's own budget. Roblox also limits the whole experience: 300 + 40 x players reads and
+300 + 20 x players writes a minute, shared by every server and by Studio sessions with API access.
+Requests over it fail (`StandardReadExperienceThrottled`), and no server's budget shows it. Run load tests
+in a separate, empty experience, never from a live game's Studio: one did throttle that live game.
 
 - `tests/unit/Complaints.luau`: "Complaints: a game BindToClose that spends the budget does not cost saves (ProfileStore p5 #104)"
 - `tests/unit/Store.luau`: "Store: unchanged data is not written again; changed data is, on the renewal"
@@ -218,7 +247,8 @@ Every server beats in MemoryStore every 4 seconds, and the beat carries a snapsh
 to `snapshotBytes` (1000 bytes) whose data changed since it was stored. A newcomer that takes over from
 a dead server stores that snapshot first. A profile too large for a snapshot is written every
 `renewFallback` (30 seconds) instead, so that is the most it can lose. In the benchmark, a crash lost 4
-steps of play at worst, against 287 for ProfileStore.
+steps of play at worst, against 287 for ProfileStore. On Roblox's real services a crashed owner was
+taken over in 11.6-12.9 s, losing at most one beat.
 
 - `tests/unit/Snapshot.luau`: "Snapshot: a crash loses about one beat of play, not a renewal"
 - `tests/unit/Snapshot.luau`: "Snapshot: one older than the stored data is not used"
@@ -257,7 +287,8 @@ and game code written for ProfileStore runs unchanged on the compatibility layer
 <Aside>
 The same scenarios run against the vendored ProfileStore 1.0.3 in
 `tests/scenario/ProfileStoreBaseline.luau`, so every comparison on these pages is measured, not
-estimated. The [benchmarks](/KeepBlox/guides/benchmarks/) extend that to six libraries. The problems
+estimated. The [benchmarks](/KeepBlox/guides/benchmarks/) extend that to six libraries and to a game's own save
+code with no library. The problems
 users of other libraries report, each with the spec that answers it, are on
 [What users of other libraries run into](/KeepBlox/guides/other-libraries/).
 </Aside>

@@ -123,7 +123,8 @@ a long wait still has their key claimed for a profile nobody uses.
 
 The load asks the other server to hand the profile over. A live KeepBlox server saves and releases
 within a second of the message, or at its next MemoryStore beat if messaging is down. A server that
-crashed is known dead within about 10 seconds. [How it works](/KeepBlox/guides/how-it-works/) covers each
+crashed is known dead within about 10 seconds. On Roblox's real services a hand-over took 4-5 s in all,
+and taking over from a crashed server 12-13 s. [How it works](/KeepBlox/guides/how-it-works/) covers each
 case.
 
 ## Using the data
@@ -136,17 +137,20 @@ table.insert(profile.Data.inventory, { id = "sword", level = 1 })
 ```
 
 KeepBlox notices the change and saves it. Before every write it checks the data. A value a data store
-cannot hold (NaN, a string that is not valid UTF-8, a cycle, a function, an Instance) is repaired in
-what is stored, so it never costs the rest of the save, and `store.onError` names its path, for example
-`Data.inventory[12].name`. What cannot be repaired (a mixed table, more than 4 MB) is refused, and the
-last good save stays.
+cannot hold (a string that is not valid UTF-8, a cycle, a function, an Instance), and NaN or infinity
+(which Roblox stores, but which break every sum they touch), is repaired in what is stored, so it never
+costs the rest of the save, and `store.onError` names its path, for example `Data.inventory[12].name`.
+What cannot be repaired is refused, and the last good save stays: a mixed table, an array with holes, a
+dictionary with number keys, or more than 4 MB.
 
 `profile:save()` saves at once and yields until the save is stored. It returns `true`, or `false` if it
 could not be stored. You rarely need it; purchases and trades have their own helpers.
 
 <Aside type="tip">
 Store data, not engine objects: numbers, strings, booleans, buffers, arrays and dictionaries with string
-keys. An array must have no holes.
+keys. An array must have no holes. Roblox does not refuse the other shapes, it changes them without a
+word: it stores `{1, 2, x = 3}` as `{1, 2}`, drops the keys past a hole, and turns number keys of a
+dictionary into strings (measured live). KeepBlox refuses them with their path instead.
 </Aside>
 
 ## When a session ends

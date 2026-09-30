@@ -29,6 +29,10 @@ read the live data; a key that cannot be read starts from the template.
 <Aside type="caution">
 With `"live"` and API access on, a play test reads and writes the real data store, the same keys live
 servers use. Use `"memory"` or `"copy"` when that is not what you want.
+
+It also spends the experience's data store limits (300 + 40 x players reads and 300 + 20 x players
+writes a minute, shared by every server). A load test run from a live game's Studio throttles that
+game's players. Run load tests in a separate, empty experience.
 </Aside>
 
 ### Studio without API access
@@ -139,6 +143,14 @@ current version, or `{ ok = false, reason, message }` with the reason `"newerSch
 `"schema"` (see [Load failures](/KeepBlox/reference/load-failures/)). The `data` you pass is not
 changed. Pass the same `schema`, `version` and `migrations` the store uses; see
 [Schema and migrations](/KeepBlox/guides/schema-and-migrations/).
+
+## The live check
+
+`tests/live` runs KeepBlox's guarantees on Roblox's real services, in a private test experience (the one
+named in `roblox.env.example`; it refuses to run anywhere else). `luneblox run tests/live/Serve` serves
+it; `Load.luau` in Studio's command bar builds `ServerStorage.KB_LiveCheck`; `Start.luau` on the play
+server runs the functional check (about 5 minutes) or the load test (about 15); `Cleanup.luau` removes
+its data afterwards. See `tests/live/README.md`.
 
 ## Fake services
 

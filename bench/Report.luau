@@ -26,6 +26,7 @@ const LIBRARIES: { Entry } = {
 		adapter = require("./adapters/SuphiAdapter"),
 		version = "Creator Store 11671168253 (vendored, tests/reference/Suphi)",
 	},
+	{ adapter = require("./adapters/BareAdapter"), version = "GetAsync / SetAsync, as the Roblox guides teach" },
 }
 
 const seeds = tonumber(process.args[1]) or 20

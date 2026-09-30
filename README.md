@@ -8,8 +8,10 @@ new servers side by side during the rollout, and switch back.
 
 **Documentation: [xopoiii.github.io/KeepBlox](https://xopoiii.github.io/KeepBlox/)**
 
-> **Status: 0.2.0.** Everything below is proven in the simulator, against ProfileStore and five other
-> libraries. It has not yet run in a live game: try it in a test place first.
+> **Status: 0.2.0.** Everything below is proven in the simulator, against ProfileStore, five other
+> libraries and a game with no library. It is also checked on Roblox's real DataStore, MessagingService
+> and MemoryStore in a private test experience (`tests/live`), overload included. It has not yet run in a
+> live game with players: try it in a test place first.
 
 ## Install
 
@@ -31,8 +33,9 @@ MessagingService and the engine, the same players, faults and seeds (worst case 
 | ProfileService | 0 | 29 | 65.8 | 27 | 122 + 122 |
 | DocumentService | 0 | 0 (player locked out: 20 of 40 rejoins) | 15.9 | 389 | 25.9 + 25.9 |
 | Lapis | 0 | 0 (player locked out: 20 of 40 rejoins) | 11.9 | 374 | 14 + 14 |
-| DataStore2 | 61 | 287 | 0.6 | 0 | 0 + 1 |
+| DataStore2 | 61 | 287 | 8.8 | 0 | 0 + 1 |
 | Suphi's DataStore Module | 1 | 0 (player locked out: 20 of 40 rejoins) | 0.5 | 355 | 1 + 120 |
+| No library (GetAsync / SetAsync, as the Roblox guides teach) | 63 | 51 | 0.2 | 0 | 1 + 60.7 |
 
 Requests are data store reads + writes. KeepBlox also spends 45 MemoryStore units per player-hour on its
 server heartbeat, which is how a dead server is known within seconds and how a crash loses only one
@@ -51,12 +54,16 @@ virtual servers and random fault schedules:
 - A failed load never writes; data that is not a profile is quarantined, never overwritten.
 - A server that loses the session freezes its copy at once, so trades and purchases stop on stale data.
 - One bad value (NaN, bad UTF-8, a cycle) never costs the play around it: it is repaired in what is
-  stored and reported with its path. What cannot be repaired (over 4 MB, a mixed table) is refused,
-  and the last good snapshot is stored instead.
+  stored and reported with its path. What cannot be repaired (over 4 MB, a mixed table, an array with
+  holes, number keys: shapes Roblox would silently cut or rename) is refused, and the last good snapshot
+  is stored instead.
 - Offline messages are consumed exactly once; purchases are granted once and never lost.
-- Shutdown releases every profile within the deadline; no call retries forever.
+- Shutdown releases every profile within the deadline; no call retries forever, and a load answers within
+  `loadTimeout` in all.
+- Under overload the budget goes to saves first: a load waits for the server's budget instead of polling
+  it, so the saves that hand players over are not throttled.
 - Saving is spread across frames and respects the DataStore request budget: a 1 MB profile's save costs
-  at most about 4.3 ms in any one frame.
+  at most about 4.1 ms in any one frame.
 - A release can be rolled back without locking out a player who played on it (`writeVersion`).
 
 The checker is checked too: 31 small slips in the code that keeps these promises each make the suite
@@ -103,6 +110,7 @@ lefthook install       # the gates, before every commit
 sh scripts/run-tests.sh
 luneblox run tests/Mutate --yes   # mutation adequacy: every slip must fail the suite (about 16 min)
 luneblox run bench/download && luneblox run bench/Report 20   # the benchmarks
+luneblox run tests/live/Serve    # the live check, only in the test experience (tests/live/README.md)
 npm ci --prefix docs && npm run build --prefix docs          # the documentation site
 ```
 

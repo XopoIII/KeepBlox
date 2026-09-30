@@ -2,10 +2,12 @@
 --!native
 --- Checks a value before it is written, and encodes it.
 ---
---- A data store rejects the whole write for one bad value. One stray NaN or broken string would
---- otherwise fail every save of the session and lose all of it (the "poison" scenario). So everything
---- is checked here first, and a refusal names the exact path: `Data.inventory[12].name: string is not
---- valid UTF-8`. The last good save stays; nothing is written.
+--- A data store rejects the whole write for one value it cannot encode: one broken string would fail
+--- every save of the session and lose all of it (the "poison" scenario). Other shapes it changes without
+--- a word (measured live, 2026-09-30): `{1, 2, x = 3}` is stored as `{1, 2}`, keys past a hole are
+--- dropped, number keys of a dictionary become strings; and it keeps NaN, which breaks every sum. So
+--- everything is checked here first, and a refusal names the exact path: `Data.inventory[12].name:
+--- string is not valid UTF-8`. The last good save stays; nothing is written.
 ---
 --- Refused (per https://create.roblox.com/docs/cloud-services/data-stores/versioning-listing-and-caching):
 --- - NaN and infinities;

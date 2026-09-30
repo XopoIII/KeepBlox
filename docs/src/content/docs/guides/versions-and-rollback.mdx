@@ -5,8 +5,10 @@ description: How store:versions, store:readVersion and store:restore list a key'
 
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Roblox keeps the first write of every UTC hour of a key as a backup for 30 days
+Roblox keeps one version of a key per UTC hour, for 30 days
 ([Roblox docs: versioning](https://create.roblox.com/docs/cloud-services/data-stores/versioning-listing-and-caching)).
+A later write in the same hour replaces that hour's version, so a version id listed a moment ago may be
+gone once the player plays on (seen live).
 KeepBlox lets a support tool list those versions, read one, and restore one.
 
 ## versions
@@ -37,6 +39,7 @@ const data = store:readVersion(`u_{userId}`, version)
 ```
 
 `store:readVersion(key, version)` returns the profile data the key held at that version, or nil when
+the key has no such version now (it was replaced later in its UTC hour, or the id is not well formed) or
 that version is not a profile. A version stored compressed is returned decompressed (see
 [Large profiles](/KeepBlox/guides/large-profiles/)).
 
@@ -84,7 +87,9 @@ matches the store.
 
 1. Find the player's key and list its versions with `store:versions`. Pick one by its time.
 
-2. Check it with `store:readVersion` before you restore it.
+2. Check it with `store:readVersion` before you restore it. Restore soon after: while the player plays
+   in the same UTC hour, that hour's version is replaced. If `restore` answers `"noVersion"`, list the
+   versions again.
 
 3. Kick the player. The server that holds the profile releases it when the player leaves (the game's
    `PlayerRemoving` handler calls `profile:release()`).
@@ -109,6 +114,7 @@ Versions are read from the live data store. Stores in memory (`mock`, or Studio 
 </Aside>
 
 <Aside type="caution">
-`versions` and `readVersion` call the data store directly and raise an error when the call fails, as
-does the first read of `restore`. Wrap them in `pcall` in a support tool.
+`versions` and `readVersion` call the data store directly and raise an error when the call fails. A
+version that is gone, or an id that is not well formed, is not a failure: `readVersion` returns nil and
+`restore` answers `"noVersion"`. Wrap them in `pcall` in a support tool.
 </Aside>
