@@ -5,6 +5,8 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.4.1 - 2026-09-30
+
 ### Fixed
 
 - A game checked with Luau's old type solver sees the whole public API. The properties of `Profile`
