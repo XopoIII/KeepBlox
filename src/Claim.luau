@@ -22,6 +22,7 @@ const Lease = require("./Lease")
 const LetGo = require("./LetGo")
 const Lock = require("./Lock")
 const Session = require("./Session")
+const Spare = require("./Spare")
 
 export type Failure = "cancelled" | "closing" | "timeout" | "foreign" | "outbid" | "inUse" | "legacyLocked"
 
@@ -90,6 +91,7 @@ function Claim.open(
 	const clock = context.services.clock
 	const config = context.config
 	const started = clock.now()
+	const deadline = context.deadline or started + config.loadTimeout
 	local delay = config.backoffMin
 	-- While a live owner is asked to hand over, the key is tried every half second: it is freed within a
 	-- few seconds of the request, and a doubling backoff would leave it free for seconds before trying
@@ -108,19 +110,25 @@ function Claim.open(
 		return { ok = false, reason = reason }
 	end
 
+	local tries = 0
 	while true do
+		-- Saves go first: the first try waits for one request, later ones leave a reserve (see Spare).
+		Spare.wait(context, if tries == 0 then 1 else Spare.RESERVE, deadline, function(): boolean
+			return context.closing() or (cancel ~= nil and cancel())
+		end)
 		if context.closing() then
 			return fail("closing")
 		elseif cancel and cancel() then
 			return fail("cancelled")
-		elseif clock.now() - started > config.loadTimeout then
+		elseif clock.now() >= deadline then
 			return fail("timeout")
 		end
 
+		tries += 1
 		local claim: Lock.Claim? = nil
 		const ok, err = Call.run(
 			clock,
-			config.callTimeout,
+			math.clamp(deadline - clock.now(), 1, config.callTimeout),
 			context.dataStore.UpdateAsync,
 			context.dataStore,
 			key,
@@ -157,7 +165,7 @@ function Claim.open(
 				return { ok = false, reason = "outbid" }
 			elseif outcome.kind == "legacyLocked" then
 				-- The library being imported from still holds the key: wait for its release.
-				if clock.now() - started + delay > config.loadTimeout then
+				if clock.now() + delay > deadline then
 					return fail("legacyLocked")
 				end
 				clock.wait(delay)
@@ -210,7 +218,7 @@ function Claim.open(
 				elseif owner.lease == nil then
 					return { ok = false, reason = "inUse" }
 				end
-				clock.wait(delay)
+				clock.wait(math.min(delay, math.max(deadline - clock.now(), 0)))
 				delay = math.min(delay * 2, config.backoffMax)
 				continue
 			elseif watch == nil or watch.guid ~= guid or watch.loadCount ~= owner.loadCount then
@@ -240,7 +248,12 @@ function Claim.open(
 				-- Watching a beat: the data store is tried every half second, and the beat looked at again
 				-- the moment it could be judged dead, so a hand-over or the beat's end is caught as it comes.
 				local waited = 0
-				while waited < handOverDelay and not context.closing() and not (cancel and cancel()) do
+				while
+					waited < handOverDelay
+					and clock.now() < deadline
+					and not context.closing()
+					and not (cancel and cancel())
+				do
 					waited += clock.wait(math.min(Lease.nextLook(context, current.beat), handOverDelay - waited))
 					if Lease.judge(context, tostring(owner.session[2]), key, current.beat, true) == "dead" then
 						steal = true
@@ -261,7 +274,7 @@ function Claim.open(
 				continue
 			end
 		end
-		clock.wait(delay)
+		clock.wait(math.min(delay, math.max(deadline - clock.now(), 0)))
 		delay = math.min(delay * 2, config.backoffMax)
 	end
 end

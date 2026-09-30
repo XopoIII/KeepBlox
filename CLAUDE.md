@@ -87,6 +87,12 @@ Two rules:
 - **A clean run proves nothing about the checker.** `NaiveAdapter` is a deliberately unsafe library,
   and the ledger's specs must catch its breaches.
 
+## Live checks
+
+Live checks and load tests run only in the test experience named in `roblox.env.example` (GP_TEST),
+never in a live game: data store limits are shared by the whole experience, so load there throttles real
+players. Test data goes in stores named `KB_LiveCheck_*`, and is removed afterwards.
+
 ## Distribution (proposed, settled at M6)
 
 - **Packages:** pesde and Wally.

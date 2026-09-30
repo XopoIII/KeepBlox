@@ -112,44 +112,78 @@ Spec.test("UpdateAsync: a transform that yields or throws fails the call and wri
 	Spec.equal(#world.backend:versions("P/global", "k"), 0)
 end)
 
-Spec.test("Budget: reads beyond the budget wait for it to refill", function()
+-- The burst a new server starts with, as measured live (one player, 2026-09-30).
+Spec.test("Budget: a new server starts with the live burst, and reads beyond it wait to refill", function()
 	const world = World.new(1)
 	const scheduler = world.scheduler
-	const server = world:server({ name = "A", players = 0 })
+	-- Ten players: the experience allows 700 reads a minute, so the server's own burst is what runs out.
+	const server = world:server({ name = "A", players = 10 })
 	const services = server.services
 	const store = services.dataStores:GetDataStore("P")
 	world.faults.latency = { min = 0, max = 0 }
-	Spec.equal(services.dataStores:GetRequestBudgetForRequestType("StandardRead"), 60)
-	Spec.equal(services.dataStores:GetRequestBudgetForRequestType("StandardList"), 5)
+	Spec.equal(services.dataStores:GetRequestBudgetForRequestType("StandardRead"), 600)
+	Spec.equal(services.dataStores:GetRequestBudgetForRequestType("StandardWrite"), 600)
+	Spec.equal(services.dataStores:GetRequestBudgetForRequestType("StandardList"), 35)
+	Spec.equal(services.dataStores:GetRequestBudgetForRequestType("OrderedWrite"), 120)
+	Spec.equal(services.dataStores:GetRequestBudgetForRequestType("OrderedList"), 35)
 	Sim.run(scheduler, "A", function()
-		for _ = 1, 60 do
+		for _ = 1, 600 do
 			store:GetAsync("k", false)
 		end
 		Spec.equal(scheduler.now, 0)
 		Spec.equal(services.dataStores:GetRequestBudgetForRequestType("StandardRead"), 0)
 		store:GetAsync("k", false)
-		-- 60 a minute: the 61st waits one second for a whole request.
-		Spec.equal(scheduler.now, 1)
+		-- 460 a minute: the next waits 60/460 of a second for a whole request.
+		Spec.truthy(math.abs(scheduler.now - 60 / 460) < 1e-9, `waited {scheduler.now}`)
 	end)
 end)
 
-Spec.test("Budget: more players, more budget", function()
+Spec.test("Budget: a request over the experience's limit fails, whichever server asks", function()
 	const world = World.new(1)
-	const server = world:server({ name = "A", players = 10 })
-	Spec.equal(server.services.dataStores:GetRequestBudgetForRequestType("StandardWrite"), 460)
-	Spec.equal(server.services.dataStores:GetRequestBudgetForRequestType("StandardList"), 25)
+	world.faults.latency = { min = 0, max = 0 }
+	const a = world:server({ name = "A", players = 1 }).services.dataStores:GetDataStore("P")
+	const b = world:server({ name = "B", players = 1 }).services.dataStores:GetDataStore("P")
+	-- Two users: 300 + 2 x 40 = 380 reads a minute for the whole experience; the 381st fails.
+	Sim.run(world.scheduler, "A", function()
+		for _ = 1, 200 do
+			a:GetAsync("k", false)
+		end
+	end)
+	const caught = Sim.catch(world.scheduler, "B", function()
+		for _ = 1, 181 do
+			b:GetAsync("k", false)
+		end
+	end)
+	Spec.truthy(
+		caught ~= nil
+			and string.find(caught, "StandardReadExperienceThrottled: StandardRead request was throttled", 1, true)
+				~= nil,
+		tostring(caught)
+	)
+end)
+
+Spec.test("Budget: more players, a faster refill, and nothing caps it", function()
+	const world = World.new(1)
+	const server = world:server({ name = "A", players = 10, emptyBudget = true })
+	const dataStores = server.services.dataStores
+	Spec.equal(dataStores:GetRequestBudgetForRequestType("StandardWrite"), 0)
+	const seen = {}
+	Sim.run(world.scheduler, "A", function()
+		world.scheduler:wait(60)
+		seen.write, seen.list =
+			dataStores:GetRequestBudgetForRequestType("StandardWrite"),
+			dataStores:GetRequestBudgetForRequestType("StandardList")
+		world.scheduler:wait(17 * 60)
+		seen.later = dataStores:GetRequestBudgetForRequestType("StandardWrite")
+	end, 18 * 60 + 1)
+	Spec.equal(seen, { write = 460, list = 25, later = 18 * 460 })
 end)
 
 Spec.test("Budget: the 31st waiting request fails with 301 at once", function()
 	const world = World.new(1)
 	const scheduler = world.scheduler
-	const store = world:server({ name = "A", players = 0 }).services.dataStores:GetDataStore("P")
+	const store = world:server({ name = "A", players = 0, emptyBudget = true }).services.dataStores:GetDataStore("P")
 	world.faults.latency = { min = 0, max = 0 }
-	Sim.run(scheduler, "A", function()
-		for _ = 1, 60 do
-			store:GetAsync("k", false)
-		end
-	end)
 	const errors: { string } = {}
 	for _ = 1, 31 do
 		scheduler:spawn(function()

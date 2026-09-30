@@ -27,7 +27,7 @@ end
 |---|---|---|
 | `"cancelled"` | The load's `cancel` function returned `true` while it waited (the player left). | Nothing: the player is gone. |
 | `"closing"` | The server is shutting down, or `store:close()` was called, before the load finished. | Nothing: the server is closing. |
-| `"timeout"` | The load took longer than `loadTimeout` (default 120 s): the key's owner did not hand it over and was not proven dead in time, the data store kept failing, or a trade the key's last server left open could not be settled. | Kick with a message asking the player to rejoin. |
+| `"timeout"` | The load took longer than `loadTimeout` (default 120 s): the key's owner did not hand it over and was not proven dead in time, the data store kept failing, the budget stayed spent (this server, or the whole experience, is over its data store limits; loads leave what budget there is to saves first), or a trade the key's last server left open could not be settled. | Load again while the player is still here: nothing is lost by waiting, since the data stays in the store and nobody else can write it. Kick with a message asking the player to rejoin only after a few tries. Many timeouts at once mean the experience is over its data store limits. |
 | `"foreign"` | The key holds a value that is not a profile record, or an importer does not recognise the old value. A non-profile value is copied to the data store `"<store>__quarantine"` and left untouched; `store.onError` reports it. | Kick, and investigate the key. Do not overwrite it blindly. |
 | `"outbid"` | This server decided to take the key over, but a third server asked for it since then. That server wins. | Kick with a message asking the player to rejoin. |
 | `"inUse"` | Only for a `quiet` load (and `store:edit`): a live server holds the key. | Send a message with `store:message`, or try again later. |
@@ -77,5 +77,5 @@ See [Trades](/KeepBlox/guides/trades/).
 | Call | Reasons |
 |---|---|
 | `store:message` | `"full"`: the key's queue holds its most messages (1000); nothing queued is dropped. `"foreign"`: the key holds a value that is not a profile. `"failed"`: the data store kept failing. |
-| `store:restore` | `"inUse"`: a server holds the key. `"notAProfile"`: the version or the current value is not a profile. `"failed"`: the write did not succeed. |
+| `store:restore` | `"inUse"`: a server holds the key. `"notAProfile"`: the version or the current value is not a profile. `"noVersion"`: the key has no such version now (overwritten later in its UTC hour, or an id that is not one). `"failed"`: a call did not succeed. |
 | Shared `read`, `update` | `"error"`, `"refused"`, `"foreign"`, `"locked"` (the key is a profile), `"failed"`. See [Shared documents](/KeepBlox/guides/shared-documents/). |

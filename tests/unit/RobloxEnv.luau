@@ -105,9 +105,9 @@ Spec.test("RobloxEnv: legacy request types map onto the budgets; keys may be num
 		end
 		-- UpdateAsync draws on both budgets: it has what the emptier one has.
 		const reads = service:GetRequestBudgetForRequestType(Enum.DataStoreRequestType.GetAsync)
-		Spec.truthy(reads < 100, `reads were spent ({reads} left)`)
+		const writes = service:GetRequestBudgetForRequestType(Enum.DataStoreRequestType.SetIncrementAsync)
+		Spec.truthy(reads < 600 and writes >= 600, `reads were spent ({reads} left), writes not ({writes})`)
 		Spec.equal(service:GetRequestBudgetForRequestType(Enum.DataStoreRequestType.UpdateAsync), reads)
-		Spec.equal(service:GetRequestBudgetForRequestType(Enum.DataStoreRequestType.SetIncrementAsync), 100)
 		store:SetAsync(123, { ok = true })
 		Spec.equal(store:GetAsync("123"), { ok = true })
 		Spec.equal(env.globals.typeof(Enum.DataStoreRequestType.GetAsync), "EnumItem")

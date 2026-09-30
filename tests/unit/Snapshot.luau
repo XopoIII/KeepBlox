@@ -67,6 +67,26 @@ Spec.test("Snapshot: a crash loses about one beat of play, not a renewal", funct
 	end
 end)
 
+-- A server closing on a spent or failing data store cannot land its releases. The data changed since its
+-- last beat goes into one last beat before the deadline, which the next server takes, instead of dying
+-- with the server.
+Spec.test("Snapshot: a release that cannot land by the shutdown deadline leaves its data in a last beat", function()
+	const world = World.new(3)
+	const a = store(world, "A")
+	Sim.run(world.scheduler, "A", function()
+		const result = a:load("u_1")
+		assert(result.ok, "A loaded")
+		result.profile.Data.coins = 1
+		world.scheduler:wait(10) -- the beats carry coins = 1
+		result.profile.Data.coins = 2 -- after the last beat
+		world.faults:add({ op = "UpdateAsync", key = "u_1", server = "A", error = "502: down" })
+		a:close()
+	end, world.scheduler.now + 40)
+	crash(world, "A")
+	world.faults:clear()
+	Spec.equal(reload(world, store(world, "B")).Data.coins, 2)
+end)
+
 Spec.test("Snapshot: one older than the stored data is not used", function()
 	const world = World.new(2)
 	const a = store(world, "A")

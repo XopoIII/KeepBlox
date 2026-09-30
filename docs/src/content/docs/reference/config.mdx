@@ -42,7 +42,7 @@ Change them only for a reason you can name.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `loadTimeout` | 120 | Seconds a load may take in all before it fails with `"timeout"`. Shared stores also retry a call for at most this long. |
+| `loadTimeout` | 120 | Seconds a load may take in all before it fails with `"timeout"`, every step counted: waiting for this server's own release, the import, the claim and waiting on the owner, settling a trade. While the server's budget is spent, a load waits for it within this time, and its later tries leave 10 requests of each kind to saves. Shared stores also retry a call for at most this long. |
 | `callTimeout` | 20 | Seconds a single data store or MemoryStore call may take before it counts as failed. |
 | `backoffMin` | 1 | The first retry delay, in seconds, for a hand-over poll or a failed call. |
 | `backoffMax` | 5 | The longest retry delay; each delay doubles from `backoffMin` up to this. |

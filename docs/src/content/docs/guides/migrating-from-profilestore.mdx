@@ -47,10 +47,11 @@ disagree, the guarantee wins (`src/Compat/ProfileStore.luau` lists each case):
 - **Foreign values are quarantined.** A key holding something that is not a profile is copied to
   `<store>__quarantine`, and `StartSessionAsync` returns nil. It is not overwritten with the template.
   `OnOverwrite` never fires; `OnError` reports it.
-- **Bad data never fails every save.** A value a data store cannot hold (NaN, bad UTF-8, a cycle) is
-  repaired in what is stored and reported through `OnError` with its path. Data that cannot be
-  repaired (too large, a mixed table) is refused with its path. In ProfileStore, one such value fails
-  every save silently.
+- **Bad data never fails every save.** A value a data store cannot hold (bad UTF-8, a cycle, a function)
+  is repaired in what is stored and reported through `OnError` with its path; NaN and infinities are left
+  out the same way. Data that cannot be repaired (too large, a mixed table, an array with holes, number
+  keys in a dictionary) is refused with its path. In ProfileStore, a value the store cannot encode fails
+  every save silently, and a mixed or sparse table is saved cut short without a word.
 - **Ended sessions freeze their data.** When a session ends, `Data` is frozen. Late writes error instead
   of being lost quietly.
 - **Saving follows KeepBlox's schedule.** `AUTO_SAVE_PERIOD`, `LOAD_REPEAT_PERIOD` and

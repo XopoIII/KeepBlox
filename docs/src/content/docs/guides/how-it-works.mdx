@@ -43,7 +43,8 @@ A load claims a key in four steps (`src/Claim.luau`):
    already holds, is taken at once. `SessionLoadCount` goes up by one.
 2. **Ask.** A key another session holds gets this server's `ForceLoadSession`. The owner is also sent
    the message ProfileStore sends, `{ LoadCount, EndSession = true }` on the topic `"PS_" .. GUID`. A
-   live KeepBlox owner saves and hands over within a second of the message.
+   live KeepBlox owner saves and hands over within a second of the message. On Roblox's real services a
+   whole hand-over, from the ask to the newcomer's profile, took 4.2-4.6 s.
 3. **Wait.** The key is polled with a backoff from `backoffMin` (1 s) to `backoffMax` (5 s).
 4. **Take over**, if the owner is gone. The takeover succeeds only while this server's request is still
    the latest. A third server that asked since then wins, and this load fails with `"outbid"`.
@@ -63,7 +64,8 @@ Beside the lock in the data store, every server keeps one entry in a MemoryStore
 
 - `n` counts the beats. While it moves, the server lives. A newcomer that sees it stand still for two
   beats, or finds no entry at two looks half a beat apart, knows the server died and takes its keys.
-  That is how a crashed server is known dead within about 9 seconds.
+  That is how a crashed server is known dead within about 9 seconds in the simulator; on Roblox's real
+  services, with 0.3-0.6 s per call, a takeover took 11.6-12.9 s.
 - `r` holds hand-over requests, keyed `"<store>/<key>"`. The owner hands those keys over at its next
   beat. This carries requests when MessagingService is down.
 - `s` holds snapshots of open profiles whose data changed since it was last stored.
@@ -110,7 +112,11 @@ A session its last beat did not cover renews at `renewFallback` instead.
 
 The renewal loop runs once a second (`src/Upkeep.luau`). Before it starts a write, it checks the
 server's `StandardWrite` and `StandardRead` budgets; while either is spent, it waits. Loads and releases
-are not starved by background renewals.
+are not starved by background renewals. Loads, in turn, leave the budget to saves: a load waits for the
+server's budget instead of polling a spent one, and after its first try leaves 10 requests of each kind,
+because the owner's final save is what frees a key being handed over. The server's budget is not the
+only limit: the whole experience may make 300 + 40 x players reads and 300 + 20 x players writes a
+minute, shared by all servers, and requests over it fail with `StandardReadExperienceThrottled`.
 
 Some saves do not wait for the renewal:
 

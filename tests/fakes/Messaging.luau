@@ -3,10 +3,11 @@
 ---
 --- Sources: https://create.roblox.com/docs/reference/engine/classes/MessagingService and
 --- https://create.roblox.com/docs/cloud-services/cross-server-messaging
---- - Topics are 1-80 characters; a message is at most 1 kB (measured here as its JSON length).
+--- - Topics are 1-80 characters; a message is at most 1 kB. Measured live (2026-09-30): a string
+---   message may have 1024 bytes; any other value at most 940 bytes of JSON (the engine wraps it).
 --- - Delivery is "typically within 1-2 seconds" and "best effort and not guaranteed". Order is not
 ---   documented, so it is not kept: each copy gets its own delay.
---- - The subscriber receives `{Data, Sent}`, `Sent` in Unix seconds. After Disconnect "the callback
+--- - The subscriber receives `{Data, Sent}`, `Sent` in Unix seconds with milliseconds (live). After Disconnect "the callback
 ---   should never be invoked".
 ---
 --- The bus can drop, duplicate and delay messages, cut a server off (a partition: nothing reaches it or
@@ -46,7 +47,8 @@ export type Bus = {
 }
 
 const TOPIC_LIMIT = 80
-const MESSAGE_LIMIT = 1024
+const STRING_LIMIT = 1024
+const JSON_LIMIT = 940
 
 const Messaging = {}
 
@@ -55,8 +57,10 @@ function Messaging.bus(scheduler: Scheduler.Scheduler, faults: Faults.Faults, ep
 	const random = scheduler.random
 
 	const function checkTopic(topic: string)
-		if #topic < 1 or #topic > TOPIC_LIMIT then
-			error(Errors.unmodelled(`a topic of {#topic} characters (the limit is 1-{TOPIC_LIMIT})`), 0)
+		if #topic > TOPIC_LIMIT then
+			error(`MessagingService: Topic names cannot be more than {TOPIC_LIMIT} characters.`, 0)
+		elseif #topic < 1 then
+			error(Errors.unmodelled("an empty topic"), 0)
 		end
 	end
 
@@ -83,14 +87,16 @@ function Messaging.bus(scheduler: Scheduler.Scheduler, faults: Faults.Faults, ep
 			function handle.PublishAsync(_: Services.Messaging, topic: string, data: any)
 				checkTopic(topic)
 				self.published[server] = (self.published[server] or 0) + 1
-				if Encoding.size(data) > MESSAGE_LIMIT then
-					error(Errors.unmodelled(`a message over {MESSAGE_LIMIT} bytes`), 0)
+				if if type(data) == "string" then #data > STRING_LIMIT else Encoding.size(data) > JSON_LIMIT then
+					error("MessagingService:PublishAsync(): Cannot publish, data exceeded 1kb", 0)
 				end
+				-- Stamped when the call is made, before its trip to the backend.
+				const sent = Clock.trueMillis(scheduler, epoch) / 1000
 				scheduler:wait(faults:sample())
 				if self.partitioned[server] then
 					return
 				end
-				const message = { Data = Encoding.copy(data), Sent = Clock.trueMillis(scheduler, epoch) // 1000 }
+				const message = { Data = Encoding.copy(data), Sent = sent }
 				for _, subscription in table.clone(subscriptions) do
 					if subscription.topic == topic and subscription.connected and not random:chance(self.drop) then
 						deliver(self, subscription, message)

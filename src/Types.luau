@@ -30,6 +30,8 @@ export type Context = {
 	compress: Codec.Options?,
 	--> This server's MemoryStore beat is landing (see Lease); every write tells newcomers so.
 	beating: (() -> boolean)?,
+	--> A load's: the time (`clock.now()`) it must answer by, one deadline for all its steps (see Open).
+	deadline: number?,
 }
 
 export type Session = {

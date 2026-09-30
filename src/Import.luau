@@ -56,7 +56,7 @@ const Import = {}
 -- One call, retried with backoff until it succeeds or the load must stop.
 const function retrying(
 	context: Session.Context,
-	started: number,
+	deadline: number,
 	cancel: (() -> boolean)?,
 	fn: () -> (any, any)
 ): (string?, any, any)
@@ -67,7 +67,7 @@ const function retrying(
 			return "closing", nil, nil
 		elseif cancel and cancel() then
 			return "cancelled", nil, nil
-		elseif clock.now() - started > context.config.loadTimeout then
+		elseif clock.now() >= deadline then
 			return "timeout", nil, nil
 		end
 		const ok, value, info = Call.run(clock, context.config.callTimeout, fn)
@@ -84,10 +84,10 @@ end
 --> anything else lets the claim go ahead as usual (it converts a same-key old value itself).
 function Import.prepare(context: Session.Context, key: string, importer: Importer, cancel: (() -> boolean)?): Prepared
 	const clock = context.services.clock
-	const started = clock.now()
+	const deadline = context.deadline or clock.now() + context.config.loadTimeout
 	local delay = context.config.backoffMin
 	while true do
-		const stopped, current = retrying(context, started, cancel, function(): (any, any)
+		const stopped, current = retrying(context, deadline, cancel, function(): (any, any)
 			return context.dataStore:GetAsync(key, false)
 		end)
 		if stopped then
@@ -105,7 +105,7 @@ function Import.prepare(context: Session.Context, key: string, importer: Importe
 			found = importer.read(current, nil, clock.time())
 		elseif importer.fetch ~= nil then
 			const fetch = importer.fetch
-			const failed, old, info = retrying(context, started, cancel, function(): (any, any)
+			const failed, old, info = retrying(context, deadline, cancel, function(): (any, any)
 				return fetch(context.services, key)
 			end)
 			if failed then
@@ -125,7 +125,7 @@ function Import.prepare(context: Session.Context, key: string, importer: Importe
 			return { ok = false, reason = "closing" }
 		elseif cancel and cancel() then
 			return { ok = false, reason = "cancelled" }
-		elseif clock.now() - started + delay > context.config.loadTimeout then
+		elseif clock.now() + delay > deadline then
 			-- The next look would come after the deadline: the old lock is what kept the player out.
 			return { ok = false, reason = "legacyLocked" }
 		end

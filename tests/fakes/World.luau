@@ -22,6 +22,8 @@ const Services = require("@keepblox/Services")
 export type ServerOptions = {
 	name: string,
 	players: number?,
+	--> Start with no data store budget, instead of the burst a new server gets.
+	emptyBudget: boolean?,
 	skew: number?,
 	drift: number?,
 	placeId: number?,
@@ -64,13 +66,15 @@ function World.new(seed: number, epoch: number?): World
 	const start = epoch or DEFAULT_EPOCH
 	const names: { [string]: boolean } = {}
 	const budgets: { Budget.Budget } = {}
-	const memory = MemoryStore.shared(function(): number
+	const function users(): number
 		local total = 0
 		for _, budget in budgets do
 			total += budget.players
 		end
 		return total
-	end)
+	end
+	const memory = MemoryStore.shared(users)
+	const experience = Budget.experience(scheduler, users)
 
 	const world: World = {
 		scheduler = scheduler,
@@ -86,7 +90,7 @@ function World.new(seed: number, epoch: number?): World
 			assert(not names[name], `a server named {name} already exists`)
 			names[name] = true
 
-			const budget = Budget.new(scheduler, options.players)
+			const budget = Budget.new(scheduler, options.players, options.emptyBudget, experience)
 			table.insert(budgets, budget)
 			const memoryStores = MemoryStore.service(scheduler, faults, memory, name)
 			const context: DataStore.Context = {

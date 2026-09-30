@@ -124,7 +124,7 @@ const function stored(context: Session.Context, data: any): (any, string?)
 	return Migrate.store(context.plan, Record.copy(data))
 end
 
--- Retries `decide` until it answers, the server closes, or `loadTimeout` passes.
+-- Retries `decide` until it answers, the server closes, or (not `patient`) the load's deadline passes.
 const function settle(
 	context: Session.Context,
 	storeName: string,
@@ -133,11 +133,11 @@ const function settle(
 	patient: boolean
 ): string?
 	const clock = context.services.clock
-	const started = clock.now()
+	const deadline = context.deadline or clock.now() + context.config.loadTimeout
 	local delay = context.config.backoffMin
 	while true do
 		const outcome = Trade.decide(context, storeName, id, want)
-		if outcome or context.closing() or (not patient and clock.now() - started > context.config.loadTimeout) then
+		if outcome or context.closing() or (not patient and clock.now() >= deadline) then
 			return outcome
 		end
 		clock.wait(delay)

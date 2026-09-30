@@ -41,21 +41,52 @@ Spec.test("Encoding: refuses what a data store cannot hold, naming the path", fu
 	end, "a key that is not valid UTF-8")
 end)
 
-Spec.test("Encoding: undocumented cases are refused as unmodelled, not guessed", function()
-	for _, value in { 0 / 0, math.huge, -math.huge } do
-		Spec.throws(function()
-			Encoding.encode({ value })
-		end, "UNMODELLED: storing the number")
-	end
-	-- Built in two steps: the refusal of a mixed table is what is under test.
+-- Each case below was stored and read back live (Studio, 2026-09-30).
+Spec.test("Encoding: NaN and infinities are stored in the engine's numeric wrapper and read back", function()
+	Spec.equal(Encoding.encode({ 0 / 0 }), '[{"m":null,"t":"numeric","v":"nan"}]')
+	Spec.equal(Encoding.encode(math.huge), '{"m":null,"t":"numeric","v":"inf"}')
+	Spec.equal(Encoding.encode(-math.huge), '{"m":null,"t":"numeric","v":"-inf"}')
+	Spec.equal(Encoding.stored({ v = math.huge }).v, math.huge)
+	const nan = Encoding.stored({ v = 0 / 0 }).v
+	Spec.truthy(nan ~= nan, "NaN reads back as NaN")
+end)
+
+Spec.test("Encoding: a table with [1] is stored as its array part; every other key is lost silently", function()
+	-- Built in steps: the table's shape is what is under test.
 	const mixed: { [any]: any } = { 1, 2 }
-	mixed.extra = true
+	mixed.x = 3
+	Spec.equal(Encoding.encode(mixed), "[1,2]")
+	Spec.equal(Encoding.stored(mixed), { 1, 2 })
+	Spec.equal(Encoding.encode({ [1] = 1, [3] = 3 }), "[1]")
+	Spec.equal(Encoding.stored({ inner = { [1] = 1, [3] = 3 } }), { inner = { 1 } })
+	const text: { [any]: any } = { [1] = "a" }
+	text["1"] = "b"
+	Spec.equal(Encoding.encode(text), '["a"]')
+	const holes: { [any]: any } = { 1, 2 }
+	holes[4] = 4
+	Spec.equal(Encoding.encode(holes), "[1,2,null,4]")
+	Spec.equal(Encoding.size(mixed), 5)
+end)
+
+Spec.test("Encoding: other tables are dictionaries; number keys become integer text, boolean keys fail", function()
+	Spec.equal(Encoding.encode({ [2] = 5 }), '{"2":5}')
+	Spec.equal(Encoding.encode({ [0] = 1 }), '{"0":1}')
+	Spec.equal(Encoding.encode({ [-1] = 1 }), '{"-1":1}')
+	Spec.equal(Encoding.encode({ [2.5] = 1 }), '{"2":1}')
+	Spec.equal(Encoding.encode({ [1e20] = 1 }), '{"9223372036854775807":1}')
+	const mixed: { [any]: any } = { x = 2 }
+	mixed[1.5] = 1
+	Spec.equal(Encoding.encode(mixed), '{"1":1,"x":2}')
+	Spec.equal(Encoding.stored(mixed), { ["1"] = 1, x = 2 })
 	Spec.throws(function()
-		Encoding.encode(mixed)
-	end, "UNMODELLED: a table with a number key")
+		Encoding.encode({ [true] = 1 })
+	end, "Invalid table key type used")
+	-- Not seen live: two keys that land on the same text.
+	const clash: { [any]: any } = { ["2"] = 1 }
+	clash[2.5] = 2
 	Spec.throws(function()
-		Encoding.encode({ [1] = "a", [3] = "c" })
-	end, "UNMODELLED: a table with a number key")
+		Encoding.encode(clash)
+	end, 'UNMODELLED: two keys stored as "2"')
 end)
 
 Spec.test("Encoding: a shared table is not a cycle", function()

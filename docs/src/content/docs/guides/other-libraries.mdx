@@ -34,7 +34,7 @@ Suphi [t/2425597](https://devforum.roblox.com/t/2425597) (`pN #m` is page N, pos
 | Reading an old version overwrote live data | DataKeep#22 | `readVersion` returns a copy and never writes | `Complaints: reading an old version never changes the live profile` |
 | Autosave after a failed migration | DocS#90 | a failed migration gives the key back and writes nothing | `tests/unit/Migrate.luau` |
 | Number keys silently became strings | Lapis#68 | a table that is neither an array nor a string-keyed dictionary is refused, with its path | `Validate: every refusal names the path of the bad value` |
-| One bad value (bad UTF-8, NaN) fails every save until the game removes it | PStore findings; the `poison` benchmark: 204-258 steps lost, or the player locked out | the value is repaired in what is stored and reported with its path; only a table's shape or the size limit still refuse the write | `Store: a bad value is repaired in what is stored, reported once with its path`, `bench/Benchmarks.md` (poison: 0 lost) |
+| One bad value (bad UTF-8, a cycle, a function) fails every save until the game removes it | PStore findings; the `poison` benchmark: 204-258 steps lost, or the player locked out | the value is repaired in what is stored and reported with its path; only a table's shape (mixed, holes, number keys, which Roblox would silently cut or rename) or the size limit still refuse the write | `Store: a bad value is repaired in what is stored, reported once with its path`, `bench/Benchmarks.md` (poison: 0 lost) |
 | Data lost past 4 MB | PS p40 #848, PS#24 | refused before the write, naming the field that grew; the last save stays | `Complaints: a profile over the size limit is refused with its path` |
 
 ## Shutdown
@@ -109,7 +109,7 @@ Suphi [t/2425597](https://devforum.roblox.com/t/2425597) (`pN #m` is page N, pos
 | Complaint | Source | Why it does not apply |
 |---|---|---|
 | Breaks under Deferred events | DS2#142 | KeepBlox connects to no engine signal except BindToClose; its own signals call listeners directly. |
-| MemoryStore throttling closes sessions | Suphi p7 #134, p11 #209 | KeepBlox's lock lives in the DataStore record; it uses no MemoryStore. |
+| MemoryStore throttling closes sessions | Suphi p7 #134, p11 #209 | KeepBlox's lock lives in the DataStore record. Its MemoryStore heartbeat only speeds up hand-overs and takeovers: when MemoryStore is throttled or down, no session closes, and the lease rule takes over. |
 | SubscribeAsync hangs in Team Test | PStore p5 #93 | the hand-over subscription never holds up a load (`Upkeep.listen`). |
 | Lock scope differs between Studio and live | Suphi p7 #128 | the lock is part of the record; Studio without API access never touches a live key. |
 

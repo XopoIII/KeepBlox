@@ -10,11 +10,15 @@
 --- nil, booleans, finite numbers, valid UTF-8 strings, tables, buffers. A table is an array (keys 1..n,
 --- no holes) or a dictionary with string keys.
 ---
---- Assumed until the live check (docs are silent, so the fake is strict rather than lenient):
---- - NaN and infinities are refused ("don't store inf/-inf/nan", with no stated behaviour);
---- - mixed tables, and dictionaries with non-string keys, are refused;
+--- Checked live (Studio, 2026-09-30; the docs are silent), and modelled here:
+--- - NaN and infinities are stored, as `{"m":null,"t":"numeric","v":"nan"|"inf"|"-inf"}`, and read back;
+--- - a table with `t[1]` is written as the array `1..#t`: holes become null, and every other key is
+---   dropped without an error (`{1, 2, x = 3}` reads back as `{1, 2}`);
+--- - any other table is a dictionary: a number key becomes the text of the integer it truncates to,
+---   clamped to 64 bits (`[2.5]` is stored as `"2"`); a boolean key is refused;
 --- - numbers print in the shortest form that reads back exactly;
 --- - a buffer costs its base64 text plus the `{"m":null,"t":"buffer","base64":""}` wrapper.
+--- Still refused as unmodelled: other key types, and two keys that become the same text.
 --- If LuneBlox gains an engine-exact `JSONEncode`, this file should defer to it: that is a LuneBlox task.
 const Errors = require("./Errors")
 
@@ -52,22 +56,57 @@ const function encodeString(value: string): string
 	return `"{escaped}"`
 end
 
--- Returns the length of `table` as an array, or nil when it is not one (holes, or other keys).
-const function arrayLength(value: { [any]: any }): number?
-	local count = 0
-	for _ in value do
-		count += 1
+const NON_FINITE: { [string]: string } = { nan = "nan", inf = "inf", ["-inf"] = "-inf" }
+
+const function nonFinite(value: number): string?
+	return if value ~= value
+		then NON_FINITE.nan
+		elseif value == math.huge then NON_FINITE.inf
+		elseif value == -math.huge then NON_FINITE["-inf"]
+		else nil
+end
+
+-- The text a number key is stored under: the integer it truncates to, clamped to 64 bits.
+const function numberKey(key: number): string
+	if key >= 2 ^ 63 then
+		return "9223372036854775807"
+	elseif key < -2 ^ 63 then
+		return "-9223372036854775808"
 	end
-	const length = #value
-	if count == length then
-		for index = 1, length do
-			if value[index] == nil then
-				return nil
+	return string.format("%d", if key >= 0 then math.floor(key) else math.ceil(key))
+end
+
+-- A dictionary's keys as stored, sorted (so the same table always encodes to the same text), each with
+-- the key it came from.
+type StoredKey = { text: string, key: any }
+
+const function dictionaryKeys(value: { [any]: any }, path: string): { StoredKey }
+	const keys: { StoredKey } = {}
+	const seen: { [string]: boolean } = {}
+	for key in value do
+		local text: string
+		if type(key) == "string" then
+			if utf8.len(key) == nil then
+				error(Errors.cantStore(`a key that is not valid UTF-8 (at {path})`), 0)
 			end
+			text = key
+		elseif type(key) == "number" then
+			text = numberKey(key)
+		elseif type(key) == "boolean" then
+			error(Errors.invalidKeyType(), 0)
+		else
+			error(Errors.unmodelled(`a table with a {typeof(key)} key (at {path})`), 0)
 		end
-		return length
+		if seen[text] then
+			error(Errors.unmodelled(`two keys stored as "{text}" (at {path})`), 0)
+		end
+		seen[text] = true
+		table.insert(keys, { text = text, key = key })
 	end
-	return nil
+	table.sort(keys, function(a: StoredKey, b: StoredKey): boolean
+		return a.text < b.text
+	end)
+	return keys
 end
 
 const function encodeValue(value: any, path: string, parts: { string }, open: { [any]: boolean })
@@ -77,10 +116,8 @@ const function encodeValue(value: any, path: string, parts: { string }, open: { 
 	elseif kind == "boolean" then
 		table.insert(parts, if value then "true" else "false")
 	elseif kind == "number" then
-		if value ~= value or value == math.huge or value == -math.huge then
-			error(Errors.unmodelled(`storing the number {value} (at {path})`), 0)
-		end
-		table.insert(parts, encodeNumber(value))
+		const special = nonFinite(value)
+		table.insert(parts, if special then '{"m":null,"t":"numeric","v":"' .. special .. '"}' else encodeNumber(value))
 	elseif kind == "string" then
 		if utf8.len(value) == nil then
 			error(Errors.cantStore(`a string that is not valid UTF-8 (at {path})`), 0)
@@ -95,10 +132,9 @@ const function encodeValue(value: any, path: string, parts: { string }, open: { 
 			error(Errors.cantStore(`a cyclic table (at {path})`), 0)
 		end
 		open[value] = true
-		const length = arrayLength(value)
-		if length and (length > 0 or next(value) == nil) then
+		if value[1] ~= nil or next(value) == nil then
 			table.insert(parts, "[")
-			for index = 1, length do
+			for index = 1, #value do
 				if index > 1 then
 					table.insert(parts, ",")
 				end
@@ -106,26 +142,14 @@ const function encodeValue(value: any, path: string, parts: { string }, open: { 
 			end
 			table.insert(parts, "]")
 		else
-			-- Sorted, so the same table always encodes to the same text.
-			const keys: { string } = {}
-			for key in value do
-				if type(key) ~= "string" then
-					error(Errors.unmodelled(`a table with a {type(key)} key beside other keys (at {path})`), 0)
-				end
-				table.insert(keys, key)
-			end
-			table.sort(keys)
 			table.insert(parts, "{")
-			for index, key in keys do
+			for index, entry in dictionaryKeys(value, path) do
 				if index > 1 then
 					table.insert(parts, ",")
 				end
-				if utf8.len(key) == nil then
-					error(Errors.cantStore(`a key that is not valid UTF-8 (at {path})`), 0)
-				end
-				table.insert(parts, encodeString(key))
+				table.insert(parts, encodeString(entry.text))
 				table.insert(parts, ":")
-				encodeValue(value[key], `{path}.{key}`, parts, open)
+				encodeValue(value[entry.key], `{path}.{entry.text}`, parts, open)
 			end
 			table.insert(parts, "}")
 		end
@@ -133,6 +157,28 @@ const function encodeValue(value: any, path: string, parts: { string }, open: { 
 	else
 		error(Errors.cantStore(`a {kind} (at {path})`), 0)
 	end
+end
+
+-- What a read gives back for `value`, which encoded without error.
+const function storedValue(value: any): any
+	if type(value) == "table" then
+		const result = {}
+		if value[1] ~= nil then
+			for index = 1, #value do
+				result[index] = storedValue(value[index])
+			end
+		else
+			for key, item in value do
+				result[if type(key) == "number" then numberKey(key) else key] = storedValue(item)
+			end
+		end
+		return result
+	elseif typeof(value) == "buffer" then
+		const result = buffer.create(buffer.len(value))
+		buffer.copy(result, 0, value)
+		return result
+	end
+	return value
 end
 
 --> The JSON text Roblox would store for `value`. Throws the engine's error for anything it refuses.
@@ -145,6 +191,13 @@ end
 --> The size `value` counts for against the 4 MB limit, in bytes.
 function Encoding.size(value: any): number
 	return #Encoding.encode(value)
+end
+
+--> What a data store, a memory store or a message holds for `value`: what reading it back gives,
+--> sharing nothing with `value`. Throws the engine's error for anything it refuses.
+function Encoding.stored(value: any): any
+	Encoding.encode(value)
+	return storedValue(value)
 end
 
 --> A deep copy that shares nothing with `value`: a stored value never aliases the caller's table,

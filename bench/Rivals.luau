@@ -22,6 +22,9 @@ const LIBRARIES: { [string]: () -> any } = {
 	Naive = function(): any
 		return NaiveAdapter
 	end,
+	Bare = function(): any
+		return require("./adapters/BareAdapter")
+	end,
 	ProfileService = function(): any
 		return require("./adapters/ProfileServiceAdapter")
 	end,
@@ -41,7 +44,7 @@ const LIBRARIES: { [string]: () -> any } = {
 
 const seeds = tonumber(process.args[1]) or 20
 const pick = LIBRARIES[process.args[2] or "KeepBlox"]
-assert(pick, `the library is one of: KeepBlox, ProfileStore, Naive, ProfileService`)
+assert(pick, `the library is one of: KeepBlox, ProfileStore, Naive, Bare, ProfileService`)
 const adapter = pick()
 
 print(`{adapter.name}, seeds 1-{seeds}, worst case per scenario:\n`)

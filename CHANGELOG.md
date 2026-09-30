@@ -5,6 +5,69 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.3.0 - 2026-09-30
+
+The first live check, in Studio against real DataStore, MessagingService and MemoryStore (2026-09-30),
+in a private test experience: 113 of 113 checks. Loads, hand-overs, a three-server race, crash
+takeovers, shutdown, messages (each handled once), receipts, versions and restore, migrations with
+`writeVersion` rollback, trades, zstd compression and mixed ProfileStore servers both ways all held.
+Measured live: hand-over from a live owner 4.2-4.6 s (simulator 3.2 s), crash takeover 11.6-12.9 s
+(simulator 9.1 s) with at most one beat of play lost, shutdown of 5 profiles 1.35 s. Live calls take
+0.3-0.6 s each; that is the difference.
+
+A live load test (300 profiles on one player's budget, 10 virtual servers, a player moving every second,
+two crashes) saw no double owner: hand-overs carried the data exactly, a crash lost at most one step,
+and what was stored was each key's last owner's. Load tests must run in a separate, empty experience:
+one run from a live game's Studio throttled that game, because data store limits are shared by the
+whole experience.
+
+### Fixed
+
+- A load answers within `loadTimeout` in all, as documented. Each of its steps counted the timeout
+  afresh: a player back on a server still releasing them, then waiting on another owner, could wait
+  twice as long, and one load in the live stress test ran past 300 s.
+- Under overload, saves get the budget first. Loads polled a spent data store budget, so the owners'
+  final saves were throttled and hand-overs stalled (a metastable loop, seen live with 300 profiles on
+  one player's budget). A load now waits for the server's budget, and its later tries leave a reserve to
+  saves. In the overload spec, 683-692 loads land instead of 383-396, and none runs past its deadline.
+- A shutdown whose releases cannot land (a spent budget, a failing data store) no longer loses the play
+  since the last beat. Three seconds before the deadline, the data of every release still pending goes
+  into one last MemoryStore beat (profiles up to 24 KB), and the next server stores it first.
+- `restore` of a version that no longer exists, or of an id that is not one, answers `"noVersion"`.
+  Before, a version overwritten later in its hour answered `"notAProfile"`, and a mistyped id threw out
+  of `restore`. `readVersion` answers nil for both.
+
+### Added
+
+- `tests/live`: the live check, rerunnable from the repository. `luneblox run tests/live/Serve` serves it
+  to Studio, `Load.luau` builds it, `Start.luau` runs the functional check (113 checks) or the load test.
+  It runs only in the test experience named in `roblox.env.example`, and `Cleanup.luau` removes its data.
+- The benchmarks compare a game with no library too: GetAsync on join, SetAsync on leave and every
+  60 s, as the Roblox guides teach. Over 20 seeds it breaks 63 acknowledged saves, a crash loses 51
+  steps of play, and a stale server keeps writing for 900 s.
+
+### Changed
+
+- Benchmarks re-measured on the live budget model. KeepBlox's figures are unchanged; DataStore2's slowest
+  open is 8.8 s (it was 0.6 s under the old one-minute budget); a 1 MB save's longest frame is 4.1 ms.
+- The test fakes follow what the live check measured, and every spec that depended on the old guesses
+  was seen failing first:
+  - a data store keeps NaN and infinities; it keeps a table with `[1]` as its array part and drops
+    every other key without an error; it turns number keys of a dictionary into integer text;
+  - a remove adds its tombstone as a version of its own; a version id that is not well formed is error
+    25, and a well-formed one the key does not have reads nil;
+  - a string message may have 1024 bytes and any other message 940 bytes of JSON; `Sent` has
+    milliseconds;
+  - ordered ties come in a fixed order that is not by key;
+  - a new server starts with a burst (600 reads and writes with one player) and its budget is not
+    capped; the experience-level limits (300 + 40 per user reads and 300 + 20 per user writes a
+    minute) are shared by every server, and a request over them fails as it does live
+    (`StandardReadExperienceThrottled`).
+- The differential fuzzing of the save check now asks for more: Validate accepts exactly what the store
+  keeps without loss. The two departures by choice: NaN and infinities, which the store keeps, are left
+  out; and an array with holes is refused even when the store would keep it, since whether it does
+  depends on how the table was built.
+
 ## 0.2.0 - 2026-09-30
 
 ### Fixed

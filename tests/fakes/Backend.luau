@@ -7,7 +7,8 @@
 --- - Versions (https://create.roblox.com/docs/cloud-services/data-stores/versioning-listing-and-caching):
 ---   "SetAsync(), UpdateAsync(), and IncrementAsync() create versioned backups of your data using the
 ---   first write to each key in each UTC hour. Successive writes to a key in the same UTC hour
----   permanently overwrite the previous data." A remove writes a deleted "tombstone" version.
+---   permanently overwrite the previous data." A remove writes a deleted "tombstone" version, always as
+---   a version of its own; the next write in the same hour replaces the tombstone (live check).
 --- - Per-key write throughput (error-codes-and-limits, "Throughput limits"): 4 MB per minute, measured
 ---   over the last 60 seconds including the current request, each request rounded up to a kilobyte.
 --- - Metadata (error-codes-and-limits, "Metadata limits"): the whole metadata table at most 300
@@ -121,8 +122,14 @@ function Backend.new(): Backend
 	const function append(found: Entry, version: Version, store: string, key: string, writer: string?)
 		const versions = found.versions
 		const last = versions[#versions]
-		-- Only the first write in a UTC hour is kept as a backup; later ones in that hour replace it.
-		if last and math.floor(last.createdMs / HOUR_MS) == math.floor(version.createdMs / HOUR_MS) then
+		-- Only the first write in a UTC hour is kept as a backup; later ones in that hour replace it. A
+		-- tombstone never replaces: it is always its own version, which the next write in its hour
+		-- replaces (live check, 2026-09-30).
+		if
+			last
+			and not version.deleted
+			and math.floor(last.createdMs / HOUR_MS) == math.floor(version.createdMs / HOUR_MS)
+		then
 			versions[#versions] = version
 		else
 			table.insert(versions, version)
@@ -176,7 +183,7 @@ function Backend.new(): Backend
 			const version: Version = {
 				id = newId(nowMs),
 				createdMs = nowMs,
-				value = Encoding.copy(value),
+				value = Encoding.stored(value),
 				userIds = table.clone(userIds),
 				metadata = Encoding.copy(metadata),
 				deleted = false,

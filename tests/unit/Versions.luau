@@ -54,6 +54,31 @@ Spec.test("Versions: restore brings back old data, and refuses while the key is 
 	end, world.scheduler.now + 60)
 end)
 
+-- Seen live (2026-09-30): a support tool restored a version the release had just overwritten, and got
+-- "notAProfile"; a mistyped id threw out of `restore`.
+Spec.test("Versions: a version that is gone, or an id that is not one, is 'noVersion', never an error", function()
+	const world = World.new(1)
+	const server = world:server({ name = "A" })
+	const store = KeepBlox.store("Profiles", { template = { coins = 0 }, services = server.services })
+	Sim.run(world.scheduler, "A", function()
+		const result = store:load("u_1")
+		assert(result.ok, "loaded")
+		result.profile.Data.coins = 1
+		result.profile:save()
+		const listed = store:versions("u_1")[1].version
+		result.profile.Data.coins = 2
+		result.profile:release() -- the same hour: the version listed above is overwritten
+		Spec.equal(store:restore("u_1", listed), { ok = false, reason = "noVersion" })
+		Spec.equal(store:restore("u_1", "not-a-version"), { ok = false, reason = "noVersion" })
+		Spec.equal(store:readVersion("u_1", listed), nil)
+		Spec.equal(store:readVersion("u_1", "not-a-version"), nil)
+		const now = store:load("u_1")
+		assert(now.ok, "loaded again")
+		Spec.equal(now.profile.Data.coins, 2)
+		now.profile:release()
+	end, 60)
+end)
+
 Spec.test("Versions: a restored version keeps its schema version, so later migrations run on it", function()
 	const world = World.new(2)
 	const server = world:server({ name = "A" })

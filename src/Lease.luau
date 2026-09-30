@@ -67,14 +67,21 @@ end
 -- already holds their data.
 const function snapshots(
 	context: Types.Context,
-	sessions: { [string]: Types.Session }
+	sessions: { [string]: Types.Session },
+	final: boolean?
 ): ({ [string]: Snapshot }, { [Types.Session]: boolean })
-	const cap = context.config.snapshotBytes
+	-- The last beat of a server whose releases cannot land takes what it can, up to the entry's share.
+	const cap = if final then ENTRY_SHARE else context.config.snapshotBytes
 	const taken: { [string]: Snapshot } = {}
 	const covered: { [Types.Session]: boolean } = {}
 	local total = 0
 	for key, session in sessions do
-		if not session.active or session.releasing or session.trading or session.storedSize > 4 * cap then
+		if
+			not session.active
+			or (session.releasing and not final)
+			or session.trading
+			or session.storedSize > 4 * cap
+		then
 			continue
 		end
 		const play = session.profile.Data
@@ -135,14 +142,15 @@ end
 
 --> One beat of this server for the store of `context`: the count moves, this store's snapshots are
 --> replaced, and its requests are taken out and returned (the store hands over the sessions they
---> name). Each session learns whether it is covered. Nil when the beat failed.
-function Lease.beat(context: Types.Context, sessions: { [string]: Types.Session }): Requests?
+--> name). Each session learns whether it is covered. Nil when the beat failed. `final`: the last beat of
+--> a closing server, whose releases did not land: `sessions` are those, snapshotted as they end.
+function Lease.beat(context: Types.Context, sessions: { [string]: Types.Session }, final: boolean?): Requests?
 	const store = map(context)
 	if store == nil then
 		return nil
 	end
 	const prefix = `{context.storeName}/`
-	const taken, covered = snapshots(context, sessions)
+	const taken, covered = snapshots(context, sessions, final)
 	local requested: Requests = {}
 	const ok = call(context, function(): any
 		return store:UpdateAsync(context.identity.jobId, function(current: any): any
