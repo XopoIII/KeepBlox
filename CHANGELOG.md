@@ -5,6 +5,8 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.3.1 - 2026-09-30
+
 ### Fixed
 
 - The pesde package holds the whole library. pesde reads `includes` as globs, so `"src"` matched the

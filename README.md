@@ -8,14 +8,14 @@ new servers side by side during the rollout, and switch back.
 
 **Documentation: [xopoiii.github.io/KeepBlox](https://xopoiii.github.io/KeepBlox/)**
 
-> **Status: 0.3.0.** Everything below is proven in the simulator, against ProfileStore, five other
+> **Status: 0.3.1.** Everything below is proven in the simulator, against ProfileStore, five other
 > libraries and a game with no library. It is also checked on Roblox's real DataStore, MessagingService
 > and MemoryStore in a private test experience (`tests/live`), overload included. It has not yet run in a
 > live game with players: try it in a test place first.
 
 ## Install
 
-- **Wally:** `KeepBlox = "xopoiii/keepblox@0.3.0"` under `[server-dependencies]`.
+- **Wally:** `KeepBlox = "xopoiii/keepblox@0.3.1"` under `[server-dependencies]`.
 - **pesde:** `pesde add xopoiii/keepblox -t roblox_server -a KeepBlox`.
 - **Studio:** `KeepBlox.rbxm` from the [latest release](https://github.com/XopoIII/KeepBlox/releases/latest).
 
