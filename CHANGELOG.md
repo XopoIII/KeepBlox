@@ -5,6 +5,19 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.3.1 - 2026-09-30
+
+### Fixed
+
+- The pesde package holds the whole library. pesde reads `includes` as globs, so `"src"` matched the
+  folder and nothing in it: the 0.1.0-0.3.0 pesde packages held only `src/init.luau`, and a game that
+  installed one failed at its first `require`. The Wally packages were whole.
+
+### Added
+
+- `scripts/check-package.sh`, in CI and before a push: each tracked file under `src/` must be in the
+  pesde archive (`pesde publish --dry-run`) and in Wally's file list.
+
 ## 0.3.0 - 2026-09-30
 
 The first live check, in Studio against real DataStore, MessagingService and MemoryStore (2026-09-30),

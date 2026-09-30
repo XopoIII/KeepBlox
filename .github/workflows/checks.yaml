@@ -36,6 +36,9 @@ jobs:
       - name: Types
         run: sh scripts/type-check.sh
 
+      - name: Packages
+        run: sh scripts/check-package.sh
+
       - name: Tests
         run: sh scripts/run-tests.sh
 

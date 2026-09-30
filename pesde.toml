@@ -1,10 +1,10 @@
 name = "xopoiii/keepblox"
-version = "0.3.0"
+version = "0.3.1"
 description = "Player data for Roblox that loses nothing, fails loudly, and never stutters a frame"
 authors = ["XopoIII"]
 repository = "https://github.com/XopoIII/KeepBlox"
 license = "MIT"
-includes = ["src", "pesde.toml", "README.md", "LICENSE"]
+includes = ["src/**", "pesde.toml", "README.md", "LICENSE"]
 
 [target]
 environment = "roblox_server"
