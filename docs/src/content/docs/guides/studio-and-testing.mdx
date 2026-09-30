@@ -149,8 +149,14 @@ changed. Pass the same `schema`, `version` and `migrations` the store uses; see
 `tests/live` runs KeepBlox's guarantees on Roblox's real services, in a private test experience (the one
 named in `roblox.env.example`; it refuses to run anywhere else). `luneblox run tests/live/Serve` serves
 it; `Load.luau` in Studio's command bar builds `ServerStorage.KB_LiveCheck`; `Start.luau` on the play
-server runs the functional check (about 5 minutes) or the load test (about 15); `Cleanup.luau` removes
-its data afterwards. See `tests/live/README.md`.
+server runs the functional check (about 5 minutes) or the load test (about 15). `Cleanup.luau` removes
+what it left, from Edit mode too: every live key of every `KB_LiveCheck_*` data store (several at once,
+paced to the server's budget), the runs' ordered stores and the MemoryStore entries of its virtual
+servers, then lists again and reports what is left, which must be nothing (974 keys took 4 minutes). In
+a live game, run it slowly (20 removes a minute): the experience's limit is shared with the players'
+saves. A removed key stops counting toward the experience's storage at once; Roblox keeps its old
+versions for 30 days, outside the limit, and nothing can remove them sooner. See
+`tests/live/README.md`.
 
 ## Fake services
 

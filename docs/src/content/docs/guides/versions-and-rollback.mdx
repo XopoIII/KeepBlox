@@ -24,7 +24,9 @@ end
 
 - `version` is the version's id, a string, for `readVersion` and `restore`;
 - `at` is when it was written, in Unix milliseconds;
-- `deleted` is true for a version that marks the key removed.
+- `deleted` is true for a version that marks the key removed. A removed key stops counting toward the
+  experience's storage at once, but the versions before the removal stay listed and readable for 30
+  days (checked live).
 
 | Query field | Meaning |
 |---|---|
