@@ -20,26 +20,11 @@
 
 export type Edit = { k: { string | number }, v: any, a: number?, n: number? }
 
+const Align = require("./Align")
+
 const Delta = {}
 
-const function same(a: any, b: any): boolean
-	if a == b then
-		return true
-	elseif type(a) ~= "table" or type(b) ~= "table" then
-		return false
-	end
-	for key, value in a do
-		if not same(value, b[key]) then
-			return false
-		end
-	end
-	for key in b do
-		if a[key] == nil then
-			return false
-		end
-	end
-	return true
-end
+const same = Align.same
 
 const function within(path: { string | number }, key: string | number): { string | number }
 	const at = table.clone(path)
@@ -60,53 +45,6 @@ const function step(old: any, value: any, path: { string | number }, key: string
 	end
 end
 
--- The most items the middles of two lists may multiply to for them to be aligned item by item.
-const ALIGN_LIMIT = 4096
-
--- Replaces what lies between `head` items and `tail` items of `base` with what lies there in `now`, in
--- as few items as it can: the longest run of items both keep in order stays, and each gap around it is
--- one edit. Positions are those in `now`: the edits apply in order, and all before a gap is `now`'s then.
-const function align(
-	base: { any },
-	now: { any },
-	head: number,
-	tail: number,
-	path: { string | number },
-	edits: { Edit }
-)
-	const m, n = #base - head - tail, #now - head - tail
-	const width = n + 1
-	-- kept[i * width + j + 1]: the most items `base` from head + i + 1 and `now` from head + j + 1 share.
-	const kept = table.create((m + 1) * width, 0)
-	if m * n <= ALIGN_LIMIT then
-		for i = m - 1, 0, -1 do
-			for j = n - 1, 0, -1 do
-				kept[i * width + j + 1] = if same(base[head + i + 1], now[head + j + 1])
-					then kept[(i + 1) * width + j + 2] + 1
-					else math.max(kept[(i + 1) * width + j + 1], kept[i * width + j + 2])
-			end
-		end
-	end
-	local i, j = 0, 0
-	while i < m or j < n do
-		if i < m and j < n and kept[i * width + j + 1] > 0 and same(base[head + i + 1], now[head + j + 1]) then
-			i, j = i + 1, j + 1
-			continue
-		end
-		const fromI, fromJ = i, j
-		repeat
-			if j >= n or (i < m and kept[(i + 1) * width + j + 1] >= kept[i * width + j + 2]) then
-				i += 1
-			else
-				j += 1
-			end
-		until (i >= m and j >= n)
-			or (i < m and j < n and kept[i * width + j + 1] > 0 and same(base[head + i + 1], now[head + j + 1]))
-		const items = table.move(now, head + fromJ + 1, head + j, 1, {})
-		table.insert(edits, { k = path, a = head + fromJ + 1, n = i - fromI, v = if #items > 0 then items else nil })
-	end
-end
-
 -- Two arrays: the items both begin and end with are kept. What lies between is edited item by item when
 -- it kept its length and its items did not move; otherwise it is aligned (see `align`).
 const function lists(base: { any }, now: { any }, path: { string | number }, edits: { Edit })
@@ -123,14 +61,15 @@ const function lists(base: { any }, now: { any }, path: { string | number }, edi
 		-- Items moved when the middle starts one item later in either list.
 		const middle = is - head - tail
 		const moved = middle > 1 and (same(base[head + 2], now[head + 1]) or same(base[head + 1], now[head + 2]))
-		if not moved or middle * middle > ALIGN_LIMIT then
+		-- A long middle that differs in too many places to align is edited item by item too.
+		if not moved or not Align.gaps(base, now, head, tail, path, edits, false) then
 			for index = head + 1, is - tail do
 				step(base[index], now[index], path, index, edits)
 			end
-			return
 		end
+		return
 	end
-	align(base, now, head, tail, path, edits)
+	Align.gaps(base, now, head, tail, path, edits, true)
 end
 
 function walk(base: any, now: any, path: { string | number }, edits: { Edit })

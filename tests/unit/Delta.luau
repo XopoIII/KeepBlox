@@ -132,6 +132,51 @@ Spec.test("Delta: an item taken from or put into the middle of a list is one edi
 	Spec.equal(Delta.apply({ 1, 2, 3 }, Delta.diff({ 1, 2, 3 }, { 1, 2, 3, 4, 5 })), { 1, 2, 3, 4, 5 })
 end)
 
+-- Past the size the table of every pair is built for, a list is aligned by how many items differ.
+Spec.test("Delta: a long list changed in a few places far apart is edited only there", function()
+	const base = { things = table.create(200) }
+	for index = 1, 200 do
+		base.things[index] = { id = index, tier = "Common" }
+	end
+	const taken = Record.copy(base)
+	table.remove(taken.things, 196)
+	table.remove(taken.things, 5)
+	Spec.equal(Delta.diff(base, taken), { { k = { "things" }, a = 5, n = 1 }, { k = { "things" }, a = 195, n = 1 } })
+	Spec.equal(Delta.apply(Record.copy(base), Delta.diff(base, taken)), taken)
+
+	-- As many put in as taken out: the list keeps its length, and is still not rewritten item by item.
+	const swapped = Record.copy(base)
+	table.remove(swapped.things, 198)
+	table.insert(swapped.things, 3, { id = 0, tier = "Epic" })
+	Spec.equal(Delta.diff(base, swapped), {
+		{ k = { "things" }, a = 3, n = 0, v = { { id = 0, tier = "Epic" } } },
+		{ k = { "things" }, a = 199, n = 1 },
+	})
+	Spec.equal(Delta.apply(Record.copy(base), Delta.diff(base, swapped)), swapped)
+
+	-- Whatever changed, and however much, the edits give the new list.
+	for seed = 1, 300 do
+		const random = Prng.new(seed)
+		const before = table.create(300)
+		for index = 1, random:integer(80, 300) do
+			before[index] = random:integer(1, if seed % 3 == 0 then 4 else 1000)
+		end
+		const after = table.clone(before)
+		for _ = 1, random:integer(1, if seed % 5 == 0 then 120 else 8) do
+			const kind = random:integer(1, 3)
+			if kind == 1 and #after > 1 then
+				table.remove(after, random:integer(1, #after))
+			elseif kind == 2 then
+				table.insert(after, random:integer(1, #after + 1), random:integer(1, 1000))
+			else
+				after[random:integer(1, #after)] = random:integer(1, 1000)
+			end
+		end
+		const edits = Delta.diff({ list = before }, { list = after })
+		Spec.equal(Delta.apply({ list = table.clone(before) }, Record.copy(edits)), { list = after }, `seed {seed}`)
+	end
+end)
+
 Spec.test("Delta: an edit that does not fit the base is refused", function()
 	Spec.equal(Delta.apply({ a = 1 }, { { k = { "b", "c" }, v = 2 } }), nil)
 	Spec.equal(Delta.apply({ a = 1 }, { { k = { "a", "c" }, v = 2 } }), nil)
