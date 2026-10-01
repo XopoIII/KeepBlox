@@ -61,8 +61,11 @@ function Recover.run(context: Types.Context, key: string, loadCount: number, rec
 	local stored: any = nil
 	local ok = false
 	local delay = config.backoffMin
+	local tries = 0
 	while true do
-		Spare.wait(context, 1, deadline, context.closing)
+		-- As a claim does: the first try waits for one request, later ones leave a reserve to saves.
+		Spare.wait(context, if tries == 0 then 1 else Spare.RESERVE, deadline, context.closing)
+		tries += 1
 		ok = Call.run(
 			clock,
 			math.clamp(deadline - clock.now(), 1, config.callTimeout),
