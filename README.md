@@ -1,48 +1,31 @@
+<div align="center">
+
 # KeepBlox
 
-Player data for Roblox that loses nothing, fails loudly, and never stutters a frame.
+**Player data for Roblox that loses nothing, fails loudly, and never stutters a frame.**
+
+[![License](https://img.shields.io/github/license/XopoIII/KeepBlox?style=flat-square&color=%232f9e62)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/XopoIII/KeepBlox?style=flat-square&color=%232f9e62)](https://github.com/XopoIII/KeepBlox/releases/latest)
+[![Docs](https://img.shields.io/badge/docs-xopoiii.github.io-2f9e62?style=flat-square)](https://xopoiii.github.io/KeepBlox/)
+
+[Documentation](https://xopoiii.github.io/KeepBlox/) ·
+[Installation](https://xopoiii.github.io/KeepBlox/getting-started/installation/) ·
+[Changelog](CHANGELOG.md)
+
+</div>
 
 KeepBlox keeps session-locked player profiles on DataStore. It reads and writes the same records as
 ProfileStore and speaks its lock protocol, so a game can switch by changing one `require`, run old and
 new servers side by side during the rollout, and switch back.
-
-**Documentation: [xopoiii.github.io/KeepBlox](https://xopoiii.github.io/KeepBlox/)**
 
 > **Status: 0.5.0.** Everything below is proven in the simulator, against ProfileStore, five other
 > libraries and a game with no library. It is also checked on Roblox's real DataStore, MessagingService
 > and MemoryStore in a private test experience (`tests/live`), overload included. It has not yet run in a
 > live game with players: try it in a test place first.
 
-## Install
+## Why KeepBlox
 
-- **Wally:** `KeepBlox = "xopoiii/keepblox@0.5.0"` under `[server-dependencies]`.
-- **pesde:** `pesde add xopoiii/keepblox -t roblox_server -a KeepBlox`.
-- **Studio:** `KeepBlox.rbxm` from the [latest release](https://github.com/XopoIII/KeepBlox/releases/latest).
-
-More in [Installation](https://xopoiii.github.io/KeepBlox/getting-started/installation/).
-
-## Against the libraries games use today
-
-Every library runs unmodified in the same simulator: the same fakes of DataStore, MemoryStore,
-MessagingService and the engine, the same players, faults and seeds (worst case over 20 seeds).
-
-| Library | Violations | A crash loses (steps of play) | Slowest open (s) | Failed opens | Requests per player-hour |
-|---|---|---|---|---|---|
-| **KeepBlox** | **0** | **4** | 9.4 | **0** | 13.1 + 13.1 |
-| ProfileStore | 0 | 287 | 46.6 | 20 | 13.6 + 13.6 |
-| ProfileService | 0 | 29 | 65.8 | 27 | 122 + 122 |
-| DocumentService | 0 | 0 (player locked out: 20 of 40 rejoins) | 15.9 | 389 | 25.9 + 25.9 |
-| Lapis | 0 | 0 (player locked out: 20 of 40 rejoins) | 11.9 | 374 | 14 + 14 |
-| DataStore2 | 61 | 287 | 8.8 | 0 | 0 + 1 |
-| Suphi's DataStore Module | 1 | 0 (player locked out: 20 of 40 rejoins) | 0.5 | 355 | 1 + 120 |
-| No library (GetAsync / SetAsync, as the Roblox guides teach) | 63 | 51 | 0.2 | 0 | 1 + 60.7 |
-
-Requests are data store reads + writes. KeepBlox also spends 45 MemoryStore units per player-hour on its
-server heartbeat, which is how a dead server is known within seconds and how a crash loses only one
-beat of play. The full tables, every scenario and the methodology are in
-[bench/Benchmarks.md](bench/Benchmarks.md); `luneblox run bench/Report 20` makes them.
-
-## What it promises
+### What it promises
 
 Each promise is a spec, and the simulation checks the data invariants after every write, across many
 virtual servers and random fault schedules:
@@ -69,7 +52,7 @@ virtual servers and random fault schedules:
 The checker is checked too: 31 small slips in the code that keeps these promises each make the suite
 fail (`tests/Mutate.luau`), and the save check is fuzzed against the store's encoding.
 
-## What it gives you
+### What it gives you
 
 - Offline and admin edits that never kick a player (`store:edit`), and offline messages (`store:message`).
 - Trades between two profiles that land in both or in neither (`store:trade`).
@@ -84,7 +67,30 @@ fail (`tests/Mutate.luau`), and the save check is fuzzed against the store's enc
   live data.
 - Types for Luau (`--!strict` throughout) and roblox-ts (`types/index.d.ts`).
 
-## Moving to KeepBlox
+## Performance
+
+Every library runs unmodified in the same simulator: the same fakes of DataStore, MemoryStore,
+MessagingService and the engine, the same players, faults and seeds (worst case over 20 seeds).
+
+| Library | Violations | A crash loses (steps of play) | Slowest open (s) | Failed opens | Requests per player-hour |
+|---|---|---|---|---|---|
+| **KeepBlox** | **0** | **4** | 9.4 | **0** | 13.1 + 13.1 |
+| ProfileStore | 0 | 287 | 46.6 | 20 | 13.6 + 13.6 |
+| ProfileService | 0 | 29 | 65.8 | 27 | 122 + 122 |
+| DocumentService | 0 | 0 (player locked out: 20 of 40 rejoins) | 15.9 | 389 | 25.9 + 25.9 |
+| Lapis | 0 | 0 (player locked out: 20 of 40 rejoins) | 11.9 | 374 | 14 + 14 |
+| DataStore2 | 61 | 287 | 8.8 | 0 | 0 + 1 |
+| Suphi's DataStore Module | 1 | 0 (player locked out: 20 of 40 rejoins) | 0.5 | 355 | 1 + 120 |
+| No library (GetAsync / SetAsync, as the Roblox guides teach) | 63 | 51 | 0.2 | 0 | 1 + 60.7 |
+
+Requests are data store reads + writes. KeepBlox also spends 45 MemoryStore units per player-hour on its
+server heartbeat, which is how a dead server is known within seconds and how a crash loses only one
+beat of play. The full tables, every scenario and the methodology are in
+[bench/Benchmarks.md](bench/Benchmarks.md); `luneblox run bench/Report 20` makes them.
+
+## Where it comes from
+
+KeepBlox is built to take over from the libraries games already use.
 
 From ProfileStore or ProfileService, change one line; the keys and their format stay as they are:
 
@@ -102,7 +108,15 @@ local store = KeepBlox.store("Profiles", {
 })
 ```
 
-## Development
+## Install
+
+- **Wally:** `KeepBlox = "xopoiii/keepblox@0.5.0"` under `[server-dependencies]`.
+- **pesde:** `pesde add xopoiii/keepblox -t roblox_server -a KeepBlox`.
+- **Studio:** `KeepBlox.rbxm` from the [latest release](https://github.com/XopoIII/KeepBlox/releases/latest).
+
+More in [Installation](https://xopoiii.github.io/KeepBlox/getting-started/installation/).
+
+## Contributing
 
 ```sh
 rokit install          # the pinned toolchain
