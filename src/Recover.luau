@@ -7,14 +7,16 @@
 ---
 --- The snapshot is written at once, in one lock-guarded write, with what goes with it: the purchase
 --- receipt ids granted into it and the messages processed into it, so neither is granted or processed
---- again. If that write fails, the snapshot is not used: a few seconds of play are lost rather than a
---- purchase granted twice.
+--- again. A write the data store refuses is tried again until the load's deadline: the write says the
+--- same thing however often it lands. Only when none lands is the snapshot not used, and the play since
+--- the data was last stored lost rather than a purchase granted twice.
 const Call = require("./Call")
 const Codec = require("./Codec")
 const Lease = require("./Lease")
 const Lock = require("./Lock")
 const Record = require("./Record")
 const Snapshots = require("./Snapshots")
+const Spare = require("./Spare")
 const Types = require("./Types")
 
 const Recover = {}
@@ -53,20 +55,36 @@ function Recover.run(context: Types.Context, key: string, loadCount: number, rec
 		schemaVersion = snapshot.v,
 		snap = 0,
 	}
+	const clock = context.services.clock
+	const config = context.config
+	const deadline = context.deadline or clock.now() + config.loadTimeout
 	local stored: any = nil
-	const ok = Call.run(
-		context.services.clock,
-		context.config.callTimeout,
-		context.dataStore.UpdateAsync,
-		context.dataStore,
-		key,
-		function(value: any): any
-			const written, result =
-				Lock.save(value, context.identity, loadCount, payload, context.services.clock.time())
-			stored = if result.kind == "saved" then result.record else nil
-			return written
+	local ok = false
+	local delay = config.backoffMin
+	local tries = 0
+	while true do
+		-- As a claim does: the first try waits for one request, later ones leave a reserve to saves.
+		Spare.wait(context, if tries == 0 then 1 else Spare.RESERVE, deadline, context.closing)
+		tries += 1
+		ok = Call.run(
+			clock,
+			math.clamp(deadline - clock.now(), 1, config.callTimeout),
+			context.dataStore.UpdateAsync,
+			context.dataStore,
+			key,
+			function(value: any): any
+				const written, result = Lock.save(value, context.identity, loadCount, payload, clock.time())
+				stored = if result.kind == "saved" then result.record else nil
+				return written
+			end
+		)
+		-- A write that was answered settles it, stored or not (the key is no longer this session's).
+		if ok or context.closing() or clock.now() + delay >= deadline then
+			break
 		end
-	)
+		clock.wait(delay)
+		delay = math.min(delay * 2, config.backoffMax)
+	end
 	if not ok or stored == nil then
 		context.report(key, "a newer snapshot was found but could not be stored; the stored data is used")
 		return record

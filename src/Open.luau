@@ -153,8 +153,10 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 	Upkeep.listen(services, context.identity.guid, listener)
 	mode.memory = state.beating()
 	const claim = Claim.open(context, state.name, key, template, cancel, mode)
-	state.opening[key] = nil
+	-- The key stays `opening` until its session is listed: recovering a dead owner's play, settling a
+	-- trade and checking the data all yield, and a second load of the key meanwhile would claim it again.
 	if not claim.ok then
+		state.opening[key] = nil
 		stopListening(listener)
 		return { ok = false, reason = claim.reason }
 	end
@@ -170,6 +172,7 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 		const settled = Trade.recover(context, state.name, record)
 		if settled == nil then
 			Claim.giveBack(context, key, claim.loadCount)
+			state.opening[key] = nil
 			stopListening(listener)
 			return { ok = false, reason = "timeout" }
 		end
@@ -181,6 +184,7 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 	if not migrated.ok then
 		-- Never hand out, or write back, data this server cannot make sense of.
 		Claim.giveBack(context, key, claim.loadCount)
+		state.opening[key] = nil
 		stopListening(listener)
 		state.onError:fire(key, migrated.message)
 		return { ok = false, reason = migrated.reason }
@@ -246,6 +250,7 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 		session.storedReceipts[id] = true
 	end
 	state.sessions[key] = session
+	state.opening[key] = nil
 	context.deadline = nil -- the session lives on in this context; the load's deadline does not
 	return { ok = true, profile = profile }
 end

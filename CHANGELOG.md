@@ -5,6 +5,22 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.1 - 2026-10-02
+
+### Fixed
+
+Both found by the live load test (GP_TEST, 2026-10-02) run on 0.6.0, and both older than it.
+
+- A key being taken over from a crashed server could open twice on the server taking it over. The load
+  reads the dead owner's snapshot from MemoryStore after its claim, and the key was no longer marked as
+  opening by then, so a second `load` of the key meanwhile (a player rejoining) was not refused as
+  `open`: it claimed the key again. The server then held two live sessions of one profile, the second
+  with the stored data, and the first one's unsaved play was lost. The key now stays marked until its
+  session is listed.
+- The dead owner's snapshot is stored however often the data store refuses the write, until the load's
+  deadline. It was tried once: on a spent budget that one write failed, the stored data was used, and
+  the play since it was last stored was lost (two minutes, in the test) instead of about one beat.
+
 ## 0.6.0 - 2026-10-02
 
 ### Fixed
