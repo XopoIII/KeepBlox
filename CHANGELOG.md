@@ -5,6 +5,8 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.0 - 2026-10-02
+
 ### Fixed
 
 - A long list changed in a few places far apart keeps its crash snapshot. Past about 64 items between
