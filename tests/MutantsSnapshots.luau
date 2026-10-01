@@ -52,6 +52,18 @@ return {
 		breaks = "a verdict older than a second is looked at again",
 	},
 	{
+		file = "src/Open.luau",
+		from = "\tconst claim = Claim.open(context, state.name, key, template, cancel, mode)\n",
+		to = "\tconst claim = Claim.open(context, state.name, key, template, cancel, mode)\n\tstate.opening[key] = nil\n",
+		breaks = "a key being recovered from a dead owner opens once on the server taking over",
+	},
+	{
+		file = "src/Recover.luau",
+		from = "if ok or context.closing() or clock.now() + delay >= deadline then",
+		to = "if true then",
+		breaks = "storing the dead owner's snapshot is tried again when the data store refuses it",
+	},
+	{
 		file = "src/Gate.luau",
 		from = "if state.failing > OPEN and (probe or not state.open) then",
 		to = "if false then",

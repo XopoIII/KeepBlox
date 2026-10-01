@@ -5,9 +5,11 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.1 - 2026-10-02
+
 ### Fixed
 
-Both found by the live load test (GP_TEST, 2026-10-02), and both older than 0.6.0.
+Both found by the live load test (GP_TEST, 2026-10-02) run on 0.6.0, and both older than it.
 
 - A key being taken over from a crashed server could open twice on the server taking it over. The load
   reads the dead owner's snapshot from MemoryStore after its claim, and the key was no longer marked as
