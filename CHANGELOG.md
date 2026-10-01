@@ -15,6 +15,15 @@ semantic versioning.
 
 ### Changed
 
+- While a server's data store calls fail, its loads no longer each retry at their own backoff: after
+  its backoff a load waits its turn, one of them tries the store about once a second, and the first
+  that is answered lets the rest go at once. Retries fired at a store that is down only fail, and they
+  spent the budget the loads needed once it was back. In the simulator, after a minute's outage on
+  servers with one player's budget, the last of 30 loads lands 4 s after the store is back, not 18 s;
+  with a full budget, 1.1 s after, not 2.5 s; and an outage costs 16-75% fewer requests. A lone failing
+  load, a key that fails among keys that work, and a server with no failing calls behave as before.
+  When the store flickers every 3 s, the slowest loads take up to a second longer (p99 3.6 s, was 3.2).
+  `bench/Retry.luau` measures it.
 - The diff of a long list no longer builds a table of every pair it will not use: 700 items with two
   taken out take 0.6 ms, not 3.9 ms.
 - A number that is not an integer encodes 6-18% faster; the text is unchanged.

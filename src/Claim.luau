@@ -18,6 +18,7 @@
 --- A value that is not a profile is never overwritten: it is copied to "<store>__quarantine" and the
 --- load fails with "foreign".
 const Call = require("./Call")
+const Gate = require("./Gate")
 const Lease = require("./Lease")
 const LetGo = require("./LetGo")
 const Lock = require("./Lock")
@@ -103,19 +104,23 @@ function Claim.open(
 	local observed: Observed? = nil
 	-- A claim went unanswered, so it may hold the key: a failure must let go of it.
 	local unsure = false
+	-- This load's next call is the one the gate lets through while the store fails (see Gate).
+	local probe = false
 	const function fail(reason: Failure): Result
+		Gate.drop(context.services, probe)
 		if unsure then
 			LetGo.disown(context, key)
 		end
 		return { ok = false, reason = reason }
 	end
+	const function stopped(): boolean
+		return context.closing() or (cancel ~= nil and cancel())
+	end
 
 	local tries = 0
 	while true do
 		-- Saves go first: the first try waits for one request, later ones leave a reserve (see Spare).
-		Spare.wait(context, if tries == 0 then 1 else Spare.RESERVE, deadline, function(): boolean
-			return context.closing() or (cancel ~= nil and cancel())
-		end)
+		Spare.wait(context, if tries == 0 then 1 else Spare.RESERVE, deadline, stopped)
 		if context.closing() then
 			return fail("closing")
 		elseif cancel and cancel() then
@@ -147,9 +152,17 @@ function Claim.open(
 			end
 		)
 
+		Gate.note(context.services, ok and claim ~= nil, probe, config.backoffMin)
+		probe = false
 		if not ok or claim == nil then
 			unsure = true
 			context.report(key, `load attempt failed: {err}`)
+			if Gate.open(context.services) then
+				-- The store is failing: after this load's own backoff, it waits its turn to try it.
+				probe = Gate.wait(context.services, delay, deadline, stopped)
+				delay = math.min(delay * 2, config.backoffMax)
+				continue
+			end
 		else
 			const outcome = claim :: Lock.Claim
 			if outcome.kind == "taken" then
@@ -255,12 +268,7 @@ function Claim.open(
 				-- Watching a beat: the data store is tried every half second, and the beat looked at again
 				-- the moment it could be judged dead, so a hand-over or the beat's end is caught as it comes.
 				local waited = 0
-				while
-					waited < handOverDelay
-					and clock.now() < deadline
-					and not context.closing()
-					and not (cancel and cancel())
-				do
+				while waited < handOverDelay and clock.now() < deadline and not stopped() do
 					waited += clock.wait(math.min(Lease.nextLook(context, current.beat), handOverDelay - waited))
 					if Lease.judge(context, tostring(owner.session[2]), key, current.beat, true) == "dead" then
 						steal = true
