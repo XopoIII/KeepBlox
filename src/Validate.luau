@@ -71,11 +71,19 @@ const function encodeNumber(value: number): string
 	if value == math.floor(value) and value > -2 ^ 53 and value < 2 ^ 53 then
 		return string.format("%d", value)
 	end
-	for digits = 14, 17 do
-		const text = string.format(`%.{digits}g`, value)
-		if tonumber(text) == value then
-			return text
-		end
+	-- The shortest text that reads back as the same number. The formats are spelled out: building one
+	-- per try cost more than the try.
+	local text = string.format("%.14g", value)
+	if tonumber(text) == value then
+		return text
+	end
+	text = string.format("%.15g", value)
+	if tonumber(text) == value then
+		return text
+	end
+	text = string.format("%.16g", value)
+	if tonumber(text) == value then
+		return text
 	end
 	return string.format("%.17g", value)
 end

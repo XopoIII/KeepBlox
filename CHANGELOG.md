@@ -5,6 +5,20 @@ semantic versioning.
 
 ## Unreleased
 
+### Fixed
+
+- A long list changed in a few places far apart keeps its crash snapshot. Past about 64 items between
+  the first and the last change, the whole stretch was replaced in one edit: an inventory of 200 items
+  with two taken out near its ends made 22 KB of edits, far over `snapshotBytes`, so a crash lost up to
+  `renewFallback`. Such stretches are now searched by how many items differ (Myers' O(ND)), and the same
+  change is 89 bytes. A stretch that differs in more than 32 places is still replaced whole.
+
+### Changed
+
+- The diff of a long list no longer builds a table of every pair it will not use: 700 items with two
+  taken out take 0.6 ms, not 3.9 ms.
+- A number that is not an integer encodes 6-18% faster; the text is unchanged.
+
 ## 0.5.0 - 2026-09-30
 
 ### Fixed
