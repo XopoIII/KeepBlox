@@ -1,4 +1,5 @@
 <div align="center">
+  <img src="https://raw.githubusercontent.com/XopoIII/KeepBlox/main/docs/src/assets/logo.png" alt="KeepBlox logo" width="160">
 
 # KeepBlox
 

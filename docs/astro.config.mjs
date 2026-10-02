@@ -76,6 +76,14 @@ export default defineConfig({
 			// src/pages/404.astro says why.
 			disable404Route: true,
 			description: 'Player data for Roblox that loses nothing, fails loudly, and never stutters a frame.',
+			logo: { src: './src/assets/logo.png', alt: 'KeepBlox' },
+			favicon: '/favicon-32.png',
+			head: [
+				{ tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '192x192', href: '/KeepBlox/favicon.png' } },
+				{ tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/KeepBlox/apple-touch-icon.png' } },
+				{ tag: 'meta', attrs: { property: 'og:image', content: 'https://xopoiii.github.io/KeepBlox/og.png' } },
+				{ tag: 'meta', attrs: { name: 'twitter:image', content: 'https://xopoiii.github.io/KeepBlox/og.png' } },
+			],
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/XopoIII/KeepBlox' }],
 			editLink: { baseUrl: 'https://github.com/XopoIII/KeepBlox/edit/main/docs/' },
 			lastUpdated: true,
