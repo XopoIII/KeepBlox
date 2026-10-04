@@ -9,8 +9,9 @@ DevPackages/
 sourcemap.json
 build/
 
-# Roblox API type definitions, downloaded by scripts/type-check.sh
+# Roblox API type definitions, downloaded by scripts/type-check.sh, and the luau-lsp version they are from
 globalTypes.d.luau
+globalTypes.d.luau.version
 
 # Roblox place files
 *.rbxl

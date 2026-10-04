@@ -1,7 +1,7 @@
 # Baseline: ProfileStore in the simulator
 
 The numbers KeepBlox has to beat. They were made with `luneblox run tests/Baseline 50 ProfileStore` on
-LuneBlox 0.10.11. Re-run that command to refresh them.
+LuneBlox 0.10.13. Re-run that command to refresh them.
 
 Every scenario (`tests/sim/Scenarios.luau`) runs the unmodified ProfileStore v1.0.3 on simulated
 servers over a shared fake data store and message bus. Each seed gives a different interleaving,
@@ -21,7 +21,7 @@ every committed write, and at every session open.
 | shutdown | 0 | 0.0 | 0.2 | 0 of 2500 | 3.1 | none |
 | outage | 0 | 0.0 | 0.2 | 0 of 150 | - | none |
 | poison | 259 | 0.0 | 46.5 | 0 of 100 | - | none |
-| soup | 257 | 0.0 | 46.6 | 270 of 3147 | - | none |
+| soup | 257 | 0.0 | 46.6 | 0 of 2877 | - | none |
 
 **What it gets right:**
 - No acknowledged save is lost.

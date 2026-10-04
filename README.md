@@ -47,7 +47,7 @@ virtual servers and random fault schedules:
 - Under overload the budget goes to saves first: a load waits for the server's budget instead of polling
   it, so the saves that hand players over are not throttled.
 - Saving is spread across frames and respects the DataStore request budget: a 1 MB profile's save costs
-  at most about 4.1 ms in any one frame.
+  at most about 4.2 ms in any one frame.
 - A release can be rolled back without locking out a player who played on it (`writeVersion`).
 
 The checker is checked too: 31 small slips in the code that keeps these promises each make the suite

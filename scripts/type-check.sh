@@ -5,8 +5,8 @@
 # `bench/` run on LuneBlox and see both: the `@lune` typedefs through the .luaurc alias, and the
 # Roblox definitions for the types the library itself names.
 #
-# The Roblox definitions are downloaded once and kept out of git; `luneblox setup` writes the
-# `@lune` typedefs that .luaurc aliases, so CI has them too.
+# The Roblox definitions are downloaded once per luau-lsp pin and kept out of git; `luneblox setup`
+# writes the `@lune` typedefs that .luaurc aliases, so CI has them too.
 #
 # Usage: type-check.sh   (no arguments)
 set -e
@@ -20,9 +20,17 @@ for arg in "$@"; do
 	exit 2
 done
 
-if [ ! -f globalTypes.d.luau ]; then
+# The definitions come from the tag of the luau-lsp that rokit.toml pins, so the gate reads the same
+# Roblox API on every machine and every day. A bump of that pin downloads them again.
+lsp_version="$(sed -n 's/.*JohnnyMorganz\/luau-lsp@\([0-9.]*\)".*/\1/p' rokit.toml)"
+if [ -z "$lsp_version" ]; then
+	echo "type-check: no luau-lsp pin found in rokit.toml" >&2
+	exit 1
+fi
+if [ ! -f globalTypes.d.luau ] || [ "$(cat globalTypes.d.luau.version 2>/dev/null)" != "$lsp_version" ]; then
 	curl -fsSL -o globalTypes.d.luau \
-		"https://raw.githubusercontent.com/JohnnyMorganz/luau-lsp/main/scripts/globalTypes.d.luau"
+		"https://raw.githubusercontent.com/JohnnyMorganz/luau-lsp/$lsp_version/scripts/globalTypes.d.luau"
+	echo "$lsp_version" >globalTypes.d.luau.version
 fi
 luneblox setup >/dev/null
 

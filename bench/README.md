@@ -7,13 +7,13 @@ A write first copies the profile in one go. It then checks and encodes the copy,
 after every 2 ms of CPU. The longest stretch any single frame pays is therefore the copy plus one
 slice, whatever the profile's size. That stretch is what the budget limits.
 
-Measured on an Apple M1, LuneBlox 0.10.12:
+Measured on an Apple M1, LuneBlox 0.10.13:
 
 | Profile | Size | Copy | Longest slice | Longest stretch | Budget (CI) | Total CPU |
 |---|---|---|---|---|---|---|
-| 10 KB | 8,090 B | 0.02 ms | 0.34 ms | 0.36 ms | 1.5 ms | 0.36 ms |
-| 100 KB | 82,151 B | 0.16 ms | 2.09 ms | 2.25 ms | 6 ms | 3.75 ms |
-| 1 MB | 841,594 B | 1.7 ms | 2.4 ms | 4.1 ms | 16 ms | 40 ms |
+| 10 KB | 8,090 B | 0.02 ms | 0.36 ms | 0.37 ms | 1.5 ms | 0.37 ms |
+| 100 KB | 82,151 B | 0.17 ms | 2.07 ms | 2.24 ms | 6 ms | 3.75 ms |
+| 1 MB | 841,594 B | 1.7 ms | 2.5 ms | 4.2 ms | 16 ms | 40 ms |
 
 The budgets leave room for slower CI machines. The copy is the one part that cannot be split: until it
 is done, the game could change the data mid-snapshot.
@@ -32,7 +32,7 @@ scenario with every load retrying at its own backoff, and with the gate. Means o
 | Store down 90 s, 20 servers of 40 players, 800 joins | every load | 92.3 s | 92.5 s | 92.5 s | 17,623 |
 | | gate | 91.0 s | 91.2 s | 91.3 s | 4,387 |
 | Store down and up every 0.5 s for 30 s | every load | 23.6 s | 62.2 s | 64.7 s | 1,586 |
-| | gate | 1.3 s | 56.5 s | 64.1 s | 981 |
+| | gate | 1.2 s | 56.5 s | 64.1 s | 982 |
 | Store down and up every 3 s for 30 s | every load | 0.67 s | 3.23 s | 30.0 s | 615 |
 | | gate | 0.62 s | 3.59 s | 30.0 s | 610 |
 | 60 keys that never load among 400 loads that do | every load | 0.25 s | 2.85 s | 120.1 s | 3,658 |
