@@ -67,27 +67,34 @@ server's final save lands, which is the fast-rejoin problem the plan found in gg
 
 ## KeepBlox, seeds 1-50, worst case per scenario
 
-Made with `luneblox run tests/Baseline 50 KeepBlox` (M2, default settings: renew 15 s, death 35 s).
+Made with `luneblox run tests/Baseline 50 KeepBlox` on LuneBlox 0.10.13 (KeepBlox 0.6.2, default
+settings: renew 300 s, death 605 s, heartbeat 4 s). Re-run that command to refresh them.
 
 | Scenario | Progress lost (steps) | Stale owner (s) | Slowest open (s) | Failed opens | Shutdown (s) | Violations |
 |---|---|---|---|---|---|---|
-| rejoin | 0 | 0.0 | 1.3 | 0 of 100 | - | none |
-| handoff | 0 | 0.0 | 3.6 | 0 of 100 | - | none |
-| crash | 15 | 0.0 | 39.1 | 0 of 100 | - | none |
-| partitioned | 0 | 0.0 | 18.0 | 0 of 100 | - | none |
-| thirdRequester | 0 | 0.0 | 7.9 | 0 of 150 | - | none |
-| shutdown | 0 | 0.0 | 0.2 | 0 of 2500 | 3.1 | none |
-| outage | 0 | 0.0 | 0.2 | 0 of 150 | - | none |
-| poison | 214 | 0.0 | 0.2 | 0 of 100 | - | none |
-| soup | 15 | 0.0 | 39.1 | 215 of 3150 | - | none |
+| rejoin | 0 | 0.0 | 1.2 | 0 of 100 | - | none |
+| handoff | 0 | 0.0 | 2.9 | 0 of 100 | - | none |
+| crash | 4 | 0.0 | 9.3 | 0 of 100 | - | none |
+| partitioned | 0 | 0.0 | 4.7 | 0 of 100 | - | none |
+| thirdRequester | 0 | 0.0 | 5.4 | 0 of 150 | - | none |
+| shutdown | 0 | 0.0 | 0.5 | 0 of 2500 | 3.1 | none |
+| outage | 0 | 0.0 | 0.5 | 0 of 150 | - | none |
+| poison | 0 | 0.0 | 0.5 | 0 of 100 | - | none |
+| soup | 5 | 0.0 | 9.3 | 0 of 3157 | - | none |
 
 | Weak spot | ProfileStore | KeepBlox |
 |---|---|---|
-| Play lost to a crash | up to 287 s | up to 15 s, one renewal |
-| Dead owner taken over | about 46 s | about 39 s: the lease is watched for 35 s |
-| Owner cut off from messaging | stale beside the new owner for up to 244 s | never stale; it hands over at its next renewal, within about 18 s |
-| One bad string | blocks every save and the release; the next server waits 46 s | refused with its path, the lease still renews, and the release goes through at once |
+| Play lost to a crash | up to 287 s | up to 4 s, about one beat: each beat carries a snapshot of the changed data |
+| Dead owner taken over | about 46 s | about 9 s: the owner's beat is seen to stop |
+| Owner cut off from messaging | stale beside the new owner for up to 244 s | never stale; the new owner opens within about 5 s |
+| One bad string | blocks every save and the release; 259 s of play is lost and the next server waits 46 s | stored with its bad bytes replaced and the repair reported with its path; no play is lost |
+| The older of two waiting requesters | gets nil: 50 of 150 opens fail | every open succeeds |
 
-In `poison`, the play after the bad string is still lost, because that data cannot be stored at all.
-What changes is that the game is told the path of the bad value when it happens, the last good save
-stays, and nothing else is held up.
+The data store is written every 300 s, the interval ProfileStore autosaves at. What a crash can lose
+is not tied to that interval: the MemoryStore beat every 4 s carries what changed, and the server that
+takes over stores it first. A profile no snapshot can cover is
+written every `renewFallback` (30 s) instead, and that is then the most it can lose.
+
+In `poison`, what cannot be repaired (a mixed table, an array with holes, data over the 4 MB limit) is
+still refused with its path. The last data that could be stored stays, the lease is still renewed, and
+the release still goes through.
