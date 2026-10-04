@@ -19,7 +19,7 @@ KeepBlox keeps session-locked player profiles on DataStore. It reads and writes 
 ProfileStore and speaks its lock protocol, so a game can switch by changing one `require`, run old and
 new servers side by side during the rollout, and switch back.
 
-> **Status: 0.6.1.** Everything below is proven in the simulator, against ProfileStore, five other
+> **Status: 0.6.2.** Everything below is proven in the simulator, against ProfileStore, five other
 > libraries and a game with no library. It is also checked on Roblox's real DataStore, MessagingService
 > and MemoryStore in a private test experience (`tests/live`), overload included. It has not yet run in a
 > live game with players: try it in a test place first.
@@ -47,7 +47,7 @@ virtual servers and random fault schedules:
 - Under overload the budget goes to saves first: a load waits for the server's budget instead of polling
   it, so the saves that hand players over are not throttled.
 - Saving is spread across frames and respects the DataStore request budget: a 1 MB profile's save costs
-  at most about 4.1 ms in any one frame.
+  at most about 4.2 ms in any one frame.
 - A release can be rolled back without locking out a player who played on it (`writeVersion`).
 
 The checker is checked too: 31 small slips in the code that keeps these promises each make the suite
@@ -111,7 +111,7 @@ local store = KeepBlox.store("Profiles", {
 
 ## Install
 
-- **Wally:** `KeepBlox = "xopoiii/keepblox@0.6.1"` under `[server-dependencies]`.
+- **Wally:** `KeepBlox = "xopoiii/keepblox@0.6.2"` under `[server-dependencies]`.
 - **pesde:** `pesde add xopoiii/keepblox -t roblox_server -a KeepBlox`.
 - **Studio:** `KeepBlox.rbxm` from the [latest release](https://github.com/XopoIII/KeepBlox/releases/latest).
 

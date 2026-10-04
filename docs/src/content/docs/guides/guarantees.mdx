@@ -224,7 +224,7 @@ load counted `loadTimeout` afresh, and one load in the live test ran past 300 s.
 Before a write, the data is copied at once, then checked and encoded in slices: after every 2 ms of CPU
 time the check lets a frame pass, and the text is joined a chunk at a time within them. A large profile
 is checked over several frames. The frame cost is measured in `bench/Run.luau`: the longest single
-frame a 1 MB profile's save takes is about 4.1 ms on an Apple M1, 1.7 ms of it the copy.
+frame a 1 MB profile's save takes is about 4.2 ms on an Apple M1, 1.7 ms of it the copy.
 
 - `tests/unit/Validate.luau`: "Validate: pause is called while a large value is checked"
 - `tests/unit/Validate.luau`: "Validate: a value of many parts is joined exactly as a small one"

@@ -5,6 +5,25 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.2 - 2026-10-04
+
+The library's code is the same as in 0.6.1: `src/` did not change. A game on 0.6.1 gains nothing by
+updating.
+
+### Changed
+
+- Every tool is on its latest stable release: LuneBlox 0.10.13, rojo 7.7.1, selene 0.32.0, lefthook
+  2.1.16, Starlight 0.42.5. The suite (305 specs), the frame budgets and the ProfileStore baseline pass
+  on them, and the published numbers are measured again on LuneBlox 0.10.13: a 1 MB save's longest
+  frame is 4.2 ms (it was 4.1 ms, within noise).
+- CI actions are pinned to exact tags, not to moving major tags.
+- The type gate reads the Roblox API definitions of the luau-lsp release it is pinned to (1.70.1), not
+  of whatever luau-lsp's `main` held on the day they were downloaded.
+
+### Added
+
+- The KeepBlox icon, on the documentation site and in the README.
+
 ## 0.6.1 - 2026-10-02
 
 ### Fixed
