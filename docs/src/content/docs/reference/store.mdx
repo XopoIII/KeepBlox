@@ -16,7 +16,7 @@ Requiring KeepBlox touches no engine service. Services are reached when a store 
 ### KeepBlox.store
 
 ```lua
-KeepBlox.store(name: string, options: Options): Store
+KeepBlox.store(name: string, options: StoreOptions): Store
 ```
 
 Opens the store `name`: one DataStore of profiles, and the background work that keeps their leases
@@ -67,12 +67,26 @@ Runs a store's migrations, defaults and schema check on a copy of `data` stored 
 ### KeepBlox.processReceipt
 
 ```lua
-KeepBlox.processReceipt(store: Store, options: ReceiptOptions): (receipt) -> Enum.ProductPurchaseDecision
+KeepBlox.processReceipt(store: Store, options: ReceiptOptions): (receipt: Receipt) -> Enum.ProductPurchaseDecision
 ```
 
 The callback for `MarketplaceService.ProcessReceipt`, over `store:receipts(options)`. It turns the
 decision's name into the engine's `Enum.ProductPurchaseDecision`. See
 [Purchases](/KeepBlox/guides/purchases/).
+
+### Types
+
+The module exports the types of everything above, for annotating a game's own code:
+
+| Type | What it is |
+|---|---|
+| `KeepBlox.Store`, `KeepBlox.StoreOptions` | A store, and the options `KeepBlox.store` takes. |
+| `KeepBlox.SharedStore`, `KeepBlox.SharedOptions` | A shared store, and the options `KeepBlox.shared` takes. |
+| `KeepBlox.Profile`, `KeepBlox.EndReason` | A profile, and what its `onEnded` fires with. |
+| `KeepBlox.LoadOptions`, `KeepBlox.LoadResult`, `KeepBlox.LoadFailure` | What `store:load` takes and answers, and the `reason` of a failure. |
+| `KeepBlox.ReceiptOptions`, `KeepBlox.Receipt`, `KeepBlox.ReceiptDecision` | What `store:receipts` and `KeepBlox.processReceipt` take, a purchase, and the name `store:receipts` answers with. |
+| `KeepBlox.Config`, `KeepBlox.ConfigOverrides` | Every setting, and the `config` option: any of them. |
+| `KeepBlox.Migration` | One migration: a step, or `{ up, down }`. |
 
 ## Store options
 
@@ -83,7 +97,7 @@ decision's name into the engine's `Enum.ProductPurchaseDecision`. See
 | `version` | number | The schema version the data is at now. Default: the highest migration. It may not be below the highest migration. |
 | `migrations` | `{ [number]: (data) -> any }` | Migration `n` takes the data from version `n - 1` to `n`, changing it in place or returning a new table. They must be numbered 1..`version` with none missing. |
 | `services` | Services | The engine services; the real ones by default. Tests pass fakes. |
-| `config` | `{ [string]: number }` | Overrides for `KeepBlox.defaults`. An unknown name or a value that is not a positive number raises an error. See [Config](/KeepBlox/reference/config/). |
+| `config` | `ConfigOverrides` | Overrides for `KeepBlox.defaults`: any of its settings. An unknown name is a type error under the new solver, and it or a value that is not a positive number raises an error when the store opens. See [Config](/KeepBlox/reference/config/). |
 | `mock` | `boolean` or `string` | Keep profiles in memory, never in a live data store: `true` for the scratch set `"scratch"`, or the name of a set. |
 | `reconcile` | boolean | Fill keys the stored data lacks from the template, deeply, on every load. Existing values are never replaced. Default `true`. A schema store fills from the schema's defaults instead. |
 | `studio` | `"live"`, `"memory"` or `"copy"` | What Studio play tests do with data. Default `"live"`. Live servers ignore it. See [Studio and testing](/KeepBlox/guides/studio-and-testing/). |

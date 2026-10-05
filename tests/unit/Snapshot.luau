@@ -19,7 +19,7 @@ const function stored(world: World.World, key: string): any
 	return (world.backend:latest("Profiles/global", key) :: any).value
 end
 
-const function store(world: World.World, name: string, config: { [string]: number }?): KeepBlox.Store
+const function store(world: World.World, name: string, config: KeepBlox.ConfigOverrides?): KeepBlox.Store
 	return KeepBlox.store(
 		"Profiles",
 		{ template = TEMPLATE, services = world:server({ name = name }).services, config = config }

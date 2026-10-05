@@ -7,7 +7,7 @@ const World = require("@fakes/World")
 
 const TEMPLATE = { coins = 0, gifts = {} }
 
-const function store(world: World.World, name: string, config: { [string]: number }?): KeepBlox.Store
+const function store(world: World.World, name: string, config: KeepBlox.ConfigOverrides?): KeepBlox.Store
 	return KeepBlox.store(
 		"Profiles",
 		{ template = TEMPLATE, services = world:server({ name = name }).services, config = config }

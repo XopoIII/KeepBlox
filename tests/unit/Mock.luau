@@ -71,6 +71,68 @@ Spec.test("Mock: Studio without API access falls back to memory after a read-onl
 	Spec.equal(seen, {})
 end)
 
+-- A place file never published: the engine refuses the data store itself, before any call on it
+-- (DataStoreService:GetDataStore throws this message there).
+const UNPUBLISHED = "You must publish this place to the web to access DataStore."
+const UNPUBLISHED_NOTICE = "This place is not published: profiles are kept in memory, and nothing is saved"
+
+const function unpublished(world: World.World, name: string, isStudio: boolean): any
+	const services: any = table.clone(world:server({ name = name }).services)
+	services.isStudio = isStudio
+	services.dataStores = table.clone(services.dataStores)
+	services.dataStores.GetDataStore = function()
+		error(UNPUBLISHED, 0)
+	end
+	return services
+end
+
+for _, mode in { "live", "copy" } do
+	Spec.test(`Mock: Studio in a place never published opens in memory and says so once (studio = {mode})`, function()
+		const world = World.new(1)
+		const seen = writes(world)
+		const store = KeepBlox.store("Profiles", {
+			template = { coins = 0 },
+			services = unpublished(world, "A", true),
+			studio = mode :: any,
+		})
+		const errors: { string } = {}
+		store.onError:connect(function(key: string, message: string)
+			table.insert(errors, `{key}|{message}`)
+		end)
+		Sim.run(world.scheduler, "A", function()
+			const result = store:load("u_1")
+			assert(result.ok, "loaded in memory")
+			result.profile.Data.coins = 3
+			Spec.equal(result.profile:save(), true)
+			result.profile:release()
+			const again = store:load("u_1")
+			assert(again.ok, "loaded again")
+			Spec.equal(again.profile.Data.coins, 3, "memory keeps the play test's data")
+			again.profile:release()
+		end, 60)
+		Spec.equal(errors, { `|{UNPUBLISHED_NOTICE}` })
+		Spec.equal(seen, {})
+	end)
+end
+
+Spec.test("Mock: a live server that cannot get its data store still fails, whatever the message", function()
+	const world = World.new(1)
+	Spec.throws(function()
+		KeepBlox.store("Profiles", { template = { coins = 0 }, services = unpublished(world, "A", false) })
+	end, UNPUBLISHED)
+end)
+
+Spec.test("Mock: Studio fails on a data store error that is not about access", function()
+	const world = World.new(1)
+	const services = unpublished(world, "A", true)
+	services.dataStores.GetDataStore = function()
+		error("DataStore name is too long", 0)
+	end
+	Spec.throws(function()
+		KeepBlox.store("Profiles", { template = { coins = 0 }, services = services })
+	end, "DataStore name is too long")
+end)
+
 Spec.test("Mock: Studio with API access uses the real store", function()
 	const world = World.new(1)
 	const seen = writes(world)

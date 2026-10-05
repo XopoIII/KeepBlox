@@ -48,6 +48,20 @@ Studio has no API access: profiles are kept in memory, and nothing is saved
 
 The check reads and never writes, so it cannot touch a live key.
 
+### A place that was never published
+
+In a place file that was never published, Roblox refuses the data store itself: `GetDataStore` throws
+"You must publish this place to the web to access DataStore." `KeepBlox.store` does not pass that on.
+With `studio = "live"` or `"copy"` the store opens in memory for the play test, and on the first load
+`store.onError` fires once with the key `""` and the message:
+
+```
+This place is not published: profiles are kept in memory, and nothing is saved
+```
+
+This is Studio only. On a live server, an error from `GetDataStore` is raised by `KeepBlox.store` as it
+is. `KeepBlox.shared` has no memory fallback: in such a place, give it `mock = true`.
+
 ## Scratch stores
 
 `mock` keeps a store's profiles in memory, anywhere, not only in Studio:

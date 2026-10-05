@@ -14,7 +14,7 @@ const function stored(world: World.World, key: string): any
 end
 
 -- Server A holds u_1 with `coins`; returns the world and A.
-const function held(seed: number, coins: number, config: { [string]: number }?): (World.World, World.Server)
+const function held(seed: number, coins: number, config: KeepBlox.ConfigOverrides?): (World.World, World.Server)
 	const world = World.new(seed)
 	const a = world:server({ name = "A", players = 1 })
 	const store = KeepBlox.store("Profiles", { template = TEMPLATE, services = a.services, config = config })
@@ -28,7 +28,7 @@ const function held(seed: number, coins: number, config: { [string]: number }?):
 end
 
 -- Server B loads u_1; returns how long it took and the coins it got.
-const function takeOver(world: World.World, name: string, config: { [string]: number }?): (number, number)
+const function takeOver(world: World.World, name: string, config: KeepBlox.ConfigOverrides?): (number, number)
 	const b = KeepBlox.store(
 		"Profiles",
 		{ template = TEMPLATE, services = world:server({ name = name }).services, config = config }
@@ -67,7 +67,7 @@ end)
 
 Spec.test("Lease: with MemoryStore down, the lease rule still takes over a crashed owner, safely", function()
 	-- The fallback rule at a 15 s renewal (35 s death), so it shows within the spec's time.
-	const fallback = { renew = 15, death = 35 }
+	const fallback: KeepBlox.ConfigOverrides = { renew = 15, death = 35 }
 	const world, a = held(4, 7, fallback)
 	a:crash()
 	world.faults:add({ op = "MemoryStoreGetAsync", error = "InternalError: memory store unavailable" })

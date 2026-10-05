@@ -58,7 +58,9 @@ Change them only for a reason you can name.
 
 A store resolves its config when it is opened, and raises an error on a bad one:
 
-- Every name must be one of the fields above; an unknown name is an error.
+- Every name must be one of the fields above; an unknown name is an error. The option's type,
+  `KeepBlox.ConfigOverrides`, also makes it a type error under the new solver. A table of settings built
+  apart from the call is annotated with that type.
 - Every value must be a positive number.
 - `death` must be at least twice `renew`, so a slow owner is never mistaken for a dead one.
 - `backoffMin` must not exceed `backoffMax`.
