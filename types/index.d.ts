@@ -152,6 +152,8 @@ declare namespace KeepBlox {
 
 	interface SharedStore<T extends object> {
 		readonly name: string;
+		/** Studio cannot reach live data, so the documents are kept in memory: once, with the key "". */
+		readonly onError: Signal<[key: string, message: string]>;
 		read(key: string): SharedResult<T>;
 		update(key: string, change: (data: T) => void): SharedResult<T>;
 		watch(key: string, handler: (data: T) => void): { Disconnect(): void };

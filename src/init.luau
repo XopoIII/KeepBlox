@@ -34,18 +34,18 @@ const Schema = require("@self/Schema")
 const Shared = require("@self/Shared")
 const Store = require("@self/Store")
 
-export type Store = Store.Store
+export type Store<T = any> = Store.Store<T>
 --> What `KeepBlox.store` takes.
 export type StoreOptions = Store.Options
 export type SharedStore = Shared.SharedStore
 --> What `KeepBlox.shared` takes.
 export type SharedOptions = Shared.Options
-export type Profile = Profile.Profile
+export type Profile<T = any> = Profile.Profile<T>
 --> Why a session ended: what `profile.onEnded` fires with.
 export type EndReason = Profile.EndReason
 --> What `store:load` takes.
 export type LoadOptions = Store.LoadOptions
-export type LoadResult = Store.LoadResult
+export type LoadResult<T = any> = Store.LoadResult<T>
 --> Why a load failed: the `reason` of a `LoadResult` that is not ok.
 export type LoadFailure = Store.LoadFailure
 --> A purchase as `MarketplaceService.ProcessReceipt` hands it over, what `store:receipts` and

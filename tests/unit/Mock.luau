@@ -2,6 +2,7 @@
 --- Profiles kept in memory: on request (scratch sets), and on their own in Studio without API access.
 --- Either way, no live key is ever written: the access check only reads.
 const KeepBlox = require("@keepblox")
+const MockServices = require("@keepblox/MockServices")
 const Sim = require("./Sim")
 const Spec = require("../Spec")
 const World = require("@fakes/World")
@@ -162,10 +163,11 @@ Spec.test("Mock: studio = memory never touches live data, even with API access (
 	Spec.equal(seen, {})
 end)
 
-Spec.test("Mock: studio = copy starts from the live data, unlocked, and never writes it back", function()
+-- A live profile with 42 coins in the store `name`, and Studio's services ("S") with what S wrote to the
+-- live store. Memory outlives a world (it is the server's, see MockServices), so each spec names its own.
+const function liveProfile(name: string): (World.World, any, { string })
 	const world = World.new(1)
-	const live =
-		KeepBlox.store("Profiles", { template = { coins = 0 }, services = world:server({ name = "L" }).services })
+	const live = KeepBlox.store(name, { template = { coins = 0 }, services = world:server({ name = "L" }).services })
 	Sim.run(world.scheduler, "L", function()
 		const result = live:load("u_1")
 		assert(result.ok, "live load")
@@ -180,7 +182,21 @@ Spec.test("Mock: studio = copy starts from the live data, unlocked, and never wr
 	end)
 	const services: any = world:server({ name = "S" }).services
 	services.isStudio = true
+	return world, services, byStudio
+end
+
+const function listen(store: KeepBlox.Store): { string }
+	const errors: { string } = {}
+	store.onError:connect(function(key: string, message: string)
+		table.insert(errors, `{key}|{message}`)
+	end)
+	return errors
+end
+
+Spec.test("Mock: studio = copy starts from the live data, unlocked, and never writes it back", function()
+	const world, services, byStudio = liveProfile("Profiles")
 	const studio = KeepBlox.store("Profiles", { template = { coins = 0 }, services = services, studio = "copy" })
+	const errors = listen(studio)
 	local took = math.huge
 	Sim.run(world.scheduler, "S", function()
 		const started = world.scheduler.now
@@ -192,8 +208,50 @@ Spec.test("Mock: studio = copy starts from the live data, unlocked, and never wr
 		result.profile:release()
 	end, world.scheduler.now + 30)
 	Spec.truthy(took < 2, `the live owner was not waited on ({took} s)`)
+	Spec.equal(errors, {}, "a copy that was read is not reported")
 	Spec.equal(byStudio, {}, "studio writes")
 	Spec.equal((world.backend:latest("Profiles/global", "u_1") :: any).value.Data.coins, 42)
+end)
+
+Spec.test("Mock: studio = copy that cannot read the live profile starts from the template and says so once", function()
+	const world, services, byStudio = liveProfile("Unread")
+	world.faults:add({ op = "GetAsync", server = "S", error = "502: API Services rejected request" })
+	const studio = KeepBlox.store("Unread", { template = { coins = 0 }, services = services, studio = "copy" })
+	const errors = listen(studio)
+	Sim.run(world.scheduler, "S", function()
+		const result = studio:load("u_1")
+		assert(result.ok, "the play test is not blocked")
+		Spec.equal(result.profile.Data.coins, 0, "the template, not the live 42")
+		result.profile.Data.coins = 7
+		result.profile:release()
+		const again = studio:load("u_1")
+		assert(again.ok, "loaded again")
+		Spec.equal(again.profile.Data.coins, 7, "memory keeps the play test's data")
+		again.profile:release()
+	end, world.scheduler.now + 60)
+	Spec.equal(errors, {
+		"u_1|The live profile could not be read for the copy (502: API Services rejected request): "
+			.. "this play test starts from the template",
+	})
+	Spec.equal(byStudio, {}, "studio writes")
+	Spec.equal((world.backend:latest("Unread/global", "u_1") :: any).value.Data.coins, 42)
+end)
+
+Spec.test("Mock: a live read that fails is reported once for each key, however often the key is read", function()
+	const world, services = liveProfile("Reread")
+	world.faults:add({ op = "GetAsync", server = "S", error = "boom" })
+	const reports: { string } = {}
+	const memory = MockServices.wrap(services, "reread", true, function(key: string, message: string)
+		table.insert(reports, `{key}|{message}`)
+	end)
+	Sim.run(world.scheduler, "S", function()
+		const copy = memory.dataStores:GetDataStore("Reread")
+		for _, key in { "u_1", "u_1", "u_2", "u_1" } do
+			Spec.equal((copy:GetAsync(key)), nil)
+		end
+	end, world.scheduler.now + 30)
+	const told = "The live profile could not be read for the copy (boom): this play test starts from the template"
+	Spec.equal(reports, { `u_1|{told}`, `u_2|{told}` })
 end)
 
 Spec.test("Mock: a test can close a store as a shutdown would (DocumentService#80)", function()

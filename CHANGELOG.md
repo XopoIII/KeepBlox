@@ -5,6 +5,55 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.4 - 2026-10-05
+
+What 0.6.3 left open in Studio, and typed profile data. Nothing about stored data or the lock protocol
+changed: 0.6.3 and 0.6.4 servers run side by side, and a live server behaves as it did.
+
+### Fixed
+
+- A shared store opens in Studio in a place that cannot reach live data. `KeepBlox.shared` threw in a
+  place file that was never published ("You must publish this place to the web to access DataStore."),
+  and with API access off its calls failed. It now does what a store does since 0.6.3: in an
+  unpublished place it opens in memory, and without API access its first `read`, `update` or `watch`
+  makes one read-only call (`GetAsync` of `__KeepBlox_access_check`) and moves to memory when that is
+  refused. Watchers hear the updates made in memory. On a live server the error is raised as before,
+  and so is any other error in Studio.
+- `studio = "copy"` no longer hides a live profile it could not read. The profile started from the
+  template without a word, so a play test looked at a new player and took it for the real one. It still
+  starts from the template, since a play test must not be blocked, and `store.onError` fires once for
+  the key, with the key and "The live profile could not be read for the copy (the engine's error): this
+  play test starts from the template".
+
+### Added
+
+- `SharedStore.onError`, a signal of `(key, message)` as a store's is. It reports that Studio keeps the
+  documents in memory: once, with the key `""`, on the first call, with the same two messages a store
+  uses. It reports nothing else yet: a failed `read` or `update` says why in its result. The roblox-ts
+  declarations gain it too.
+- Typed profile data. `KeepBlox.Store<T>`, `KeepBlox.Profile<T>` and `KeepBlox.LoadResult<T>` take the
+  shape of the data, and `T` defaults to `any`, so every annotation written without it means what it
+  did. A game names its shape once, `const store: KeepBlox.Store<PlayerData> = KeepBlox.store(...)`,
+  and `profile.Data`, `profile.LastSavedData`, `onSaved`, `store:profiles()` and the data `store:edit`
+  and `store:trade` hand over are `PlayerData` under both type solvers. The consumer type check holds
+  a typed store beside the plain one, and two misuses of it that must fail.
+
+### Changed
+
+- With `studio = "copy"`, a key the play test already holds in memory is not read from the live store
+  again. Memory won before as well; the read was wasted.
+- In Studio, a shared store's first call makes one extra read, of the key `__KeepBlox_access_check`.
+  Live servers do not make it.
+
+### Not done
+
+- `KeepBlox.store` does not work the data's type out from `template`: the shape is the annotation's.
+  Inferring it would type every existing store by its template literal, where `items = {}` says nothing
+  of what the game later puts in it, and code that type-checks today would stop. `SharedStore`,
+  `ReceiptOptions`, `store:readVersion` and the results of `store:edit` stay untyped (`any`).
+- The Studio fallbacks are proven against the fakes, with the engine's messages as 0.6.3 recorded them.
+  The shared store's was not run in Studio for this release.
+
 ## 0.6.3 - 2026-10-05
 
 Found while putting 0.6.2 into a live game. Nothing about stored data or the lock protocol changed: 0.6.2

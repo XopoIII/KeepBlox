@@ -15,11 +15,13 @@ const Signal = require("./Signal")
 
 export type EndReason = "released" | "handedOver" | "lost" | "shutdown"
 
-export type Profile = {
+--> `T` is the shape of the data: `Profile` alone is a profile of `any`, as it always was, and a game
+--> that types its data writes `Profile<PlayerData>`.
+export type Profile<T = any> = {
 	--> The live data. Change it in place; it is saved when it changed.
-	Data: any,
+	Data: T,
 	--> The data as last stored, a copy. Receipts wait for this to hold their id.
-	LastSavedData: any,
+	LastSavedData: T,
 	UserIds: { number },
 	RobloxMetaData: { [string]: any },
 	key: string,
@@ -32,20 +34,20 @@ export type Profile = {
 	--> release, with the reason it ends. A listener must not yield, or its later writes miss the save.
 	onSaving: Signal.Signal<boolean, EndReason?>,
 	--> Fires with a copy of the stored data after every successful save.
-	onSaved: Signal.Signal<any>,
+	onSaved: Signal.Signal<T>,
 	--> Fires once, when the session ends. `Data` is frozen by then.
 	onEnded: Signal.Signal<EndReason>,
-	isActive: (self: Profile) -> boolean,
+	isActive: (self: Profile<T>) -> boolean,
 	--> Saves now and yields until it is stored: true, or false if it could not be.
-	save: (self: Profile) -> boolean,
+	save: (self: Profile<T>) -> boolean,
 	--> Ends the session: a final save, then the lock is released. Yields until done.
-	release: (self: Profile) -> (),
+	release: (self: Profile<T>) -> (),
 	--> Handles offline messages sent to this key (`store:message`). Each message goes to one handler:
 	--> the handlers in turn, until one calls `processed()` after changing `Data`. The message leaves
 	--> the queue in the same save that stores that change, so it is handled exactly once.
-	onMessage: (self: Profile, handler: (message: any, processed: () -> ()) -> ()) -> (),
-	addUserId: (self: Profile, userId: number) -> (),
-	removeUserId: (self: Profile, userId: number) -> (),
+	onMessage: (self: Profile<T>, handler: (message: any, processed: () -> ()) -> ()) -> (),
+	addUserId: (self: Profile<T>, userId: number) -> (),
+	removeUserId: (self: Profile<T>, userId: number) -> (),
 }
 
 --> What the session behind a profile provides.

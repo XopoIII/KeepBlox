@@ -11,6 +11,9 @@ const MockOrdered = require("./MockOrdered")
 const Record = require("./Record")
 const Services = require("./Services")
 
+--> Hears of a problem with a key: the store's `onError`.
+export type Report = (key: string, message: string) -> ()
+
 type Entry = { value: any, version: number, userIds: { number }, metadata: { [string]: any }, updatedMs: number }
 
 const MockServices = {}
@@ -41,11 +44,17 @@ const function unlock(value: any): any
 	return value
 end
 
-const function store(entries: { [string]: Entry }, clock: Services.Clock, seed: Services.DataStore?): Services.DataStore
-	-- Keys already read from `seed`, so each is copied once and memory wins from then on.
+const function store(
+	entries: { [string]: Entry },
+	clock: Services.Clock,
+	seed: Services.DataStore?,
+	report: Report?
+): Services.DataStore
+	-- Keys already read from `seed`, so each is copied once and memory wins from then on. A key memory
+	-- already holds is not read at all.
 	const seeded: { [string]: boolean } = {}
 	const function copyIn(key: string)
-		if seed == nil or seeded[key] then
+		if seed == nil or seeded[key] or entries[key] ~= nil then
 			return
 		end
 		seeded[key] = true
@@ -53,7 +62,15 @@ const function store(entries: { [string]: Entry }, clock: Services.Clock, seed: 
 		const ok, value = pcall(function(): any
 			return (live:GetAsync(key))
 		end)
-		if ok and value ~= nil and entries[key] == nil then
+		if not ok then
+			-- The play test must still start, but not as if the player were new without a word.
+			if report then
+				report(
+					key,
+					`The live profile could not be read for the copy ({value}): this play test starts from the template`
+				)
+			end
+		elseif value ~= nil and entries[key] == nil then
 			entries[key] = {
 				value = unlock(Record.copy(value)),
 				version = 1,
@@ -129,8 +146,14 @@ const function store(entries: { [string]: Entry }, clock: Services.Clock, seed: 
 end
 
 --> `base` with its data stores and messaging kept in memory, in the scratch set `name`.
---> With `copyLive`, each key is first read from the live store (read only, once), without its lock.
-function MockServices.wrap(base: Services.Services, name: string, copyLive: boolean?): Services.Services
+--> With `copyLive`, each key is first read from the live store (read only, once), without its lock. A
+--> read that fails leaves the key empty and tells `report`, once for the key.
+function MockServices.wrap(
+	base: Services.Services,
+	name: string,
+	copyLive: boolean?,
+	report: Report?
+): Services.Services
 	local set = sets[name]
 	if not set then
 		set = {}
@@ -148,8 +171,8 @@ function MockServices.wrap(base: Services.Services, name: string, copyLive: bool
 		const id = `{storeName}/{scope or "global"}`
 		if not handles[id] then
 			stores[id] = stores[id] or {}
-			handles[id] =
-				store(stores[id], base.clock, if copyLive then base.dataStores:GetDataStore(storeName, scope) else nil)
+			const seed = if copyLive then base.dataStores:GetDataStore(storeName, scope) else nil
+			handles[id] = store(stores[id], base.clock, seed, report)
 		end
 		return handles[id]
 	end
