@@ -27,9 +27,7 @@ const Spare = require("./Spare")
 
 export type Failure = "cancelled" | "closing" | "timeout" | "foreign" | "outbid" | "inUse" | "legacyLocked"
 
-export type Result =
-	{ ok: true, record: any, loadCount: number, previous: Lock.Previous? }
-	| { ok: false, reason: Failure }
+export type Result = { ok: true, taken: Lock.Taken } | { ok: false, reason: Failure }
 
 type Observed = {
 	guid: string,
@@ -170,7 +168,7 @@ function Claim.open(
 					Claim.giveBack(context, key, outcome.loadCount)
 					return { ok = false, reason = if context.closing() then "closing" else "cancelled" }
 				end
-				return { ok = true, record = outcome.record, loadCount = outcome.loadCount, previous = outcome.previous }
+				return { ok = true, taken = outcome }
 			elseif outcome.kind == "foreign" then
 				quarantine(context, storeName, key, outcome.value)
 				return { ok = false, reason = "foreign" }

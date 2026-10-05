@@ -25,6 +25,7 @@ profile.onEnded:connect(function(reason) ... end)
 | `key` | string | The profile's key. Read only. |
 | `loadCount` | number | How many sessions this key has had, this one included. Read only. |
 | `createdAt` | number | When the profile was first created, in Unix seconds (ProfileStore's `ProfileCreateTime`); 0 when the record does not say. Read only. |
+| `lastSavedAt` | number | When the record was last written before this session took it, in Unix seconds (the `LastUpdate` the load found): the earlier session's last save, which is its release when it ended cleanly. 0 for a profile that had never been stored, and when the record holds no number there. It does not move while this session saves. Read only. |
 
 In Luau, `Data` and `LastSavedData` are `any` on a `KeepBlox.Profile`, and the game's own shape on a
 `KeepBlox.Profile<PlayerData>`: see [Typed data](/KeepBlox/reference/store/#typed-data).

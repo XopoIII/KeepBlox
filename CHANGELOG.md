@@ -5,6 +5,31 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.5 - 2026-10-05
+
+One field for games that pay for the time a player was away. Nothing about stored data or the lock
+protocol changed: 0.6.4 and 0.6.5 servers run side by side.
+
+### Added
+
+- `profile.lastSavedAt`: when the record was last written before this session took it, in Unix seconds.
+  It is the `LastUpdate` the load found in the record, which is the earlier session's last save, and
+  its release when that session ended cleanly. The load itself writes `LastUpdate`, so the stored
+  record could no longer say; the claim now reads the value before it writes over it. It is 0 for a
+  profile that had never been stored, for a record that holds no number there, and for data taken from
+  another library, whose record is made by the load. It does not move while the session saves. A mock
+  store reports it as a real one does, and `studio = "copy"` reports the live profile's. The roblox-ts
+  declarations gain it too.
+
+### Not done
+
+- `lastSavedAt` is the time of the last write, whatever made it. A load that took the key and gave it
+  back (cancelled, timed out while settling a trade, data no migration could read) wrote the record,
+  and so did a claim whose answer was lost and which the same load then made again: the next value is
+  that moment, not the last play. After a server died, it is the dead session's last stored save,
+  though the load may recover newer play from its MemoryStore snapshot.
+- The ProfileStore wrapper has no such field: ProfileStore's profile has none to map it to.
+
 ## 0.6.4 - 2026-10-05
 
 What 0.6.3 left open in Studio, and typed profile data. Nothing about stored data or the lock protocol

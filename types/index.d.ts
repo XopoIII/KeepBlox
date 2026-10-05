@@ -34,6 +34,7 @@ declare namespace KeepBlox {
 		readonly key: string;
 		readonly loadCount: number;
 		readonly createdAt: number;
+		readonly lastSavedAt: number;
 		readonly onSaving: Signal<[final: boolean, reason?: EndReason]>;
 		readonly onSaved: Signal<[saved: T]>;
 		readonly onEnded: Signal<[reason: EndReason]>;

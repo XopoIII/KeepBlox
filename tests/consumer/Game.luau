@@ -55,10 +55,11 @@ if result.ok then
 	const key: string = profile.key
 	const loads: number = profile.loadCount
 	const created: number = profile.createdAt
+	const lastSaved: number = profile.lastSavedAt
 	profile:addUserId(1)
 	profile.onSaving:connect(function(final: boolean, reason: string?)
 		profile.Data.coins += if final then 0 else 1
-		print(key, loads, created, reason)
+		print(key, loads, created, lastSaved, reason)
 	end)
 	profile.onSaved:connect(function(stored: any)
 		print(stored.coins)
