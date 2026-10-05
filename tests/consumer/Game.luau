@@ -146,4 +146,53 @@ const shared: KeepBlox.SharedStore = KeepBlox.shared("Guilds", SHARED)
 const sharedName: string = shared.name
 print(sharedName)
 
+-- A game that types its data names the shape once, on the store; every profile of it carries the shape.
+type PlayerData = { coins: number, items: { string } }
+const typed: KeepBlox.Store<PlayerData> = KeepBlox.store("Typed", { template = { coins = 0, items = {} } })
+const typedResult: KeepBlox.LoadResult<PlayerData> = typed:load("u_1")
+if typedResult.ok then
+	const typedProfile: KeepBlox.Profile<PlayerData> = typedResult.profile
+	const coins: number = typedProfile.Data.coins
+	const first: string? = typedProfile.Data.items[1]
+	const stored: number = typedProfile.LastSavedData.coins
+	typedProfile.Data.coins += 1
+	typedProfile.onSaved:connect(function(saved: PlayerData)
+		print(saved.coins)
+	end)
+	-- A typed profile goes wherever a plain one is taken.
+	const plain: KeepBlox.Profile = typedProfile
+	print(coins, first, stored, plain)
+end
+-- The result not annotated, the documented early return, and the open profiles: all typed by the store.
+const function typedCoins(key: string): number?
+	const loaded = typed:load(key)
+	if not loaded.ok then
+		return nil
+	end
+	const coins: number = loaded.profile.Data.coins
+	return coins
+end
+const typedOpen: { [string]: KeepBlox.Profile<PlayerData> } = typed:profiles()
+typed:edit("u_1", function(data: PlayerData)
+	data.coins += 1
+end)
+typed:trade("u_1", "u_2", function(a: PlayerData, b: PlayerData)
+	a.coins, b.coins = b.coins, a.coins
+end)
+-- A purchase handler may name the shape too.
+const TYPED_RECEIPTS: KeepBlox.ReceiptOptions = {
+	keyFor = function(userId: number): string
+		return `u_{userId}`
+	end,
+	products = {
+		[3] = function(profile: KeepBlox.Profile<PlayerData>, _receipt: KeepBlox.Receipt)
+			profile.Data.coins += 10
+		end,
+	},
+}
+print(typed:receipts(TYPED_RECEIPTS))
+-- A typed store goes wherever a plain one is taken.
+const plainStore: KeepBlox.Store = typed
+print(typedCoins, typedOpen, plainStore, KeepBlox.processReceipt(typed, RECEIPTS))
+
 return nil

@@ -33,6 +33,20 @@ end)
 | `mock` | Keep the documents in memory: `true`, or the name of a scratch set (see [Studio and testing](/KeepBlox/guides/studio-and-testing/)). |
 | `services` | The engine services; tests pass fakes. |
 
+## onError
+
+```lua
+guilds.onError:connect(function(key, message)
+	warn(`[KeepBlox] {key}: {message}`)
+end)
+```
+
+`onError` fires `(key, message)` as a store's does. A shared store reports one thing through it: in
+Studio, a place that cannot reach live data (never published, or without API access) keeps the documents
+in memory for the play test, and says so once, with the key `""`, on the first `read`, `update` or
+`watch`. See [Studio and testing](/KeepBlox/guides/studio-and-testing/). A failed `read` or `update` is
+not reported here: its result carries the reason.
+
 ## No session lock
 
 A shared store never claims a key. There is no load and no release, and no server holds a document

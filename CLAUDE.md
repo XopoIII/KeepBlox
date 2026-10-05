@@ -108,6 +108,31 @@ players. Test data goes in stores named `KB_LiveCheck_*`, and is removed afterwa
   `docs/src/content/docs/index.mdx` and `docs/src/content/docs/getting-started/installation.mdx`, and
   its entry in `CHANGELOG.md`.
 
+## Releasing
+
+The steps, in order, as they were done for 0.6.3. The version bump and the changelog entry are part of
+the pull request, not of this list.
+
+1. Merge the pull request with a merge commit (`gh pr merge <n> --merge`), then check out `main` and
+   pull.
+2. On the merged `main`, run `sh scripts/check-package.sh` and `sh scripts/run-tests.sh`. Both must
+   pass there, not only on the branch.
+3. Tag and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+4. Build the model: `rojo build -o KeepBlox.rbxm` (the file is not tracked).
+5. Create the GitHub Release with the model attached:
+   `gh release create vX.Y.Z KeepBlox.rbxm --title "KeepBlox X.Y.Z" --notes-file <notes>`. The notes
+   hold, in order: a summary line, the link to the documentation, the changelog entry's sections,
+   **Evidence** (the spec count, the gates that passed, anything checked live, and anything that was
+   not), **Known, not fixed** when there is something, and **Install** (the Wally line, the pesde line,
+   the `.rbxm`).
+6. Publish the packages: `wally publish`, then `pesde publish --yes`. A published version cannot be
+   replaced, so both come after the tag and the release.
+7. The documentation deploys by itself on the push to `main` (`.github/workflows/docs.yml`): check that
+   the site shows the new version.
+
+`tests/reference/BASELINE.md` and the benchmark tables name the version they were measured on. A release
+that does not measure them again leaves them as they are.
+
 ## Commands
 
 | Command | What it does |

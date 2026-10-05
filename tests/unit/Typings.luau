@@ -9,7 +9,12 @@ const DECLARATIONS = fs.readFile("types/index.d.ts")
 -- The field names of the Luau type `name` in `path`.
 const function fields(path: string, name: string): { string }
 	const source = fs.readFile(path)
-	const body = assert(string.match(source, `\nexport type {name} = (%b\{\})`), `no type {name} in {path}`)
+	-- With or without type parameters: `Store<T = any> = { ... }`.
+	const body = assert(
+		string.match(source, `\nexport type {name} = (%b\{\})`)
+			or string.match(source, `\nexport type {name}%b<> = (%b\{\})`),
+		`no type {name} in {path}`
+	)
 	const found = {}
 	for line in string.gmatch(body, "[^\n]+") do
 		const field = string.match(line, "^\tread ([%a_][%w_]*):") or string.match(line, "^\t([%a_][%w_]*):")

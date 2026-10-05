@@ -14,12 +14,16 @@
 --- best effort), and reads the document again.
 ---
 --- Use a data store of its own: a key of a profile store is session-locked, and `update` refuses it.
+---
+--- In Studio, a place that cannot reach live data (never published, or API access off) keeps the
+--- documents in memory and says so once through `onError`, as a profile store does (see Studio).
 const Call = require("./Call")
 const Config = require("./Config")
-const MockServices = require("./MockServices")
 const Record = require("./Record")
 const Schema = require("./Schema")
 const Services = require("./Services")
+const Signal = require("./Signal")
+const Studio = require("./Studio")
 const Validate = require("./Validate")
 
 export type Options = {
@@ -36,6 +40,9 @@ export type Result =
 
 export type SharedStore = {
 	name: string,
+	--> Fires `(key, message)` for a problem worth logging. Today that is one: Studio cannot reach live
+	--> data, so the documents are kept in memory (key "", once, on the first call).
+	onError: Signal.Signal<string, string>,
 	--> The document's data now (a copy); the template when it does not exist yet.
 	read: (self: SharedStore, key: string) -> Result,
 	--> Changes the document in one UpdateAsync (see the header). Returns the data stored.
@@ -56,12 +63,14 @@ function Shared.new(name: string, options: Options): SharedStore
 	)
 	const template = if options.schema then Schema.default(options.schema) else Record.copy(options.template)
 	const config = Config.resolve(options.config)
-	local services = options.services or require("./RobloxServices").build()
-	if options.mock then
-		services = MockServices.wrap(services, if type(options.mock) == "string" then options.mock else "shared")
-	end
-	const clock = services.clock
-	const dataStore = services.dataStores:GetDataStore(name)
+	const origin = options.services or require("./RobloxServices").build()
+	const clock = origin.clock
+	const onError: Signal.Signal<string, string> = Signal.new(clock.spawn)
+	-- `chosen` moves to memory when Studio cannot reach live data: its fields are read at each call.
+	const chosen = Studio.choose(origin, name, if options.mock == true then "shared" else options.mock, "live")
+	const prepare = Studio.guard(chosen, name, function(key: string, message: string)
+		onError:fire(key, message)
+	end)
 
 	const function topic(key: string): string
 		const text = `KB_{name}/{key}`
@@ -90,9 +99,11 @@ function Shared.new(name: string, options: Options): SharedStore
 
 	return {
 		name = name,
+		onError = onError,
 		read = function(_: SharedStore, key: string): Result
+			prepare()
 			const ok, value = retried(function(): any
-				return (dataStore:GetAsync(key, false))
+				return (chosen.dataStore:GetAsync(key, false))
 			end)
 			if not ok then
 				return { ok = false, reason = "failed", message = tostring(value) }
@@ -103,9 +114,10 @@ function Shared.new(name: string, options: Options): SharedStore
 		end,
 		update = function(_: SharedStore, key: string, change: (data: any) -> ()): Result
 			assert(type(change) == "function", "KeepBlox: update needs a function")
+			prepare()
 			local outcome: Result = { ok = false, reason = "failed" }
 			const ok, problem = retried(function(): any
-				return dataStore:UpdateAsync(key, function(value: any): any
+				return chosen.dataStore:UpdateAsync(key, function(value: any): any
 					const kind = Record.classify(value)
 					if kind == "foreign" then
 						outcome = { ok = false, reason = "foreign" } :: Result
@@ -145,13 +157,15 @@ function Shared.new(name: string, options: Options): SharedStore
 			end
 			if outcome.ok then
 				clock.spawn(function()
-					pcall(services.messaging.PublishAsync, services.messaging, topic(key), { at = clock.time() })
+					const messaging = chosen.services.messaging
+					pcall(messaging.PublishAsync, messaging, topic(key), { at = clock.time() })
 				end)
 			end
 			return outcome
 		end,
 		watch = function(self: SharedStore, key: string, handler: (data: any) -> ()): Services.Connection
-			return services.messaging:SubscribeAsync(topic(key), function()
+			prepare()
+			return chosen.services.messaging:SubscribeAsync(topic(key), function()
 				const current = self:read(key)
 				if current.ok then
 					handler(current.data)

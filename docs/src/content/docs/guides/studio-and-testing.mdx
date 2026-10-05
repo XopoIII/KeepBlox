@@ -24,7 +24,17 @@ const store = KeepBlox.store("Profiles", {
 
 `"copy"` is for testing against real profiles without touching them. The copy is taken without the
 live record's lock, so a play test can load a key that a live server holds. It needs API access to
-read the live data; a key that cannot be read starts from the template.
+read the live data.
+
+A live profile that cannot be read does not block the play test: the profile starts from the template,
+and `store.onError` fires once for that key, with the key and the message below (the engine's error in
+the brackets). A profile that then looks new is not the player's data.
+
+```
+The live profile could not be read for the copy (...): this play test starts from the template
+```
+
+A key the play test already holds in memory is not read again.
 
 <Aside type="caution">
 With `"live"` and API access on, a play test reads and writes the real data store, the same keys live
@@ -60,7 +70,15 @@ This place is not published: profiles are kept in memory, and nothing is saved
 ```
 
 This is Studio only. On a live server, an error from `GetDataStore` is raised by `KeepBlox.store` as it
-is. `KeepBlox.shared` has no memory fallback: in such a place, give it `mock = true`.
+is, and so is any other error in Studio.
+
+### Shared stores
+
+`KeepBlox.shared` behaves the same way in both cases. In a place that was never published it opens in
+memory; in a place without API access its first `read`, `update` or `watch` makes the same one
+read-only call and switches to memory when it is refused. Either way `shared.onError` fires once, on
+that first call, with the key `""` and the same message as a store's, and watchers hear the updates
+made in memory. On a live server, and for any other error, nothing is caught.
 
 ## Scratch stores
 

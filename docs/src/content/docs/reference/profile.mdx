@@ -26,6 +26,9 @@ profile.onEnded:connect(function(reason) ... end)
 | `loadCount` | number | How many sessions this key has had, this one included. Read only. |
 | `createdAt` | number | When the profile was first created, in Unix seconds (ProfileStore's `ProfileCreateTime`); 0 when the record does not say. Read only. |
 
+In Luau, `Data` and `LastSavedData` are `any` on a `KeepBlox.Profile`, and the game's own shape on a
+`KeepBlox.Profile<PlayerData>`: see [Typed data](/KeepBlox/reference/store/#typed-data).
+
 `Data` is the same table for the whole session. When KeepBlox has to put data back (a failed trade or
 edit), it changes that table in place, so references the game holds into it stay valid.
 

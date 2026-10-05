@@ -27,4 +27,13 @@ const options: KeepBlox.StoreOptions = {
 }
 print(options)
 
+-- A typed store's data is checked: a field read as the wrong type, and a field the shape does not have.
+type PlayerData = { coins: number }
+const typed: KeepBlox.Store<PlayerData> = KeepBlox.store("Typed", { template = { coins = 0 } })
+const loaded = typed:load("u_1")
+if loaded.ok then
+	const coins: string = loaded.profile.Data.coins -- error
+	print(coins, loaded.profile.Data.gems) -- error
+end
+
 return nil

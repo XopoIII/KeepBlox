@@ -9,7 +9,11 @@
 --- for that: a game must start in Studio whatever the place file is.
 ---
 --- Outside Studio nothing is caught here: a live server that cannot reach its data store must fail.
+---
+--- Profile stores and shared stores both open through here (`choose`), and both call `guard`'s function
+--- before they use the data store.
 const MockServices = require("./MockServices")
+const Serial = require("./Serial")
 const Services = require("./Services")
 
 export type Mode = "live" | "memory" | "copy"
@@ -36,13 +40,20 @@ function Studio.notice(problem: string): string
 end
 
 --> The services the store `name` runs on, and its data store. `mock` and `mode` are the store's options.
-function Studio.choose(base: Services.Services, name: string, mock: (boolean | string)?, mode: Mode): Chosen
+--> `report` hears, once for each key, of a live profile that "copy" could not read.
+function Studio.choose(
+	base: Services.Services,
+	name: string,
+	mock: (boolean | string)?,
+	mode: Mode,
+	report: MockServices.Report?
+): Chosen
 	const inMemory = base.isStudio and mode ~= "live"
 	local services = base
 	if mock then
 		services = MockServices.wrap(base, if type(mock) == "string" then mock else "scratch")
 	elseif inMemory then
-		services = MockServices.wrap(base, `studio:{mode}`, mode == "copy")
+		services = MockServices.wrap(base, `studio:{mode}`, mode == "copy", report)
 	end
 	-- Asking for the data store is the first thing that touches the engine's: an unpublished place
 	-- throws here, for the live store and for the one "copy" would read from.
@@ -64,6 +75,38 @@ function Studio.choose(base: Services.Services, name: string, mock: (boolean | s
 		checked = true,
 		notice = Studio.notice(problem),
 	}
+end
+
+--> A function the store calls before each use of its data store. It reports `chosen.notice` (the first
+--> call: by then someone listens), and while access is not settled it settles it with one read, never a
+--> write, which would touch a live key. When Studio has no access, `chosen` moves to memory, `report`
+--> is told once, with the key "", and `moved` is called.
+function Studio.guard(chosen: Chosen, name: string, report: MockServices.Report, moved: (() -> ())?): () -> ()
+	const checking = Serial.new(chosen.services.clock)
+	return function()
+		if chosen.notice then
+			report("", chosen.notice)
+			chosen.notice = nil
+		end
+		if chosen.checked then
+			return
+		end
+		checking:run(function()
+			if chosen.checked then
+				return
+			end
+			const ok, problem = pcall(chosen.dataStore.GetAsync, chosen.dataStore, "__KeepBlox_access_check", false)
+			if not ok and Studio.isNoAccess(tostring(problem)) then
+				chosen.services = MockServices.wrap(chosen.services, "studio")
+				chosen.dataStore = chosen.services.dataStores:GetDataStore(name)
+				report("", Studio.notice(tostring(problem)))
+				if moved then
+					moved()
+				end
+			end
+			chosen.checked = true
+		end)
+	end
 end
 
 return Studio

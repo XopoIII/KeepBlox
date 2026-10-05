@@ -16,14 +16,12 @@ const Config = require("./Config")
 const Edit = require("./Edit")
 const Import = require("./Import")
 const Migrate = require("./Migrate")
-const MockServices = require("./MockServices")
 const Open = require("./Open")
 const Profile = require("./Profile")
 const Record = require("./Record")
 const Schema = require("./Schema")
 const Receipts = require("./Receipts")
 const Send = require("./Send")
-const Serial = require("./Serial")
 const Services = require("./Services")
 const Session = require("./Session")
 const Signal = require("./Signal")
@@ -74,36 +72,37 @@ export type Options = {
 }
 
 export type LoadOptions = Open.LoadOptions
-export type LoadResult = Open.LoadResult
+export type LoadResult<T = any> = Open.LoadResult<T>
 export type LoadFailure = Open.Failure
 
-export type Store = {
+--> `T` is the shape of the profiles' data: `Store` alone is a store of `any`.
+export type Store<T = any> = {
 	name: string,
 	--> Fires `(key, message)` for every problem worth logging: failed calls, refused data, quarantine.
 	onError: Signal.Signal<string, string>,
-	load: (self: Store, key: string, options: LoadOptions?) -> LoadResult,
+	load: (self: Store<T>, key: string, options: LoadOptions?) -> LoadResult<T>,
 	--> The open profiles, by key.
-	profiles: (self: Store) -> { [string]: Profile.Profile },
+	profiles: (self: Store<T>) -> { [string]: Profile.Profile<T> },
 	--> Queues an offline message for `key`, open or not (see Send).
-	message: (self: Store, key: string, message: { [any]: any }) -> Send.Result,
+	message: (self: Store<T>, key: string, message: { [any]: any }) -> Send.Result,
 	--> Past versions of a key, newest last unless asked otherwise (see Versions).
-	versions: (self: Store, key: string, query: Versions.Query?) -> { Versions.Version },
+	versions: (self: Store<T>, key: string, query: Versions.Query?) -> { Versions.Version },
 	--> The data a key held at a version, or nil.
-	readVersion: (self: Store, key: string, version: string) -> any,
+	readVersion: (self: Store<T>, key: string, version: string) -> any,
 	--> Makes a version's data current. Refuses while any server holds the key.
-	restore: (self: Store, key: string, version: string) -> Versions.Restored,
+	restore: (self: Store<T>, key: string, version: string) -> Versions.Restored,
 	--> A ProcessReceipt callback for this store, answering with a decision's name (see Receipts).
-	receipts: (self: Store, options: Receipts.Options) -> (receipt: Receipts.Receipt) -> Receipts.Decision,
+	receipts: (self: Store<T>, options: Receipts.Options) -> (receipt: Receipts.Receipt) -> Receipts.Decision,
 	--> Edits a key, open here or nobody's, without kicking anyone (see Edit). "inUse" when a live server
 	--> holds it: send a message instead.
-	edit: (self: Store, key: string, edit: (data: any) -> (), options: Edit.Options?) -> Edit.Result,
+	edit: (self: Store<T>, key: string, edit: (data: T) -> (), options: Edit.Options?) -> Edit.Result,
 	--> Releases every open profile in parallel, as a server shutdown does, and refuses new loads.
 	--> Yields until done or `shutdownDeadline` passes. For tests, and for closing a store early.
-	close: (self: Store) -> (),
+	close: (self: Store<T>) -> (),
 	--> One change to two profiles open on this server, landing in both or neither (see Trade).
-	trade: (self: Store, keyA: string, keyB: string, change: (dataA: any, dataB: any) -> ()) -> Trade.Result,
+	trade: (self: Store<T>, keyA: string, keyB: string, change: (dataA: T, dataB: T) -> ()) -> Trade.Result,
 	--> The top of a leaderboard, `{key, value}` entries, highest first unless asked otherwise.
-	leaderboard: (self: Store, name: string, query: Boards.Query?) -> { Boards.Entry },
+	leaderboard: (self: Store<T>, name: string, query: Boards.Query?) -> { Boards.Entry },
 }
 
 const Store = {}
@@ -128,14 +127,15 @@ function Store.new(name: string, options: Options): Store
 		studio == "live" or studio == "memory" or studio == "copy",
 		`KeepBlox: studio is "live", "memory" or "copy", not "{studio}"`
 	)
-	const chosen = Studio.choose(options.services or require("./RobloxServices").build(), name, options.mock, studio)
-	local services = chosen.services
-	-- Studio without API access is found by a read on first load; a write would touch a live key.
-	local checked = chosen.checked
-	-- An unpublished place is known already; it is reported on the first load, once someone listens.
-	local notice = chosen.notice
-	const clock = services.clock
-	const onError: Signal.Signal<string, string> = Signal.new(clock.spawn)
+	const origin = options.services or require("./RobloxServices").build()
+	const onError: Signal.Signal<string, string> = Signal.new(origin.clock.spawn)
+	const function report(key: string, message: string)
+		onError:fire(key, message)
+	end
+	-- Studio may put the store in memory: at once (an unpublished place), or after the read its first
+	-- load makes (no API access). Either is reported on that first load, once someone listens.
+	const chosen = Studio.choose(origin, name, options.mock, studio, report)
+	const services = chosen.services
 	const sessions: { [string]: Session.Session } = {}
 	const opening: { [string]: boolean } = {}
 	local closing = false
@@ -147,9 +147,7 @@ function Store.new(name: string, options: Options): Store
 		dataStore = chosen.dataStore,
 		identity = { placeId = services.placeId, jobId = services.jobId, guid = "" },
 		plan = plan,
-		report = function(key: string, message: string)
-			onError:fire(key, message)
-		end,
+		report = report,
 		closing = function(): boolean
 			return closing
 		end,
@@ -197,23 +195,6 @@ function Store.new(name: string, options: Options): Store
 		closing = true
 	end)
 
-	const checking = Serial.new(clock)
-	const function checkAccess()
-		checking:run(function()
-			if checked then
-				return
-			end
-			const ok, problem = pcall(base.dataStore.GetAsync, base.dataStore, "__KeepBlox_access_check", false)
-			if not ok and Studio.isNoAccess(tostring(problem)) then
-				services = MockServices.wrap(services, "studio")
-				base.services = services
-				base.dataStore = services.dataStores:GetDataStore(name)
-				onError:fire("", Studio.notice(tostring(problem)))
-			end
-			checked = true
-		end)
-	end
-
 	const state: Open.State = {
 		name = name,
 		template = template,
@@ -228,15 +209,10 @@ function Store.new(name: string, options: Options): Store
 		closing = function(): boolean
 			return closing
 		end,
-		prepare = function()
-			if notice then
-				onError:fire("", notice)
-				notice = nil
-			end
-			if not checked then
-				checkAccess()
-			end
-		end,
+		prepare = Studio.guard(chosen, name, report, function()
+			base.services = chosen.services
+			base.dataStore = chosen.dataStore
+		end),
 		importer = options.import,
 		beating = function(): boolean
 			-- A load before the first beat landed beats first: its record must say the server beats.

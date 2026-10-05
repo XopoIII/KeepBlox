@@ -41,7 +41,7 @@ export type LoadOptions = {
 
 export type Failure = Claim.Failure | "open" | "newerSchema" | "migration" | "schema"
 
-export type LoadResult = { ok: true, profile: Profile.Profile } | { ok: false, reason: Failure }
+export type LoadResult<T = any> = { ok: true, profile: Profile.Profile<T> } | { ok: false, reason: Failure }
 
 --> What a load needs from its store.
 export type State = {

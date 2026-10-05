@@ -32,7 +32,9 @@ KeepBlox.shared(name: string, options: SharedOptions): SharedStore
 ```
 
 Opens a store of shared documents: data no server owns, changed atomically by any server, with `read`,
-`update` and `watch`. See [Shared documents](/KeepBlox/guides/shared-documents/).
+`update` and `watch`, and an `onError` signal of the same shape as a store's. In Studio, in a place that
+cannot reach live data, it opens in memory and says so once through `onError`. See
+[Shared documents](/KeepBlox/guides/shared-documents/).
 
 ### KeepBlox.defaults
 
@@ -80,13 +82,40 @@ The module exports the types of everything above, for annotating a game's own co
 
 | Type | What it is |
 |---|---|
-| `KeepBlox.Store`, `KeepBlox.StoreOptions` | A store, and the options `KeepBlox.store` takes. |
+| `KeepBlox.Store<T>`, `KeepBlox.StoreOptions` | A store, and the options `KeepBlox.store` takes. |
 | `KeepBlox.SharedStore`, `KeepBlox.SharedOptions` | A shared store, and the options `KeepBlox.shared` takes. |
-| `KeepBlox.Profile`, `KeepBlox.EndReason` | A profile, and what its `onEnded` fires with. |
-| `KeepBlox.LoadOptions`, `KeepBlox.LoadResult`, `KeepBlox.LoadFailure` | What `store:load` takes and answers, and the `reason` of a failure. |
+| `KeepBlox.Profile<T>`, `KeepBlox.EndReason` | A profile, and what its `onEnded` fires with. |
+| `KeepBlox.LoadOptions`, `KeepBlox.LoadResult<T>`, `KeepBlox.LoadFailure` | What `store:load` takes and answers, and the `reason` of a failure. |
 | `KeepBlox.ReceiptOptions`, `KeepBlox.Receipt`, `KeepBlox.ReceiptDecision` | What `store:receipts` and `KeepBlox.processReceipt` take, a purchase, and the name `store:receipts` answers with. |
 | `KeepBlox.Config`, `KeepBlox.ConfigOverrides` | Every setting, and the `config` option: any of them. |
 | `KeepBlox.Migration` | One migration: a step, or `{ up, down }`. |
+
+### Typed data
+
+`Store`, `Profile` and `LoadResult` take the shape of the data as a type parameter, which defaults to
+`any`: written without it, as `KeepBlox.Store` or `KeepBlox.Profile`, they mean what they always did,
+and `profile.Data` is `any`. A game that wants its data checked names the shape once, on the store:
+
+```lua
+type PlayerData = { coins: number, items: { string } }
+
+const store: KeepBlox.Store<PlayerData> = KeepBlox.store("Profiles", {
+	template = { coins = 0, items = {} },
+})
+
+const result = store:load(key)
+if result.ok then
+	const profile = result.profile -- KeepBlox.Profile<PlayerData>
+	profile.Data.coins += 1 -- a number
+	profile.Data.gems = 1 -- type error: no such field
+end
+```
+
+`profile.Data`, `profile.LastSavedData`, what `onSaved` fires with, `store:profiles()` and the data
+`store:edit` and `store:trade` hand to their functions are all `T`. The annotation is the game's word:
+`KeepBlox.store` does not work the shape out from the template, and nothing checks at run time that the
+stored data fits it (a `schema` does that). A typed store or profile is accepted wherever a plain one
+is, so `KeepBlox.processReceipt(store, ...)` and a handler taking `KeepBlox.Profile` keep working.
 
 ## Store options
 
@@ -137,7 +166,7 @@ end)
 ### load
 
 ```lua
-store:load(key: string, options: LoadOptions?): LoadResult
+store:load(key: string, options: LoadOptions?): LoadResult<T>
 ```
 
 Claims `key` for this server and returns its profile: `{ ok = true, profile = Profile }` or
@@ -157,7 +186,7 @@ a dead owner is taken over once proven dead. Every failure reason is described i
 ### profiles
 
 ```lua
-store:profiles(): { [string]: Profile }
+store:profiles(): { [string]: Profile<T> }
 ```
 
 The profiles open on this server, by key. A new table on every call.
