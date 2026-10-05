@@ -45,14 +45,17 @@ luau-lsp analyze --flag:LuauSolverV2=true --defs globalTypes.d.luau --ignore "te
 luau-lsp analyze --defs globalTypes.d.luau --ignore "src/**" tests/consumer/Game.luau
 
 # tests/consumer/Misuse.luau must fail on exactly the lines marked `-- error`, under each solver: the
-# consumer checks read real types, not `any`.
-expected="$(grep -n -- '-- error$' tests/consumer/Misuse.luau | cut -d: -f1 | tr '\n' ' ')"
+# consumer checks read real types, not `any`. A line marked `-- error (new solver)` must fail under the
+# new solver and pass under the old one, which cannot make that check.
 for solver in old new; do
 	if [ "$solver" = new ]; then
 		flag="--flag:LuauSolverV2=true"
+		marks='-- error$|-- error \(new solver\)$'
 	else
 		flag="--flag:LuauSolverV2=false"
+		marks='-- error$'
 	fi
+	expected="$(grep -nE -- "$marks" tests/consumer/Misuse.luau | cut -d: -f1 | tr '\n' ' ')"
 	got="$(luau-lsp analyze "$flag" --defs globalTypes.d.luau --ignore "src/**" tests/consumer/Misuse.luau 2>&1 |
 		sed -n 's/^tests\/consumer\/Misuse\.luau(\([0-9]*\),.*/\1/p' | sort -n | tr '\n' ' ')" || true
 	if [ "$got" != "$expected" ]; then

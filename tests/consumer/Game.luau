@@ -73,6 +73,31 @@ else
 	print(result.reason)
 end
 
+-- The documented shape: leave early on a failure, and the profile is there after it.
+const function early(key: string): KeepBlox.Profile?
+	const loaded = store:load(key)
+	if not loaded.ok then
+		const why: KeepBlox.LoadFailure = loaded.reason
+		print(`could not load ({loaded.reason})`, why)
+		return nil
+	end
+	const profile = loaded.profile
+	return profile
+end
+-- The same with the result annotated, and with every option type named.
+const function annotated(key: string, options: KeepBlox.LoadOptions): KeepBlox.Profile?
+	const loaded: KeepBlox.LoadResult = store:load(key, options)
+	if not loaded.ok then
+		warn(`could not load ({loaded.reason})`)
+		return nil
+	end
+	loaded.profile.onEnded:connect(function(reason: KeepBlox.EndReason)
+		print(reason)
+	end)
+	return loaded.profile
+end
+print(early, annotated)
+
 const open: { [string]: KeepBlox.Profile } = store:profiles()
 print(open)
 
@@ -88,12 +113,36 @@ const decide = KeepBlox.processReceipt(store, {
 })
 print(decide)
 
+-- The options built apart from the call, and the callback set where the engine reads it.
+const RECEIPTS: KeepBlox.ReceiptOptions = {
+	keyFor = function(userId: number): string
+		return `u_{userId}`
+	end,
+	products = {
+		[2] = function(profile: KeepBlox.Profile, receipt: KeepBlox.Receipt)
+			profile.Data.coins += receipt.ProductId
+		end,
+	},
+	history = 50,
+}
+game:GetService("MarketplaceService").ProcessReceipt = KeepBlox.processReceipt(store, RECEIPTS)
+const named: (KeepBlox.Receipt) -> KeepBlox.ReceiptDecision = store:receipts(RECEIPTS)
+const granted: Enum.ProductPurchaseDecision =
+	KeepBlox.processReceipt(store, RECEIPTS)({ PlayerId = 1, PurchaseId = "p", ProductId = 2 })
+print(named, granted)
+
+-- A store's options built apart from the call.
+const SETTINGS: KeepBlox.ConfigOverrides = { loadTimeout = 60, renew = 120 }
+const OPTIONS: KeepBlox.StoreOptions = { template = { coins = 0 }, config = SETTINGS, studio = "memory" }
+print(KeepBlox.store("Other", OPTIONS))
+
 const outcome = KeepBlox.migrate({ version = 2, migrations = MIGRATIONS }, {}, 0)
 const turned = KeepBlox.migrateDown({ version = 2, migrations = MIGRATIONS }, { coins = 0, items = {} }, 1)
 print(turned)
 print(outcome)
 
-const shared: KeepBlox.SharedStore = KeepBlox.shared("Guilds", { template = {} })
+const SHARED: KeepBlox.SharedOptions = { template = {}, config = { callTimeout = 10 } }
+const shared: KeepBlox.SharedStore = KeepBlox.shared("Guilds", SHARED)
 const sharedName: string = shared.name
 print(sharedName)
 

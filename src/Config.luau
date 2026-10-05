@@ -44,6 +44,27 @@ export type Config = {
 	snapshotTtl: number,
 }
 
+--> A store's `config` option: any of the settings, each optional. The `never` indexer makes any other
+--> name a type error under the new solver (the old one accepts it, and `Config.resolve` refuses it
+--> when the store opens).
+export type Overrides = {
+	renew: number?,
+	death: number?,
+	profileStoreSteal: number?,
+	profileStoreDead: number?,
+	loadTimeout: number?,
+	callTimeout: number?,
+	backoffMin: number?,
+	backoffMax: number?,
+	writeBytesPerMinute: number?,
+	shutdownDeadline: number?,
+	heartbeat: number?,
+	renewFallback: number?,
+	snapshotBytes: number?,
+	snapshotTtl: number?,
+	[string]: never,
+}
+
 const Config = {}
 
 Config.DEFAULT = table.freeze({
@@ -65,10 +86,10 @@ Config.DEFAULT = table.freeze({
 
 --> The defaults with `overrides` applied. Refuses a death time that could mistake a slow owner for a
 --> dead one.
-function Config.resolve(overrides: { [string]: any }?): Config
+function Config.resolve(overrides: Overrides?): Config
 	const config: Config = table.clone(Config.DEFAULT) :: any
 	if overrides then
-		for key, value in overrides do
+		for key, value in overrides :: { [string]: any } do
 			assert((Config.DEFAULT :: any)[key] ~= nil, `KeepBlox: unknown setting "{key}"`)
 			assert(type(value) == "number" and value > 0, `KeepBlox: setting "{key}" must be a positive number`)
 			const target: any = config

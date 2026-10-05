@@ -10,7 +10,7 @@ const RobloxEnv = require("./RobloxEnv")
 const STORE = "Profiles"
 
 --> An adapter with `config` overrides, for exploring the protocol's numbers.
-const function with(config: { [string]: number }?): Adapter.Adapter
+const function with(config: KeepBlox.ConfigOverrides?): Adapter.Adapter
 	return {
 		name = "KeepBlox",
 		store = `{STORE}/global`,

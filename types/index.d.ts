@@ -80,6 +80,8 @@ declare namespace KeepBlox {
 		ProductId: number;
 	}
 
+	type ReceiptDecision = "PurchaseGranted" | "NotProcessedYet";
+
 	interface ReceiptOptions<T extends object> {
 		keyFor: (userId: number) => string;
 		products: Record<number, (profile: Profile<T>, receipt: Receipt) => void>;
@@ -100,7 +102,7 @@ declare namespace KeepBlox {
 		versions(key: string, query?: VersionQuery): Version[];
 		readVersion(key: string, version: string): T | undefined;
 		restore(key: string, version: string): Restored;
-		receipts(options: ReceiptOptions<T>): (receipt: Receipt) => "PurchaseGranted" | "NotProcessedYet";
+		receipts(options: ReceiptOptions<T>): (receipt: Receipt) => ReceiptDecision;
 		edit(key: string, edit: (data: T) => void, options?: { cancel?: () => boolean }): EditResult<T>;
 		close(): void;
 		trade(keyA: string, keyB: string, change: (dataA: T, dataB: T) => void): TradeResult;
@@ -129,7 +131,7 @@ declare namespace KeepBlox {
 		migrations?: Record<number, Migration>;
 		/** The version data is stored at; below `version`, the release can be rolled back. */
 		writeVersion?: number;
-		config?: Partial<Record<keyof Defaults, number>>;
+		config?: ConfigOverrides;
 		mock?: boolean | string;
 		reconcile?: boolean;
 		studio?: "live" | "memory" | "copy";
@@ -137,6 +139,13 @@ declare namespace KeepBlox {
 		leaderboards?: Record<string, (data: T) => number | undefined>;
 		leaderboardOptions?: { interval?: number; cache?: number };
 		compress?: { above: number };
+	}
+
+	interface SharedOptions<T extends object> {
+		template?: T;
+		schema?: SchemaNode;
+		mock?: boolean | string;
+		config?: ConfigOverrides;
 	}
 
 	type SharedResult<T> = { ok: true; data: T } | { ok: false; reason: "error" | "refused" | "foreign" | "locked" | "failed"; message?: string };
@@ -164,6 +173,10 @@ declare namespace KeepBlox {
 		snapshotBytes: number;
 		snapshotTtl: number;
 	}
+
+	/** The settings as Luau names them: `Config` is every setting, `ConfigOverrides` any of them. */
+	type Config = Defaults;
+	type ConfigOverrides = Partial<Defaults>;
 
 	interface SchemaNode {
 		readonly kind: string;
@@ -212,15 +225,7 @@ declare namespace KeepBlox {
 
 interface KeepBlox {
 	store<T extends object>(name: string, options: KeepBlox.StoreOptions<T>): KeepBlox.Store<T>;
-	shared<T extends object>(
-		name: string,
-		options: {
-			template?: T;
-			schema?: KeepBlox.SchemaNode;
-			mock?: boolean | string;
-			config?: Partial<Record<keyof KeepBlox.Defaults, number>>;
-		},
-	): KeepBlox.SharedStore<T>;
+	shared<T extends object>(name: string, options: KeepBlox.SharedOptions<T>): KeepBlox.SharedStore<T>;
 	readonly defaults: KeepBlox.Defaults;
 	readonly schema: KeepBlox.Schema;
 	readonly importers: KeepBlox.Importers;

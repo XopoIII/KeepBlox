@@ -62,7 +62,7 @@ quietly.
 ## Architecture in one breath
 
 - Every Roblox service is reached through one seam, `src/Services.luau`. Its types are narrow and ours,
-  not Roblox classes, so the harness hands in fakes and the real adapter (`src/Services/Roblox.luau`)
+  not Roblox classes, so the harness hands in fakes and the real adapter (`src/RobloxServices.luau`)
   translates.
 - Nothing touches `game` at require time.
 - Tests run on LuneBlox, which runs the Luau version and fast flags Roblox runs.
@@ -96,13 +96,17 @@ Live checks and load tests run only in the test experience named in `roblox.env.
 never in a live game: data store limits are shared by the whole experience, so load there throttles real
 players. Test data goes in stores named `KB_LiveCheck_*`, and is removed afterwards.
 
-## Distribution (proposed, settled at M6)
+## Distribution
 
-- **Packages:** pesde and Wally.
-- **Without a package manager:** a `.rbxm` ModuleScript attached to GitHub Releases, plus a Creator Store
-  model.
-- **Studio plugin:** not a distribution channel, since this is a runtime library. It may come after
-  0.1.0 as a support tool (a profile viewer and editor by key, version rollback) built on `Versions`.
+- **Packages:** Wally (`xopoiii/keepblox`, `wally.toml`) and pesde (`xopoiii/keepblox`, `pesde.toml`
+  and `pesde.lock`). `scripts/check-package.sh` checks that both carry every file of `src/`.
+- **Without a package manager:** `KeepBlox.rbxm`, built with `rojo build -o KeepBlox.rbxm` and attached
+  to each GitHub Release.
+- **Not shipped yet:** a Creator Store model, and an npm package for roblox-ts (`types/index.d.ts` is
+  copied by hand until then).
+- **A release** carries one version in `wally.toml`, `pesde.toml`, `pesde.lock`, `README.md`,
+  `docs/src/content/docs/index.mdx` and `docs/src/content/docs/getting-started/installation.mdx`, and
+  its entry in `CHANGELOG.md`.
 
 ## Commands
 

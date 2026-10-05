@@ -26,7 +26,7 @@ export type Options = {
 	template: { [any]: any }?,
 	schema: Schema.Node?,
 	services: Services.Services?,
-	config: { [string]: number }?,
+	config: Config.Overrides?,
 	mock: (boolean | string)?,
 }
 

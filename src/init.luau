@@ -28,16 +28,34 @@ const Config = require("@self/Config")
 const Importers = require("@self/Importers")
 const Migrate = require("@self/Migrate")
 const Profile = require("@self/Profile")
+const Receipts = require("@self/Receipts")
 const Record = require("@self/Record")
 const Schema = require("@self/Schema")
 const Shared = require("@self/Shared")
 const Store = require("@self/Store")
 
 export type Store = Store.Store
+--> What `KeepBlox.store` takes.
+export type StoreOptions = Store.Options
 export type SharedStore = Shared.SharedStore
+--> What `KeepBlox.shared` takes.
+export type SharedOptions = Shared.Options
 export type Profile = Profile.Profile
+--> Why a session ended: what `profile.onEnded` fires with.
+export type EndReason = Profile.EndReason
+--> What `store:load` takes.
+export type LoadOptions = Store.LoadOptions
 export type LoadResult = Store.LoadResult
+--> Why a load failed: the `reason` of a `LoadResult` that is not ok.
+export type LoadFailure = Store.LoadFailure
+--> A purchase as `MarketplaceService.ProcessReceipt` hands it over, what `store:receipts` and
+--> `KeepBlox.processReceipt` take, and the name of the decision `store:receipts` answers with.
+export type Receipt = Receipts.Receipt
+export type ReceiptOptions = Receipts.Options
+export type ReceiptDecision = Receipts.Decision
 export type Config = Config.Config
+--> A store's `config`: any of the settings, the rest keep their defaults.
+export type ConfigOverrides = Config.Overrides
 --> One migration: a step, or `{ up, down }` for a release that can be rolled back (see Migrate).
 export type Migration = Migrate.Migration
 
@@ -96,10 +114,15 @@ end
 
 --> The callback for `MarketplaceService.ProcessReceipt`, over `store:receipts(options)`: it returns the
 --> engine's `Enum.ProductPurchaseDecision`.
-function KeepBlox.processReceipt(store: Store.Store, options: any): (receipt: any) -> any
+function KeepBlox.processReceipt(
+	store: Store.Store,
+	options: Receipts.Options
+): (receipt: Receipts.Receipt) -> Enum.ProductPurchaseDecision
 	const decide = store:receipts(options)
-	return function(receipt: any): any
-		return (Enum :: any).ProductPurchaseDecision[decide(receipt)]
+	return function(receipt: Receipts.Receipt): Enum.ProductPurchaseDecision
+		return if decide(receipt) == "PurchaseGranted"
+			then Enum.ProductPurchaseDecision.PurchaseGranted
+			else Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 end
 

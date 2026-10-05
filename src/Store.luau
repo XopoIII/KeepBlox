@@ -27,6 +27,7 @@ const Serial = require("./Serial")
 const Services = require("./Services")
 const Session = require("./Session")
 const Signal = require("./Signal")
+const Studio = require("./Studio")
 const Trade = require("./Trade")
 const Upkeep = require("./Upkeep")
 const Validate = require("./Validate")
@@ -48,9 +49,9 @@ export type Options = {
 	--> The engine services; the real ones by default. Tests pass fakes.
 	services: Services.Services?,
 	--> Overrides for `Config.DEFAULT`.
-	config: { [string]: number }?,
+	config: Config.Overrides?,
 	--> Keep profiles in memory, never in a live data store: `true`, or the name of a scratch set. In
-	--> Studio without API access this happens on its own, after a read-only check.
+	--> Studio without API access, or in a place never published, this happens on its own (see Studio).
 	mock: (boolean | string)?,
 	--> Fill keys the stored data lacks from the template, deeply, on every load. Default true.
 	reconcile: boolean?,
@@ -74,6 +75,7 @@ export type Options = {
 
 export type LoadOptions = Open.LoadOptions
 export type LoadResult = Open.LoadResult
+export type LoadFailure = Open.Failure
 
 export type Store = {
 	name: string,
@@ -126,15 +128,12 @@ function Store.new(name: string, options: Options): Store
 		studio == "live" or studio == "memory" or studio == "copy",
 		`KeepBlox: studio is "live", "memory" or "copy", not "{studio}"`
 	)
-	local services = options.services or require("./RobloxServices").build()
-	const inMemory = services.isStudio and studio ~= "live"
-	if options.mock then
-		services = MockServices.wrap(services, if type(options.mock) == "string" then options.mock else "scratch")
-	elseif inMemory then
-		services = MockServices.wrap(services, `studio:{studio}`, studio == "copy")
-	end
+	const chosen = Studio.choose(options.services or require("./RobloxServices").build(), name, options.mock, studio)
+	local services = chosen.services
 	-- Studio without API access is found by a read on first load; a write would touch a live key.
-	local checked = options.mock ~= nil or inMemory or not services.isStudio
+	local checked = chosen.checked
+	-- An unpublished place is known already; it is reported on the first load, once someone listens.
+	local notice = chosen.notice
 	const clock = services.clock
 	const onError: Signal.Signal<string, string> = Signal.new(clock.spawn)
 	const sessions: { [string]: Session.Session } = {}
@@ -145,7 +144,7 @@ function Store.new(name: string, options: Options): Store
 		storeName = name,
 		services = services,
 		config = config,
-		dataStore = services.dataStores:GetDataStore(name),
+		dataStore = chosen.dataStore,
 		identity = { placeId = services.placeId, jobId = services.jobId, guid = "" },
 		plan = plan,
 		report = function(key: string, message: string)
@@ -205,11 +204,11 @@ function Store.new(name: string, options: Options): Store
 				return
 			end
 			const ok, problem = pcall(base.dataStore.GetAsync, base.dataStore, "__KeepBlox_access_check", false)
-			if not ok and MockServices.isNoAccess(tostring(problem)) then
+			if not ok and Studio.isNoAccess(tostring(problem)) then
 				services = MockServices.wrap(services, "studio")
 				base.services = services
 				base.dataStore = services.dataStores:GetDataStore(name)
-				onError:fire("", "Studio has no API access: profiles are kept in memory, and nothing is saved")
+				onError:fire("", Studio.notice(tostring(problem)))
 			end
 			checked = true
 		end)
@@ -230,6 +229,10 @@ function Store.new(name: string, options: Options): Store
 			return closing
 		end,
 		prepare = function()
+			if notice then
+				onError:fire("", notice)
+				notice = nil
+			end
 			if not checked then
 				checkAccess()
 			end

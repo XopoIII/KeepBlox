@@ -106,7 +106,8 @@ function Compat.withServices(given: Services.Services?): any
 				const created = Store.new(storeName, {
 					template = template,
 					services = base,
-					config = Config.resolve(overrides) :: any,
+					-- SetConstant names its settings at run time, which `Config.resolve` checks there.
+					config = Config.resolve(overrides :: any) :: any,
 					mock = if mock then `ProfileStore.Mock/{storeName}` else nil,
 					-- ProfileStore fills from the template only when the game calls Reconcile.
 					reconcile = false,

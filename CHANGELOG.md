@@ -5,6 +5,43 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.3 - 2026-10-05
+
+Found while putting 0.6.2 into a live game. Nothing about stored data or the lock protocol changed: 0.6.2
+and 0.6.3 servers run side by side.
+
+### Fixed
+
+- A store opens in Studio in a place file that was never published. `KeepBlox.store` threw there, with
+  `studio = "live"` (the default) and with `"copy"`: Roblox refuses the data store itself ("You must
+  publish this place to the web to access DataStore."), before the read-only access check could run.
+  The store now opens in memory, and `store.onError` fires once on the first load, with the key `""`
+  and "This place is not published: profiles are kept in memory, and nothing is saved". On a live
+  server the error is raised as before, and so is any other error in Studio.
+- `KeepBlox.processReceipt` is typed: it takes `ReceiptOptions` and returns
+  `(receipt: Receipt) -> Enum.ProductPurchaseDecision`. It took and returned `any`, so a mistake in the
+  options was found only when a purchase arrived.
+
+### Added
+
+- The module exports the types a game needs to annotate its own code: `StoreOptions`, `LoadOptions`,
+  `LoadFailure`, `EndReason`, `ReceiptOptions`, `Receipt`, `ReceiptDecision`, `SharedOptions` and
+  `ConfigOverrides`. Options built apart from the call no longer need a cast to `any`. The roblox-ts
+  declarations gain `ReceiptDecision`, `SharedOptions`, `Config` and `ConfigOverrides`.
+- The consumer type check (`tests/consumer/Game.luau`) holds the documented load, `if not result.ok
+  then ... return end` followed by `result.profile`, under both solvers, with the result annotated and
+  not.
+
+### Changed
+
+- A store's `config` option is typed by its settings (`ConfigOverrides`), not as `{ [string]: number }`.
+  A misspelt setting is a type error under the new solver; the old solver cannot make that check, and
+  the assert when the store opens stays for it. A table of settings held in a variable needs the
+  annotation `KeepBlox.ConfigOverrides`: one typed `{ [string]: number }`, or under the new solver not
+  typed at all, is no longer accepted. Nothing changes at run time.
+- The README and the documentation say where the library runs: in one live public game (Grabby Pit)
+  since early October 2026.
+
 ## 0.6.2 - 2026-10-04
 
 The library's code is the same as in 0.6.1: `src/` did not change. A game on 0.6.1 gains nothing by

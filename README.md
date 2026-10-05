@@ -19,10 +19,11 @@ KeepBlox keeps session-locked player profiles on DataStore. It reads and writes 
 ProfileStore and speaks its lock protocol, so a game can switch by changing one `require`, run old and
 new servers side by side during the rollout, and switch back.
 
-> **Status: 0.6.2.** Everything below is proven in the simulator, against ProfileStore, five other
+> **Status: 0.6.3.** Everything below is proven in the simulator, against ProfileStore, five other
 > libraries and a game with no library. It is also checked on Roblox's real DataStore, MessagingService
-> and MemoryStore in a private test experience (`tests/live`), overload included. It has not yet run in a
-> live game with players: try it in a test place first.
+> and MemoryStore in a private test experience (`tests/live`), overload included. It runs in one live
+> public game (Grabby Pit) since early October 2026. That is one game and a short time: try it in a test
+> place first.
 
 ## Why KeepBlox
 
@@ -111,7 +112,7 @@ local store = KeepBlox.store("Profiles", {
 
 ## Install
 
-- **Wally:** `KeepBlox = "xopoiii/keepblox@0.6.2"` under `[server-dependencies]`.
+- **Wally:** `KeepBlox = "xopoiii/keepblox@0.6.3"` under `[server-dependencies]`.
 - **pesde:** `pesde add xopoiii/keepblox -t roblox_server -a KeepBlox`.
 - **Studio:** `KeepBlox.rbxm` from the [latest release](https://github.com/XopoIII/KeepBlox/releases/latest).
 
