@@ -160,18 +160,19 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 		stopListening(listener)
 		return { ok = false, reason = claim.reason }
 	end
-	local record = claim.record
+	const taken = claim.taken
+	local record = taken.record
 	-- A trade its last server did not finish is settled before anything else (see Trade); otherwise a
 	-- server that died may have left newer play in MemoryStore (see Recover).
 	const journal = Record.ours(record.MetaData).trade
 	if journal == nil then
-		record = Recover.run(context, key, claim.loadCount, record, claim.previous)
+		record = Recover.run(context, key, taken.loadCount, record, taken.previous)
 	end
 	record.Data = Codec.unpack(services.codec, record.Data)
 	if journal then
 		const settled = Trade.recover(context, state.name, record)
 		if settled == nil then
-			Claim.giveBack(context, key, claim.loadCount)
+			Claim.giveBack(context, key, taken.loadCount)
 			state.opening[key] = nil
 			stopListening(listener)
 			return { ok = false, reason = "timeout" }
@@ -183,7 +184,7 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 	const migrated = Migrate.run(plan, record.Data, Migrate.stored(record))
 	if not migrated.ok then
 		-- Never hand out, or write back, data this server cannot make sense of.
-		Claim.giveBack(context, key, claim.loadCount)
+		Claim.giveBack(context, key, taken.loadCount)
 		state.opening[key] = nil
 		stopListening(listener)
 		state.onError:fire(key, migrated.message)
@@ -194,7 +195,7 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 		Record.reconcile(record.Data, state.template)
 	end
 	local session: Session.Session
-	const profile = Profile.new(key, claim.loadCount, record, clock.spawn, {
+	const profile = Profile.new(key, taken.loadCount, taken.lastSavedAt, record, clock.spawn, {
 		isActive = function(): boolean
 			return session.active and not session.releasing
 		end,
@@ -212,7 +213,7 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 	const encoded = if migrated.changed then nil else stored
 	session = {
 		key = key,
-		loadCount = claim.loadCount,
+		loadCount = taken.loadCount,
 		profile = profile,
 		context = context,
 		active = true,

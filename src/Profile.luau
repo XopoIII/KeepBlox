@@ -29,6 +29,9 @@ export type Profile<T = any> = {
 	loadCount: number,
 	--> When the profile was first created, in Unix seconds (ProfileCreateTime).
 	createdAt: number,
+	--> When this record was last written before this session took it, in Unix seconds (the previous
+	--> session's LastUpdate). 0 for a profile that had never been stored.
+	lastSavedAt: number,
 	--> Fires right before each save takes its snapshot: the last chance to write into `Data`. A heartbeat
 	--> snapshot is one too, so it fires every `heartbeat` seconds (4 by default). `final` is true for the
 	--> release, with the reason it ends. A listener must not yield, or its later writes miss the save.
@@ -73,6 +76,7 @@ end
 function Profile.new(
 	key: string,
 	loadCount: number,
+	lastSavedAt: number,
 	record: any,
 	spawn: (fn: (...any) -> (), ...any) -> (),
 	backing: Backing
@@ -85,6 +89,7 @@ function Profile.new(
 		key = key,
 		loadCount = loadCount,
 		createdAt = record.MetaData and record.MetaData.ProfileCreateTime or 0,
+		lastSavedAt = lastSavedAt,
 		onSaving = Signal.new(spawn),
 		onSaved = Signal.new(spawn),
 		onEnded = Signal.new(spawn),

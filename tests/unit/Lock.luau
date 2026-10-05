@@ -24,6 +24,30 @@ Spec.test("Lock: a missing key becomes a new record this session owns", function
 	Spec.equal(Record.classify(record), "profile")
 end)
 
+Spec.test("Lock: a claim reports the LastUpdate it found, and 0 where there was none to find", function()
+	const _, new = claimed(nil, HERE)
+	Spec.equal((new :: any).lastSavedAt, 0, "a missing key")
+	const _, messages = claimed({ GlobalUpdates = { 2, { { 2, "hi" } } } }, HERE)
+	Spec.equal((messages :: any).lastSavedAt, 0, "a key that holds only messages")
+	const released = Lock.save(claimed(nil, THERE), THERE, 1, { data = nil, release = true }, 1010)
+	const taken, again = Lock.claim(Record.copy(released), HERE, TEMPLATE, 5000, false)
+	Spec.equal((again :: any).lastSavedAt, 1010, "the release, not the 5000 of this claim")
+	Spec.equal(taken.MetaData.LastUpdate, 5000)
+	for _, garbage in { "1010", { 1010 } } :: { any } do
+		const odd = Record.copy(released)
+		odd.MetaData.LastUpdate = garbage
+		const _, claim = Lock.claim(odd, HERE, TEMPLATE, 5000, false)
+		Spec.equal((claim :: any).lastSavedAt, 0)
+	end
+	const absent = Record.copy(released)
+	absent.MetaData.LastUpdate = nil
+	const _, none = Lock.claim(absent, HERE, TEMPLATE, 5000, false)
+	Spec.equal((none :: any).lastSavedAt, 0)
+	-- A held key is not taken, so there is nothing to report.
+	const _, busy = claimed(claimed(nil, THERE), HERE)
+	Spec.equal((busy :: any).lastSavedAt, nil)
+end)
+
 Spec.test("Lock: messages sent before the first session are kept", function()
 	const record = claimed({ GlobalUpdates = { 2, { { 2, "hi" } } } }, HERE)
 	Spec.equal(record.GlobalUpdates, { 2, { { 2, "hi" } } })

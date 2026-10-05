@@ -28,8 +28,12 @@ export type Owner = {
 	memory: boolean,
 }
 
+--> A key this session now holds. `lastSavedAt` is the record's LastUpdate as the claim found it, before
+--> the claim's own write replaced it: 0 for a key that held no profile, or no number there.
+export type Taken = { kind: "taken", loadCount: number, record: any, previous: Previous?, lastSavedAt: number }
+
 export type Claim =
-	{ kind: "taken", loadCount: number, record: any, previous: Previous? }
+	Taken
 	| { kind: "busy", owner: Owner }
 	| { kind: "outbid" }
 	| { kind: "foreign", value: any }
@@ -118,11 +122,10 @@ const function take(record: any, identity: Record.Identity, now: number, mode: M
 	ours.memory = if mode and mode.memory then true else nil
 	ours.snap = nil
 	record.WasOverwritten = false
-	return { kind = "taken", loadCount = meta.SessionLoadCount, record = record, previous = previous }
+	return { kind = "taken", loadCount = meta.SessionLoadCount, record = record, previous = previous, lastSavedAt = 0 }
 end
 
---> The claim transform. `now` is this server's os.time(), stored as LastUpdate for ProfileStore.
-function Lock.claim(
+const function decide(
 	value: any,
 	identity: Record.Identity,
 	template: { [any]: any },
@@ -197,6 +200,25 @@ function Lock.claim(
 	end
 	meta.ForceLoadSession = { identity.placeId, identity.jobId }
 	return record, { kind = "busy", owner = owner }
+end
+
+--> The claim transform. `now` is this server's os.time(), stored as LastUpdate for ProfileStore.
+function Lock.claim(
+	value: any,
+	identity: Record.Identity,
+	template: { [any]: any },
+	now: number,
+	steal: boolean,
+	mode: Mode?,
+	info: any?
+): (any?, Claim)
+	-- Read before `take` writes over it. Imported data has no such time: its record is made here.
+	const last = if Record.classify(value) == "profile" then value.MetaData.LastUpdate else nil
+	const record, claim = decide(value, identity, template, now, steal, mode, info)
+	if claim.kind == "taken" and type(last) == "number" then
+		claim.lastSavedAt = last
+	end
+	return record, claim
 end
 
 --> The save transform for the session `loadCount` of this server.
