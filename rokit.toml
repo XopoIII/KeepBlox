@@ -12,6 +12,6 @@ luneblox = "XopoIII/LuneBlox@0.10.13"       # Luau runtime for tests and benchma
 luau-lsp = "JohnnyMorganz/luau-lsp@1.70.1"  # `luau-lsp analyze` is the type gate
 selene = "Kampfkarren/selene@0.32.0"        # linter
 stylua = "JohnnyMorganz/StyLua@2.5.2"       # formatter
-lefthook = "evilmartians/lefthook@2.1.16"   # git hooks
+lefthook = "evilmartians/lefthook@2.1.17"   # git hooks
 wally = "UpliftGames/wally@0.3.2"                     # publishes the Wally package
 pesde = "pesde-pkg/pesde@0.7.4+registry.0.2.3"      # publishes the pesde package
