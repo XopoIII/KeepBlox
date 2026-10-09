@@ -22,13 +22,25 @@ function Signal.new<T...>(spawn: (fn: (...any) -> (), ...any) -> ()): Signal<T..
 
 	return {
 		connect = function(_: Signal<T...>, listener: (T...) -> ()): Connection
+			-- Forward-declared: the connection's disconnect removes its own entry.
+			local entry: { fn: (T...) -> (), connection: Connection }
 			const connection: Connection = {
 				connected = true,
 				disconnect = function(self: Connection)
+					if not self.connected then
+						return
+					end
 					self.connected = false
+					-- Drop the entry, or a long-lived signal (a store's onError) would grow by every
+					-- connection ever made, and every fire would clone the whole of it.
+					const index = table.find(listeners, entry)
+					if index then
+						table.remove(listeners, index)
+					end
 				end,
 			}
-			table.insert(listeners, { fn = listener, connection = connection })
+			entry = { fn = listener, connection = connection }
+			table.insert(listeners, entry)
 			return connection
 		end,
 		fire = function(_: Signal<T...>, ...: T...)
