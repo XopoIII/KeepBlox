@@ -37,32 +37,20 @@ function Codec.unpack(codec: Services.Codec?, stored: any): any
 	return codec.decode(codec.decompress(stored.z))
 end
 
--- Whether `value` holds a buffer anywhere.
-function Codec.hasBuffer(value: any): boolean
-	if typeof(value) == "buffer" then
-		return true
-	elseif type(value) == "table" then
-		for _, item in value do
-			if Codec.hasBuffer(item) then
-				return true
-			end
-		end
-	end
-	return false
-end
-
---> What to store for checked `data` of `size` bytes: the data, or its compressed form. Nil and the
---> reason when it cannot be stored either way.
-function Codec.pack(codec: Services.Codec?, options: Options?, data: any, size: number): (any, string?)
-	if options == nil or size <= options.above or codec == nil or Codec.hasBuffer(data) then
+--> What to store for `data` whose check is `encoded`: the data, or its compressed form. Nil and the
+--> reason when it cannot be stored either way. The check knows the size and whether a buffer rules
+--> compression out, so packing costs no second walk of the data.
+function Codec.pack(codec: Services.Codec?, options: Options?, data: any, encoded: Validate.Encoded): (any, string?)
+	local size = encoded.size
+	if options == nil or size <= options.above or codec == nil or encoded.hasBuffer then
 		if size > Validate.LIMIT then
 			return nil, `Data: about {size} bytes, over the {Validate.LIMIT} byte limit`
 		end
 		return data, nil
 	end
 	const packed = { __KeepBlox = MARK, z = codec.compress(codec.encode(data)) }
-	const encoded = Validate.check(packed, "Data")
-	if encoded == nil then
+	const checked = Validate.check(packed, "Data")
+	if checked == nil then
 		return nil, `Data: about {size} bytes, still over the {Validate.LIMIT} byte limit when compressed`
 	end
 	return packed, nil
