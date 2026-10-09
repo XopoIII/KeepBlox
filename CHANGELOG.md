@@ -5,6 +5,19 @@ semantic versioning.
 
 ## Unreleased
 
+### Fixed
+
+- `Signal.disconnect` now drops the listener: a long-lived signal (a store's `onError`) no longer
+  keeps every connection ever made, and a fire no longer clones the whole list.
+
+### Added
+
+- `scripts/check-version.sh`: every place a release names the version (both packages, the README, the
+  documentation, the changelog) must agree with `wally.toml`. It runs in pre-push and in CI.
+- Mutation adequacy runs weekly in CI (`.github/workflows/mutate.yml`), not only by hand.
+- A pushed tag drafts the GitHub release (`.github/workflows/release.yml`): the tag is checked against
+  the tree's version, the model is built and attached, and the notes start from the changelog entry.
+
 ## 0.6.5 - 2026-10-05
 
 One field for games that pay for the time a player was away. Nothing about stored data or the lock
