@@ -2,11 +2,17 @@
 --- Loading a key: from the claim to the live session the game holds.
 ---
 --- A player who leaves and joins the same server again before the release finished (a quick rejoin,
---- or a teleport that failed) does not get "open": the load waits for that release, then claims the key
---- afresh. A session that is still live is a second load of the same key, and gets "open".
+--- or a teleport that failed) does not get "open": the load waits for that release (see Settle), then
+--- claims the key afresh. A session that is still live is a second load of the same key, and gets "open".
 ---
 --- A template store fills keys the stored data lacks with copies from the template, deeply, on every
 --- load (a schema store does the same through its defaults). Existing values are never replaced.
+---
+--- The load runs in a thread the library owns (see Apart), so a caller the game cancels in the middle
+--- leaves nothing half done: the load runs to its end, and a session it opens, which nobody is left
+--- to hold, is released at once with all it read. A later load of the key waits for that, then claims
+--- the key afresh.
+const Apart = require("./Apart")
 const Claim = require("./Claim")
 const Codec = require("./Codec")
 const Config = require("./Config")
@@ -20,6 +26,7 @@ const Record = require("./Record")
 const Recover = require("./Recover")
 const Serial = require("./Serial")
 const Session = require("./Session")
+const Settle = require("./Settle")
 const Signal = require("./Signal")
 const Snapshots = require("./Snapshots")
 const Trade = require("./Trade")
@@ -56,7 +63,8 @@ export type State = {
 	--> The store's context. Its services can change once (Studio without access switches to memory).
 	base: Session.Context,
 	sessions: { [string]: Session.Session },
-	opening: { [string]: boolean },
+	--> The keys being loaded, each with the thread that asked for it.
+	opening: { [string]: thread },
 	onError: Signal.Signal<string, string>,
 	closing: () -> boolean,
 	--> Runs before the first load: the Studio access check.
@@ -66,9 +74,6 @@ export type State = {
 	--> This server's MemoryStore beat landed last time (see Lease).
 	beating: () -> boolean,
 }
-
--- How often a load waiting on this server's own release looks again.
-const RELEASE_POLL = 0.1
 
 const Open = {}
 
@@ -81,24 +86,6 @@ const function offset(key: string): number
 	return hash / 1000
 end
 
--- Waits while this server is still releasing `key`. Returns a failure when the wait must stop.
-const function awaitRelease(state: State, key: string, cancel: (() -> boolean)?, deadline: number): Claim.Failure?
-	const clock = state.base.services.clock
-	while true do
-		const existing = state.sessions[key]
-		if existing == nil or not existing.releasing then
-			return nil
-		elseif state.closing() then
-			return "closing"
-		elseif cancel and cancel() then
-			return "cancelled"
-		elseif clock.now() >= deadline then
-			return "timeout"
-		end
-		clock.wait(math.min(RELEASE_POLL, deadline - clock.now()))
-	end
-end
-
 const function stopListening(listener: Upkeep.Listener)
 	listener.done = true
 	if listener.connection then
@@ -106,20 +93,10 @@ const function stopListening(listener: Upkeep.Listener)
 	end
 end
 
-function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
-	assert(type(key) == "string" and #key > 0 and #key <= 50, "KeepBlox: a key is 1-50 characters")
+-- The load of a key marked as opening, in a thread of its own. `asker` is the thread that waits for
+-- it: once the game has cancelled that thread, nobody is left to hold the profile.
+const function open(state: State, key: string, options: LoadOptions?, deadline: number, asker: thread): LoadResult
 	const cancel = options and options.cancel
-	-- One deadline for the whole load: waiting for a release here, the import, the claim and a trade's
-	-- settling all count against it, so the load answers within `loadTimeout`.
-	const deadline = state.base.services.clock.now() + state.config.loadTimeout
-	const waited = awaitRelease(state, key, cancel, deadline)
-	if waited then
-		return { ok = false, reason = waited }
-	end
-	if state.sessions[key] or state.opening[key] then
-		return { ok = false, reason = "open" }
-	end
-	state.opening[key] = true
 	state.prepare()
 	const services = state.base.services
 	const clock = services.clock
@@ -203,7 +180,11 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 			return Session.save(context, session)
 		end,
 		release = function()
-			Session.release(context, session, "released")
+			-- In a thread the library owns: a caller cancelled between two tries of the final write
+			-- must not stop the retries (see Apart).
+			Apart.run(clock, function(problem: any)
+				state.onError:fire(key, `a release failed after its caller was cancelled: {problem}`)
+			end, Session.release, context, session, "released")
 		end,
 		handle = function(handler: Inbox.Handler)
 			session.inbox:handle(handler)
@@ -253,9 +234,44 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 		session.storedReceipts[id] = true
 	end
 	state.sessions[key] = session
-	state.opening[key] = nil
 	context.deadline = nil -- the session lives on in this context; the load's deadline does not
+	if coroutine.status(asker) == "dead" then
+		-- Nobody is left to play on this profile or to release it. The key stays `opening` meanwhile,
+		-- so a later load of it and the shutdown both wait for the release.
+		Session.release(context, session, "released")
+		state.opening[key] = nil
+		return { ok = false, reason = "cancelled" }
+	end
+	state.opening[key] = nil
 	return { ok = true, profile = profile }
+end
+
+function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
+	assert(type(key) == "string" and #key > 0 and #key <= 50, "KeepBlox: a key is 1-50 characters")
+	const clock = state.base.services.clock
+	-- One deadline for the whole load: waiting for a release here, the import, the claim and a trade's
+	-- settling all count against it, so the load answers within `loadTimeout`.
+	const deadline = clock.now() + state.config.loadTimeout
+	const waited = Settle.wait(state, clock, key, options and options.cancel, deadline)
+	if waited then
+		return { ok = false, reason = waited }
+	end
+	if state.sessions[key] or state.opening[key] then
+		return { ok = false, reason = "open" }
+	end
+	const asker = coroutine.running()
+	state.opening[key] = asker
+	return Apart.run(clock, function(problem: any)
+		state.onError:fire(key, `a load failed after its caller was cancelled: {problem}`)
+	end, function(): LoadResult
+		const ok, result = pcall(open, state, key, options, deadline, asker)
+		if not ok then
+			-- A load that throws is over: its key must not stay marked as opening.
+			state.opening[key] = nil
+			error(result, 0)
+		end
+		return result
+	end)
 end
 
 return Open
