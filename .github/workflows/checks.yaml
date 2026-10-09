@@ -39,6 +39,9 @@ jobs:
       - name: Packages
         run: sh scripts/check-package.sh
 
+      - name: Versions
+        run: sh scripts/check-version.sh
+
       - name: Tests
         run: sh scripts/run-tests.sh
 
