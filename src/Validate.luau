@@ -27,6 +27,8 @@ export type Encoded = {
 	text: string,
 	--> The estimated stored size in bytes (JSON; a buffer as its base64 text).
 	size: number,
+	--> The data holds a buffer somewhere, so it cannot be compressed (JSON cannot carry one).
+	hasBuffer: boolean,
 }
 
 -- The most CPU time one check spends before it lets a frame pass.
@@ -103,6 +105,8 @@ type State = {
 	--> Values left before the next `pause` call.
 	untilPause: number,
 	pause: (() -> ())?,
+	--> A buffer was seen during the walk.
+	hasBuffer: boolean,
 }
 
 -- Throws "<path>: <reason>"; the path is built only here, on the way out.
@@ -204,6 +208,7 @@ const function walk(state: State, value: any)
 		state.count += 1
 		parts[state.count] = "buffer:" .. buffer.tostring(value)
 		state.size += BUFFER_WRAPPER + 4 * math.ceil(buffer.len(value) / 3)
+		state.hasBuffer = true
 	else
 		refuse(state, `{typeof(value)} cannot be stored`)
 	end
@@ -265,6 +270,7 @@ function Validate.check(value: any, root: string, limit: number?, pause: (() -> 
 		root = root,
 		untilPause = PAUSE_EVERY,
 		pause = pause,
+		hasBuffer = false,
 	}
 	const ok, problem = pcall(walk, state, value)
 	if not ok then
@@ -278,7 +284,7 @@ function Validate.check(value: any, root: string, limit: number?, pause: (() -> 
 	if state.count > 0 then
 		table.insert(chunks, table.concat(state.parts, ",", 1, state.count))
 	end
-	return { text = table.concat(chunks, ","), size = state.size }, nil
+	return { text = table.concat(chunks, ","), size = state.size, hasBuffer = state.hasBuffer }, nil
 end
 
 return Validate

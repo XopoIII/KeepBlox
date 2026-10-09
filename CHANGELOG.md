@@ -17,6 +17,23 @@ semantic versioning.
 - Mutation adequacy runs weekly in CI (`.github/workflows/mutate.yml`), not only by hand.
 - A pushed tag drafts the GitHub release (`.github/workflows/release.yml`): the tag is checked against
   the tree's version, the model is built and attached, and the notes start from the changelog entry.
+Nothing about stored data or the lock protocol changed: these servers run side by side with 0.6.5.
+
+### Fixed
+
+- A session's write lane no longer sticks when the game cancels a thread that was waiting in it (a
+  `task.cancel` on a thread parked inside `profile:save`, say). The dead waiter is skipped; before,
+  every later save and the release queued behind it forever, silently.
+- A hand-over subscription that fails is retried with a backoff until the session ends. Before, the
+  session lived on without its listener, and a hand-over surfaced only at the owner's next write —
+  up to `renew` seconds late instead of about a second.
+- The harness's `cancel` now closes the thread, as `task.cancel` does, so a cancelled thread that
+  something later tries to resume reads as dead in the simulation too.
+
+### Changed
+
+- Packing a profile no longer walks the data twice: the check before a write now reports itself
+  whether the data holds a buffer, which compression cannot carry.
 
 ## 0.6.5 - 2026-10-05
 

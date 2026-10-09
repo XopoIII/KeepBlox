@@ -96,6 +96,18 @@ Spec.test("Validate: a buffer counts as base64, and its bytes decide equality", 
 	Spec.equal(first.size, #'{"blob":}' + #'{"m":null,"t":"buffer","base64":""}' + 4)
 end)
 
+Spec.test("Validate: the check says whether the data holds a buffer", function()
+	-- Packing decides on this flag (src/Codec.luau): a buffer cannot be compressed, and finding one
+	-- must not cost a second walk of the data.
+	Spec.equal((Validate.check({ blob = buffer.create(4) }, "Data") :: any).hasBuffer, true)
+	Spec.equal(
+		(Validate.check({ list = { 1, { deep = { blob = buffer.create(1) } } } }, "Data") :: any).hasBuffer,
+		true
+	)
+	Spec.equal((Validate.check({ list = { 1, { deep = "x" } } }, "Data") :: any).hasBuffer, false)
+	Spec.equal((Validate.check("plain", "Data") :: any).hasBuffer, false)
+end)
+
 Spec.test("Validate: a value of many parts is joined exactly as a small one", function()
 	-- Past a few thousand parts the text is joined a chunk at a time, inside the sliced walk.
 	for _, count in { 4094, 4095, 4096, 4097, 10_000 } do

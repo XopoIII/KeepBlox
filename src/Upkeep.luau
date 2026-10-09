@@ -20,6 +20,10 @@ const Upkeep = {}
 -- Seconds before the shutdown deadline when releases still pending leave their data in a last beat.
 const LAST_BEAT = 3
 
+-- Retry delays for a failed hand-over subscription: from 1 s, doubling up to 30 s.
+const LISTEN_RETRY_MIN = 1
+const LISTEN_RETRY_MAX = 30
+
 --> Beats this server's MemoryStore entry every `heartbeat` seconds, from the start (see Lease), and
 --> hands over the sessions another server asked for there. `beating.ok` says whether newcomers may
 --> trust the beat: only then does a session's record say so.
@@ -170,28 +174,38 @@ end
 --> `LoadCount` (someone sent a message) makes it save soon. It subscribes before the claim, so a
 --> request that comes right after the key is taken is not missed. Subscribing can hang (as in Team
 --> Test), so it never holds up the load.
+---
+--> A subscribe that fails is retried with a backoff until the session ends: without the listener a
+--> hand-over would wait for the owner's next write to see `ForceLoadSession`, up to `renew` seconds
+--> late, instead of about a second.
 function Upkeep.listen(services: Services.Services, guid: string, target: Listener)
 	services.clock.spawn(function()
-		const ok, connection = pcall(function()
-			return services.messaging:SubscribeAsync(`PS_{guid}`, function(message: Services.Message)
-				const data = message.Data
-				const session = target.session
-				if session == nil or type(data) ~= "table" or data.LoadCount ~= session.loadCount then
-					return
-				end
-				if data.EndSession then
-					Session.release(session.context, session, "handedOver")
-				else
-					session.saveSoon = true
-				end
+		local delay = LISTEN_RETRY_MIN
+		while not target.done do
+			const ok, connection = pcall(function()
+				return services.messaging:SubscribeAsync(`PS_{guid}`, function(message: Services.Message)
+					const data = message.Data
+					const session = target.session
+					if session == nil or type(data) ~= "table" or data.LoadCount ~= session.loadCount then
+						return
+					end
+					if data.EndSession then
+						Session.release(session.context, session, "handedOver")
+					else
+						session.saveSoon = true
+					end
+				end)
 			end)
-		end)
-		if ok then
-			if target.done then
-				connection:Disconnect()
-			else
-				target.connection = connection
+			if ok then
+				if target.done then
+					connection:Disconnect()
+				else
+					target.connection = connection
+				end
+				return
 			end
+			services.clock.wait(delay)
+			delay = math.min(delay * 2, LISTEN_RETRY_MAX)
 		end
 	end)
 end
