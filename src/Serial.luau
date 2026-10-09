@@ -17,12 +17,20 @@ function Serial.new(clock: Services.Clock): Serial
 	const queue: { thread } = {}
 
 	const function release()
-		const nextThread = table.remove(queue, 1)
-		if nextThread then
-			-- The lock passes straight to the next caller; `busy` stays true.
-			clock.spawn(nextThread)
-		else
-			busy = false
+		while true do
+			const nextThread = table.remove(queue, 1)
+			if nextThread == nil then
+				busy = false
+				return
+			end
+			-- A queued thread may be dead by its turn (the game cancelled it while it waited). It can
+			-- never run, so it can never free the lane: skip it, or every later call queues behind a
+			-- ghost and the session never saves again.
+			if coroutine.status(nextThread) ~= "dead" then
+				-- The lock passes straight to the next caller; `busy` stays true.
+				clock.spawn(nextThread)
+				return
+			end
 		end
 	end
 

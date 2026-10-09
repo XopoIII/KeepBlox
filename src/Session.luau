@@ -125,7 +125,7 @@ const function write(
 		const good = session.good
 		if good and good.text ~= session.storedText then
 			snapshot, consumed, receipts, data = good.play, good.consumed, good.receipts, good.data
-			encoded = { text = good.text, size = good.size }
+			encoded = { text = good.text, size = good.size, hasBuffer = good.hasBuffer }
 		end
 	elseif encoded.text ~= session.storedText or next(consumed) ~= nil or newReceipt then
 		if not repairing then
@@ -136,7 +136,7 @@ const function write(
 		const spacing = encoded.size * 60 / context.config.writeBytesPerMinute
 		const urgent = next(consumed) ~= nil or newReceipt or session.clearJournal
 		if not automatic or urgent or clock.now() - session.lastDataWrite >= spacing then
-			data, problem = Codec.pack(context.services.codec, context.compress, storable, encoded.size)
+			data, problem = Codec.pack(context.services.codec, context.compress, storable, encoded)
 			if problem and problem ~= session.lastProblem then
 				session.lastProblem = problem
 				context.report(session.key, `not saved: {problem}`)
@@ -242,7 +242,10 @@ function Session.save(context: Context, session: Session, automatic: boolean?): 
 	pending.done = true
 	pending.stored = ok and stored == true
 	for _, waiter in pending.waiters do
-		context.services.clock.spawn(waiter, pending.stored)
+		-- A waiter the game cancelled while it waited is gone for good: waking it only errors.
+		if coroutine.status(waiter) ~= "dead" then
+			context.services.clock.spawn(waiter, pending.stored)
+		end
 	end
 	if not ok then
 		error(stored, 0)
