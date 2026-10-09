@@ -5,10 +5,34 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.6 - 2026-10-09
+
+Fixes for a cancelled caller and a failed hand-over subscription, and one walk of the data less at
+every beat. Nothing about stored data or the lock protocol changed: 0.6.5 and 0.6.6 servers run side
+by side, and each reads what the other stored.
+
 ### Fixed
 
+- A session's write lane no longer sticks when the game cancels a thread that was **queued** in it (a
+  `task.cancel` on a thread whose `profile:save` was waiting for a write in flight to finish). The dead
+  caller is skipped; before, every later save and the release queued behind it forever, silently. A
+  caller that joined a manual save and was cancelled meanwhile is passed over too, so the others
+  still get their answer.
+- A hand-over subscription that fails is retried with a backoff (from 1 s, doubling up to 30 s) until
+  the session ends. Before, the session lived on without its listener, and a hand-over surfaced only
+  at the owner's next write: up to `renew` seconds late instead of about a second.
 - `Signal.disconnect` now drops the listener: a long-lived signal (a store's `onError`) no longer
-  keeps every connection ever made, and a fire no longer clones the whole list.
+  keeps every connection ever made, and a fire copies only the listeners still connected. A second
+  `disconnect` does nothing.
+
+### Changed
+
+- A heartbeat snapshot and the packing of a profile no longer walk the data a second time: the check
+  before a write now reports itself whether the data holds a buffer, which compression cannot carry.
+- The harness's `Scheduler.cancel` now closes the thread, as `task.cancel` does, so a cancelled
+  thread reads as dead in the simulation too.
+- The harness's clock fails the run when its `spawn` is handed a dead thread. LuneBlox's own
+  `task.spawn` passes over one in silence; the harness takes the stricter reading.
 
 ### Added
 
@@ -17,23 +41,18 @@ semantic versioning.
 - Mutation adequacy runs weekly in CI (`.github/workflows/mutate.yml`), not only by hand.
 - A pushed tag drafts the GitHub release (`.github/workflows/release.yml`): the tag is checked against
   the tree's version, the model is built and attached, and the notes start from the changelog entry.
-Nothing about stored data or the lock protocol changed: these servers run side by side with 0.6.5.
+- Specs for the signal (order, disconnect, a disconnect during a fire, destroy, and that a
+  disconnected listener is let go) and for a cancelled caller that had joined a manual save, each
+  with its mutant.
 
-### Fixed
+### Not done
 
-- A session's write lane no longer sticks when the game cancels a thread that was waiting in it (a
-  `task.cancel` on a thread parked inside `profile:save`, say). The dead waiter is skipped; before,
-  every later save and the release queued behind it forever, silently.
-- A hand-over subscription that fails is retried with a backoff until the session ends. Before, the
-  session lived on without its listener, and a hand-over surfaced only at the owner's next write —
-  up to `renew` seconds late instead of about a second.
-- The harness's `cancel` now closes the thread, as `task.cancel` does, so a cancelled thread that
-  something later tries to resume reads as dead in the simulation too.
-
-### Changed
-
-- Packing a profile no longer walks the data twice: the check before a write now reports itself
-  whether the data holds a buffer, which compression cannot carry.
+- Only a cancelled caller that was queued is handled. A thread cancelled while it **holds** the lane
+  (parked inside its write) still leaves the lane taken for good, and a cancelled thread that owned a
+  queued manual save leaves later manual `profile:save` calls waiting forever (renewals and the release
+  still land). Both were so in 0.6.5 and are tracked in
+  [#29](https://github.com/XopoIII/KeepBlox/issues/29). Until then, do not cancel a thread that is
+  inside `profile:save` or `profile:release`.
 
 ## 0.6.5 - 2026-10-05
 
