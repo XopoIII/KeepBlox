@@ -49,6 +49,16 @@ function Clock.new(scheduler: Scheduler.Scheduler, options: Options): Services.C
 		end,
 		-- As `task.spawn`: runs at once, up to the first yield.
 		spawn = function(target: thread | (...any) -> (), ...: any)
+			if type(target) == "thread" and coroutine.status(target) == "dead" then
+				-- Waking a dead thread is a fault of the caller, and here it fails the run. LuneBlox's own
+				-- `task.spawn` passes over it in silence (measured on 0.10.13, 2026-10-09); the harness
+				-- takes the stricter reading, so no code is trusted to get away with it.
+				table.insert(
+					scheduler.failures,
+					{ group = group, thread = 0, message = "task.spawn: cannot resume dead coroutine" }
+				)
+				return
+			end
 			scheduler:resume(target, group, ...)
 		end,
 		cancel = function(target: thread)
