@@ -1,0 +1,25 @@
+# Mutation adequacy, on a schedule: the suite runs against every mutant in tests/Mutants.luau, and
+# each mutant must fail it. A full run takes about 16 minutes, so it does not gate a push; running it
+# here weekly means a spec that stopped catching its slip is found by Monday, not by the next person
+# who runs it locally.
+name: Mutation
+
+on:
+  schedule:
+    - cron: "17 3 * * 1" # Mondays, 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mutate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: CompeyDev/setup-rokit@v0.2.1
+
+      - name: Mutation adequacy
+        run: luneblox run tests/Mutate --yes
