@@ -10,6 +10,8 @@ export type Internals = {
 	--> The store's context; its services can change once (Studio without access switches to memory).
 	context: () -> Session.Context,
 	sessions: { [string]: Session.Session },
+	--> The keys being loaded (see Open).
+	opening: { [string]: thread },
 	closing: () -> boolean,
 }
 
@@ -131,8 +133,10 @@ function Upkeep.renew(internals: Internals, every: () -> ())
 end
 
 --> On shutdown, releases every session in parallel, and waits for them within the deadline.
---> `close` marks the store closing first, so no new load starts. Returns the same closing, for
---> `store:close()` (tests, and games that close a store themselves).
+--> `close` marks the store closing first, so no new load starts. A load in flight is waited for too:
+--> it gives up at its next look and lets go of what it took, in a thread of the library's, whose work
+--> must land before the server ends. Returns the same closing, for `store:close()` (tests, and games
+--> that close a store themselves).
 function Upkeep.shutdown(internals: Internals, close: () -> ()): () -> ()
 	const context = internals.context()
 	const clock = context.services.clock
@@ -149,7 +153,7 @@ function Upkeep.shutdown(internals: Internals, close: () -> ()): () -> ()
 		const started = clock.now()
 		const deadline = context.config.shutdownDeadline
 		local lastBeat = false
-		while pending > 0 and clock.now() - started < deadline do
+		while (pending > 0 or next(internals.opening) ~= nil) and clock.now() - started < deadline do
 			-- Releases the budget could not land yet leave their data in one last beat, which the next
 			-- server takes (see Lease, Recover). A release that lands after it stores the same snapshot
 			-- number, so then the record wins.

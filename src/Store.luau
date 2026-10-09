@@ -137,7 +137,7 @@ function Store.new(name: string, options: Options): Store
 	const chosen = Studio.choose(origin, name, options.mock, studio, report)
 	const services = chosen.services
 	const sessions: { [string]: Session.Session } = {}
-	const opening: { [string]: boolean } = {}
+	const opening: { [string]: thread } = {}
 	local closing = false
 
 	const base: Session.Context = {
@@ -181,6 +181,7 @@ function Store.new(name: string, options: Options): Store
 			return base
 		end,
 		sessions = sessions,
+		opening = opening,
 		closing = function(): boolean
 			return closing
 		end,

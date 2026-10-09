@@ -279,5 +279,9 @@ end
 for _, mutant in require("./MutantsLane") do
 	table.insert(MUTANTS, mutant)
 end
+-- A load and a release under a cancelled caller (0.6.8).
+for _, mutant in require("./MutantsApart") do
+	table.insert(MUTANTS, mutant)
+end
 
 return MUTANTS
