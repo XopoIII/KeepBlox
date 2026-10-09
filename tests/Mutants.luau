@@ -269,6 +269,18 @@ const MUTANTS: { Mutant } = {
 		to = "\t\twhile delay == LISTEN_RETRY_MIN and not target.done do",
 		breaks = "a failed hand-over subscription is retried, or a hand-over waits for the next write",
 	},
+	{
+		file = "src/Session.luau",
+		from = 'if coroutine.status(waiter) ~= "dead" then',
+		to = "if true then",
+		breaks = "a save's joined caller cancelled while waiting is passed over, not woken",
+	},
+	{
+		file = "src/Signal.luau",
+		from = "table.remove(listeners, index)",
+		to = "",
+		breaks = "a disconnected listener is let go, so a long-lived signal does not grow",
+	},
 }
 
 -- The heartbeat snapshots of large profiles and the hand-over's reused verdict (0.5).
