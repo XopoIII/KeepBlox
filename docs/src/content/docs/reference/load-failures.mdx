@@ -42,7 +42,8 @@ stored data stays as it was. See [Schema and migrations](/KeepBlox/guides/schema
 
 <Aside>
 A player who leaves and rejoins the same server before the release finished does not get `"open"`: the
-load waits for that release, then claims the key afresh.
+load waits for that release, then claims the key afresh. The same holds when the earlier load's thread
+was cancelled by the game: the load waits until that one has been undone.
 </Aside>
 
 ## Edit reasons

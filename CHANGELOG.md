@@ -5,6 +5,87 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.8 - 2026-10-10
+
+A game may now cancel a thread that is inside `store:load` or `profile:release()`: both run in a thread
+the library owns, and the caller only waits. Nothing about stored data, the lock payload, the keys,
+the messages or the number of requests changed for a caller nobody cancels: 0.6.7 and 0.6.8 servers
+run side by side, and each reads what the other stored.
+
+### Fixed
+
+- A thread cancelled inside **`store:load`** no longer leaves its key marked as opening
+  ([#31](https://github.com/XopoIII/KeepBlox/issues/31)). Before, every later load of that key on
+  that server answered `"open"` until the server ended, and a claim that had already landed left the
+  key held with no session behind it. Now the load runs to its end without its caller. A session it
+  opens, which nobody is left to hold, is released at once with a final save of everything the load
+  read (a dead owner's last beat, a settled trade, migrated data), and the key comes free.
+- A thread cancelled inside **`profile:release()`** no longer stops the retries of the final write
+  (#31). Before, a write that failed after the cancel was not tried again until something else called
+  the release, so the session stayed half ended and the key held. Now it is retried with the same
+  backoff as when the caller waits, and the key comes free with nobody calling `release` again.
+- A load that **throws** no longer leaves its key marked as opening either (a compressed profile on a
+  server that cannot decompress, for one). The claim it had made is still not given back: see
+  [#34](https://github.com/XopoIII/KeepBlox/issues/34).
+
+### Changed
+
+- A `store:load` of a key whose earlier load was cut short by a cancelled thread **waits** for that
+  load to be undone, then claims the key afresh, as it already did for a release still in flight. The
+  wait is the load's own: it ends on `cancel`, on shutdown and at `loadTimeout`. A second load of a
+  key while the first is in flight with its caller still there gets `"open"` at once, as before.
+- A cancelled thread does **not** make a load give up: it runs on as if its caller were there (up to
+  `loadTimeout` when the key is held elsewhere), and what it opens is released. To stop a load early,
+  pass `cancel`, as before.
+- **Shutdown waits for a load in flight**, whoever started it, as well as for the open sessions,
+  within the same `shutdownDeadline`. Such a load answers `"closing"` at its next look and gives back
+  what it took; before, `store:close()` and the server's close could return while that give-back was
+  still on its way. With no load in flight the close takes the time it took.
+- A load or a release that throws after its caller was cancelled is reported through `store.onError`
+  ("a load failed after its caller was cancelled: ...", "a release failed after ..."). With its caller
+  still there the error reaches that caller exactly as before.
+- Each load and each release costs one more thread: about 2.2 microseconds on LuneBlox for a call that
+  parks once (1.39 to 3.55, best of seven, three runs), about 1.4 for one that returns at once. A whole
+  load and release on the simulator read 496 and 493 microseconds before and after (medians of five
+  alternated runs, two of them noisy; best runs 460 and 475). Either is one data store request at the
+  least. `scripts/run-bench.sh` (the frame cost of a save) does not go through these paths and reads
+  the same before and after.
+
+### Added
+
+- `src/Apart.luau` (a call run in a thread of its own, its caller only waiting) and `src/Settle.luau`
+  (the wait before a key is loaded again, moved out of `Open.luau` and widened).
+- Specs through the real paths (`tests/unit/CancelledLoad.luau`, `CancelledLoadPaths.luau`,
+  `CancelledRelease.luau`, `Apart.luau`): the caller of a load cancelled at every step the world takes
+  while the load runs, for a new key, a key handed over by a live server, a key taken from a dead one
+  with newer play in its last beat, an imported key and a key with an unfinished trade; after each
+  cancel the key is loaded again at once, or left alone for half a minute, or the server is shut down,
+  and each time the key is not left held, the next load gets a session with exact coins and nothing
+  is reported. The caller of a release cancelled at every step with its write failing once, and with
+  its write lost in flight; the same backoff with a caller and without; a load and a release that
+  throw, heard by the caller or by the store; shutdown with a cancelled load or release in flight; and
+  loads and releases nobody cancels, whose answers, order and request counts are pinned. Thirteen
+  mutants (`tests/MutantsApart.luau`).
+
+### Known, not fixed
+
+- A load that gives up through `cancel` or shutdown at the moment its **takeover** claim lands gives
+  the key back without the dead owner's last beat
+  ([#33](https://github.com/XopoIII/KeepBlox/issues/33)). Older than this release, and not reachable
+  through a cancelled thread: that load runs on and stores the beat.
+- A load whose claim had landed when shutdown began still answers with a profile, and the shutdown
+  does not release it; a load that throws after its claim leaves the key held (#34). Both older than
+  this release.
+
+### Checked on Roblox, and not
+
+- That a cancelled thread reads as dead was run in Roblox Studio (the test place, edit mode,
+  2026-10-10): a thread parked in `coroutine.yield()` or in `task.wait` reads `"dead"` after
+  `task.cancel`, and after `coroutine.close`; a caller seen from the thread it spawned reads
+  `"normal"`. 0.6.7 had this from LuneBlox only. The fix rests on it in two places: to pass a dead
+  caller over instead of waking it, and to know that the session a load opened has nobody to hold it.
+- The library itself was not run in a Roblox server for this release: the specs run on LuneBlox.
+
 ## 0.6.7 - 2026-10-09
 
 A game may now cancel a thread that is inside `profile:save()`: every write runs in a thread the

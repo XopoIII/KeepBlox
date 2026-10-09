@@ -110,6 +110,11 @@ Ends the session: a final save, then the lock is released. Yields until done. Th
 retried with backoff until it is stored, the key turns out to be owned elsewhere, or shutdown runs out
 of time. Call it when the player leaves.
 
+The release runs in a thread of the library's own, as a save does. A game may cancel a thread that is
+inside `release` (the thread of a player who left, say): the thread ends there, and the final save is
+still retried until it is stored, so the key comes free without anyone calling `release` again. If the
+release throws with nobody left to hear it, `store.onError` is told.
+
 ### onMessage
 
 ```lua
