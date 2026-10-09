@@ -106,7 +106,7 @@ players. Test data goes in stores named `KB_LiveCheck_*`, and is removed afterwa
   copied by hand until then).
 - **A release** carries one version in `wally.toml`, `pesde.toml`, `pesde.lock`, `README.md`,
   `docs/src/content/docs/index.mdx` and `docs/src/content/docs/getting-started/installation.mdx`, and
-  its entry in `CHANGELOG.md`.
+  its entry in `CHANGELOG.md`. `scripts/check-version.sh` holds them to it (pre-push and CI).
 
 ## Releasing
 
@@ -117,17 +117,16 @@ the pull request, not of this list.
    pull.
 2. On the merged `main`, run `sh scripts/check-package.sh` and `sh scripts/run-tests.sh`. Both must
    pass there, not only on the branch.
-3. Tag and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-4. Build the model: `rojo build -o KeepBlox.rbxm` (the file is not tracked).
-5. Create the GitHub Release with the model attached:
-   `gh release create vX.Y.Z KeepBlox.rbxm --title "KeepBlox X.Y.Z" --notes-file <notes>`. The notes
-   hold, in order: a summary line, the link to the documentation, the changelog entry's sections,
-   **Evidence** (the spec count, the gates that passed, anything checked live, and anything that was
-   not), **Known, not fixed** when there is something, and **Install** (the Wally line, the pesde line,
-   the `.rbxm`).
-6. Publish the packages: `wally publish`, then `pesde publish --yes`. A published version cannot be
+3. Tag and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`. The tag push drafts the release
+   (`.github/workflows/release.yml`): the tag is checked against the tree's version, the model is
+   built and attached, and the notes start from the changelog entry.
+4. Fill in the draft's notes, in order: a summary line, the link to the documentation, the changelog
+   entry's sections (already there), **Evidence** (the spec count, the gates that passed, anything
+   checked live, and anything that was not), **Known, not fixed** when there is something, and
+   **Install** (the Wally line, the pesde line, the `.rbxm`). Then publish the release.
+5. Publish the packages: `wally publish`, then `pesde publish --yes`. A published version cannot be
    replaced, so both come after the tag and the release.
-7. The documentation deploys by itself on the push to `main` (`.github/workflows/docs.yml`): check that
+6. The documentation deploys by itself on the push to `main` (`.github/workflows/docs.yml`): check that
    the site shows the new version.
 
 `tests/reference/BASELINE.md` and the benchmark tables name the version they were measured on. A release
@@ -147,4 +146,5 @@ that does not measure them again leaves them as they are.
 | `sh scripts/check-strict.sh` | `--!strict` gate |
 | `sh scripts/check-file-size.sh` | 300-line gate |
 | `sh scripts/check-english.sh` | English-only gate |
+| `sh scripts/check-version.sh` | Every place a release names the version agrees with `wally.toml` |
 | `lefthook run pre-commit --all-files` | Every pre-commit gate over the whole tree |

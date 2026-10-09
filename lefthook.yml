@@ -38,6 +38,9 @@ pre-push:
     package:
       # The built pesde and Wally packages carry every file of src/, not just the tree the tests read.
       run: sh scripts/check-package.sh
+    versions:
+      # One version, in every place a release names it.
+      run: sh scripts/check-version.sh
     tests:
       run: sh scripts/run-tests.sh
     bench:
