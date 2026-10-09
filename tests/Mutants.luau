@@ -258,22 +258,10 @@ const MUTANTS: { Mutant } = {
 		breaks = "a game that writes Data only in onSaving loses about one beat to a crash",
 	},
 	{
-		file = "src/Serial.luau",
-		from = 'if coroutine.status(nextThread) ~= "dead" then',
-		to = "if true then",
-		breaks = "a queued caller cancelled while waiting does not hold the lane",
-	},
-	{
 		file = "src/Upkeep.luau",
 		from = "\t\twhile not target.done do",
 		to = "\t\twhile delay == LISTEN_RETRY_MIN and not target.done do",
 		breaks = "a failed hand-over subscription is retried, or a hand-over waits for the next write",
-	},
-	{
-		file = "src/Session.luau",
-		from = 'if coroutine.status(waiter) ~= "dead" then',
-		to = "if true then",
-		breaks = "a save's joined caller cancelled while waiting is passed over, not woken",
 	},
 	{
 		file = "src/Signal.luau",
@@ -285,6 +273,10 @@ const MUTANTS: { Mutant } = {
 
 -- The heartbeat snapshots of large profiles and the hand-over's reused verdict (0.5).
 for _, mutant in require("./MutantsSnapshots") do
+	table.insert(MUTANTS, mutant)
+end
+-- The write lane and the shared manual save under a cancelled caller (0.6.7).
+for _, mutant in require("./MutantsLane") do
 	table.insert(MUTANTS, mutant)
 end
 

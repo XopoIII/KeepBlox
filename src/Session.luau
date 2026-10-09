@@ -229,28 +229,27 @@ function Session.save(context: Context, session: Session, automatic: boolean?): 
 	end
 	const pending: Pending = { done = false, stored = false, waiters = {} }
 	session.pending = pending
-	const ok, stored = pcall(session.serial.run, session.serial, function(): boolean
+	-- All of it runs in the lane's own thread (see Serial), so a caller the game cancels while it
+	-- waits takes neither the shared save nor the answers of those who joined it with it.
+	return session.serial:run(function(): boolean
 		-- The snapshot is taken from here on: a later call must queue a save of its own.
 		if session.pending == pending then
 			session.pending = nil
 		end
-		return write(context, session, false, "released", false)
-	end)
-	if session.pending == pending then
-		session.pending = nil
-	end
-	pending.done = true
-	pending.stored = ok and stored == true
-	for _, waiter in pending.waiters do
-		-- A waiter the game cancelled while it waited is gone for good: waking it only errors.
-		if coroutine.status(waiter) ~= "dead" then
-			context.services.clock.spawn(waiter, pending.stored)
+		const ok, stored = pcall(write, context, session, false, "released", false)
+		pending.done = true
+		pending.stored = ok and stored == true
+		for _, waiter in pending.waiters do
+			-- A waiter the game cancelled while it waited is gone for good: waking it only errors.
+			if coroutine.status(waiter) ~= "dead" then
+				context.services.clock.spawn(waiter, pending.stored)
+			end
 		end
-	end
-	if not ok then
-		error(stored, 0)
-	end
-	return pending.stored
+		if not ok then
+			error(stored, 0)
+		end
+		return pending.stored
+	end)
 end
 
 --> Ends the session with a final save, retrying until it is stored, the key turns out to be owned

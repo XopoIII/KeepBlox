@@ -222,7 +222,9 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 		storedSize = if encoded then encoded.size else 0,
 		lastDataWrite = clock.now(),
 		nextRenew = clock.now() + state.config.renew * (1 + offset(key)),
-		serial = Serial.new(clock),
+		serial = Serial.new(clock, function(problem: any)
+			state.onError:fire(key, `a write failed after its caller was cancelled: {problem}`)
+		end),
 		lastProblem = nil :: string?,
 		inbox = Inbox.new(clock, function()
 			session.saveSoon = true

@@ -5,6 +5,70 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.7 - 2026-10-09
+
+A game may now cancel a thread that is inside `profile:save()`: every write runs in a thread the
+library owns, and the caller only waits for it. Nothing about stored data, the lock protocol, the
+keys, the messages or the number of requests changed: 0.6.6 and 0.6.7 servers run side by side, and
+each reads what the other stored.
+
+### Fixed
+
+- A thread cancelled while its write is **in flight** no longer takes the session's write lane with it
+  ([#29](https://github.com/XopoIII/KeepBlox/issues/29)). Before, the lane stayed taken for good: every
+  later save, every renewal and the release queued behind it in silence, and the key came free only
+  when its lease was judged dead. Now the write ends as it would have (it lands, fails or times out),
+  the lane passes on, and shutdown waits for it as for any other write.
+- A thread cancelled while it owns a **queued** manual save no longer leaves later `profile:save()`
+  calls waiting forever (#29). The shared save runs in its turn, the callers that joined it get their
+  answer, and the next manual save gets a write of its own.
+- `Studio.guard`'s one-time access check uses the same lane, so a cancelled first caller no longer
+  leaves every later call of the store waiting on a check that never ends. (Proven by the lane's
+  specs; the guard has no cancel spec of its own.)
+
+### Changed
+
+- A save or release whose caller was cancelled while it waited in the lane is now **written** in its
+  turn. In 0.6.6 it was skipped. The request is the one the caller asked for, not an extra one; what is
+  stored is the profile's data at that moment, as for any save.
+- A write that throws after its caller was cancelled is reported through `store.onError`
+  ("a write failed after its caller was cancelled: ..."). A write that throws with its caller still
+  there reaches that caller exactly as before, and one that only fails (`save failed: ...`) is reported
+  as before either way.
+- Each write costs one more thread: about 1.1 microseconds on LuneBlox for a call that never yields
+  (0.31 to 1.45), about 1.7 for one that parks once (1.72 to 3.43), medians of five alternated runs. A
+  write is a data store request and about 370 microseconds of checking for a 10 KB profile, once every
+  `renew` seconds a profile; `scripts/run-bench.sh` (the frame cost of a save) does not go through the lane and reads
+  the same before and after.
+
+### Added
+
+- Specs through the real paths (`tests/unit/Cancelled.luau`, `CancelledErrors.luau`, and the lane's own
+  in `tests/unit/Serial.luau`): a manual save cancelled in mid-write, and one cancelled while queued,
+  each followed by a manual save, a renewal and a release that store exact values; a lost request
+  whose caller was cancelled, ended by the call's deadline; shutdown with such a write in flight,
+  which returns only after it and the final save have landed, in order; a write that fails and one
+  that throws, heard by the caller, by those who joined and by the store; and callers nobody cancels,
+  whose answers, order and request count are pinned. Eleven mutants (`tests/MutantsLane.luau`).
+
+### Not checked on Roblox
+
+- That `task.cancel` leaves a thread parked in `coroutine.yield()` dead (`coroutine.status` reads
+  `"dead"`, and the thread never runs again) is measured on LuneBlox 0.10.13, which runs the same Luau,
+  and is what Roblox documents for `task.cancel`. It was not run in a Roblox server. The fix does not
+  rest on it for the lane: the write no longer runs in the cancelled thread at all. It rests on it
+  only to pass a dead caller over instead of waking it.
+- The cancel specs run in the simulator, not in `tests/live`.
+
+### Not done
+
+- Two other calls still do their work in the caller's own thread
+  ([#31](https://github.com/XopoIII/KeepBlox/issues/31)). A thread cancelled inside `store:load` leaves
+  the key marked as opening on that server, so later loads of it answer `"open"`. A thread cancelled
+  inside `profile:release()` gets its final write in flight landed, but if that write fails nobody
+  retries until the release is called again or the server shuts down. Do not cancel a thread that is
+  inside `store:load` or `profile:release`.
+
 ## 0.6.6 - 2026-10-09
 
 Fixes for a cancelled caller and a failed hand-over subscription, and one walk of the data less at

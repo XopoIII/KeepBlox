@@ -95,6 +95,11 @@ data cannot be stored, or the session has ended). It also renews the lease. Call
 waits for its turn join that save, so calling `save` in a loop makes one write, not a queue of them.
 A save never ends the session.
 
+The write runs in a thread of the library's own, and the caller only waits for it. So a game may cancel
+a thread that is inside `save` (`task.cancel`, `coroutine.close`): the thread ends there, the save it
+asked for still lands, and later saves, renewals and the release are not held up. If that write throws
+with nobody left to hear it, `store.onError` is told.
+
 ### release
 
 ```lua
