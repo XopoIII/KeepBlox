@@ -117,6 +117,13 @@ function Messaging.bus(scheduler: Scheduler.Scheduler, faults: Faults.Faults, ep
 					scheduler:wait(math.huge)
 				end
 				scheduler:wait(faults:sample())
+				const rule = faults:match("SubscribeAsync", topic, server, false)
+				if rule then
+					if rule.hang then
+						scheduler:wait(math.huge)
+					end
+					error(rule.error, 0)
+				end
 				const subscription: Subscription = {
 					topic = topic,
 					server = server,
