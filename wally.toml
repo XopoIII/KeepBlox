@@ -1,7 +1,7 @@
 [package]
 name = "xopoiii/keepblox"
 description = "Player data for Roblox that loses nothing, fails loudly, and never stutters a frame"
-version = "0.6.6"
+version = "0.6.7"
 license = "MIT"
 authors = ["XopoIII"]
 repository = "https://github.com/XopoIII/KeepBlox"
