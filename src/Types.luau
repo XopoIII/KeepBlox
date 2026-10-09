@@ -92,6 +92,7 @@ export type Pending = { done: boolean, stored: boolean, waiters: { thread } }
 export type Good = {
 	text: string,
 	size: number,
+	hasBuffer: boolean,
 	data: any,
 	play: any,
 	consumed: { [number]: boolean },

@@ -232,6 +232,11 @@ function Scheduler.new(seed: number): Scheduler
 		if record then
 			forget(record)
 		end
+		-- task.cancel kills the thread, not only its wake-ups: a later resume must find it dead
+		-- (https://create.roblox.com/docs/reference/engine/libraries/task#cancel).
+		if coroutine.status(co) == "suspended" then
+			coroutine.close(co)
+		end
 	end
 
 	const function wrap(_: Scheduler, fn: (...any) -> ...any): (...any) -> ...any

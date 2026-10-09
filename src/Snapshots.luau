@@ -116,7 +116,7 @@ function Snapshots.take(
 			session.profile.onSaving:fire(false, nil)
 		end
 		const data, encoded, play = storable(context, session, pause)
-		if encoded == nil or Codec.hasBuffer(data) then
+		if encoded == nil or encoded.hasBuffer then
 			continue
 		elseif encoded.text == session.storedText then
 			taken.covered[session] = true
@@ -150,6 +150,7 @@ function Snapshots.take(
 		session.good = {
 			text = encoded.text,
 			size = encoded.size,
+			hasBuffer = encoded.hasBuffer,
 			data = data,
 			play = play,
 			consumed = table.clone(processed),
