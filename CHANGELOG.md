@@ -53,6 +53,11 @@ payload, the keys, the messages or the number of requests changed for a load nob
 - Speed is unchanged: a load and a release on the simulator read 417 and 416 microseconds before and
   after (medians of seven alternated runs, one of them noisy on both sides), and
   `scripts/run-bench.sh` reads the same (it does not go through a load).
+- The tools the repository checks itself with are the newest releases: LuneBlox 0.10.16, which runs
+  the specs and the benchmarks, lefthook 2.2.1 and `actions/setup-node` 7.1.0. The documentation
+  site is built with Astro 7.3.8, Starlight 0.42.6 and starlight-links-validator 0.27.0, and with
+  `postcss-selector-parser` 7.1.6, which fixes a selector that could cost quadratic time to parse;
+  the parser runs when the site is built and was never part of the library.
 
 ### Added
 
