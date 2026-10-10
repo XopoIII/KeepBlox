@@ -5,7 +5,7 @@
 --- the Ledger catches one unsafe library; this proves the specs catch each of these slips (as in
 --- PyTation, arXiv 2601.19088: a green suite with full coverage can still miss faults).
 ---
----     luneblox run tests/Mutate --yes            (every mutant; about 30 s each)
+---     luneblox run tests/Mutate --yes            (every mutant; about 50 s each)
 ---     luneblox run tests/Mutate --yes -- Lock    (only the mutants of files matching "Lock")
 ---
 --- Left out as equivalent:

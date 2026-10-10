@@ -47,8 +47,8 @@ return {
 	},
 	{
 		file = "src/Open.luau",
-		from = '\tif coroutine.status(asker) == "dead" then\n\t\t-- Nobody is left',
-		to = "\tif false then\n\t\t-- Nobody is left",
+		from = '\tconst orphaned = coroutine.status(asker) == "dead"\n',
+		to = "\tconst orphaned = false\n",
 		breaks = "the session a cancelled load opens is released, not left open with nobody holding it",
 	},
 	{
@@ -70,13 +70,13 @@ return {
 		breaks = "a load that throws after its caller was cancelled reaches onError",
 	},
 	{
-		file = "src/Open.luau",
+		file = "src/Enter.luau",
 		from = "state.onError:fire(key, `a release failed after its caller was cancelled: {problem}`)",
 		to = "",
 		breaks = "a release that throws after its caller was cancelled reaches onError",
 	},
 	{
-		file = "src/Open.luau",
+		file = "src/Enter.luau",
 		from = "\t\t\tApart.run(clock, function(problem: any)\n"
 			.. "\t\t\t\tstate.onError:fire(key, `a release failed after its caller was cancelled: {problem}`)\n"
 			.. '\t\t\tend, Session.release, context, session, "released")\n',

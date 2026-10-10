@@ -1,5 +1,5 @@
 # Mutation adequacy, on a schedule: the suite runs against every mutant in tests/Mutants.luau, and
-# each mutant must fail it. A full run takes about 16 minutes, so it does not gate a push; running it
+# each mutant must fail it. A full run takes about an hour and a half, so it does not gate a push; running it
 # here weekly means a spec that stopped catching its slip is found by Monday, not by the next person
 # who runs it locally.
 name: Mutation
@@ -15,7 +15,7 @@ permissions:
 jobs:
   mutate:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v7.0.1
 

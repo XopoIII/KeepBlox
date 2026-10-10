@@ -14,25 +14,14 @@
 --- the key afresh.
 const Apart = require("./Apart")
 const Claim = require("./Claim")
-const Codec = require("./Codec")
-const Config = require("./Config")
+const Enter = require("./Enter")
 const Import = require("./Import")
-const Inbox = require("./Inbox")
+const LetGo = require("./LetGo")
 const Lock = require("./Lock")
-const Messages = require("./Messages")
-const Migrate = require("./Migrate")
 const Profile = require("./Profile")
-const Record = require("./Record")
-const Recover = require("./Recover")
-const Serial = require("./Serial")
 const Session = require("./Session")
 const Settle = require("./Settle")
-const Signal = require("./Signal")
-const Snapshots = require("./Snapshots")
-const Trade = require("./Trade")
-const Types = require("./Types")
 const Upkeep = require("./Upkeep")
-const Validate = require("./Validate")
 
 export type LoadOptions = {
 	--> Polled while the load waits; true gives up (the player left).
@@ -51,40 +40,9 @@ export type Failure = Claim.Failure | "open" | "newerSchema" | "migration" | "sc
 export type LoadResult<T = any> = { ok: true, profile: Profile.Profile<T> } | { ok: false, reason: Failure }
 
 --> What a load needs from its store.
-export type State = {
-	name: string,
-	template: { [any]: any },
-	--> The template as a new profile is stored: at the plan's `write` version (see Migrate).
-	storedTemplate: { [any]: any },
-	--> Fill missing keys from the template on load (a template store; off for the ProfileStore shim).
-	reconcile: boolean,
-	plan: Migrate.Plan,
-	config: Config.Config,
-	--> The store's context. Its services can change once (Studio without access switches to memory).
-	base: Session.Context,
-	sessions: { [string]: Session.Session },
-	--> The keys being loaded, each with the thread that asked for it.
-	opening: { [string]: thread },
-	onError: Signal.Signal<string, string>,
-	closing: () -> boolean,
-	--> Runs before the first load: the Studio access check.
-	prepare: () -> (),
-	--> Where missing keys take their data from, when moving from another library.
-	importer: Import.Importer?,
-	--> This server's MemoryStore beat landed last time (see Lease).
-	beating: () -> boolean,
-}
+export type State = Enter.State
 
 const Open = {}
-
--- A stable spread of renewal times over the interval, from the key alone.
-const function offset(key: string): number
-	local hash = 0
-	for index = 1, #key do
-		hash = (hash * 31 + string.byte(key, index)) % 1000
-	end
-	return hash / 1000
-end
 
 const function stopListening(listener: Upkeep.Listener)
 	listener.done = true
@@ -99,7 +57,6 @@ const function open(state: State, key: string, options: LoadOptions?, deadline: 
 	const cancel = options and options.cancel
 	state.prepare()
 	const services = state.base.services
-	const clock = services.clock
 	const plan = state.plan
 	const context = table.clone(state.base)
 	context.identity = { placeId = services.placeId, jobId = services.jobId, guid = services.guid() }
@@ -138,112 +95,41 @@ const function open(state: State, key: string, options: LoadOptions?, deadline: 
 		return { ok = false, reason = claim.reason }
 	end
 	const taken = claim.taken
-	local record = taken.record
-	-- A trade its last server did not finish is settled before anything else (see Trade); otherwise a
-	-- server that died may have left newer play in MemoryStore (see Recover).
-	const journal = Record.ours(record.MetaData).trade
-	if journal == nil then
-		record = Recover.run(context, key, taken.loadCount, record, taken.previous)
-	end
-	record.Data = Codec.unpack(services.codec, record.Data)
-	if journal then
-		const settled = Trade.recover(context, state.name, record)
-		if settled == nil then
-			Claim.giveBack(context, key, taken.loadCount)
-			state.opening[key] = nil
-			stopListening(listener)
-			return { ok = false, reason = "timeout" }
-		end
-		record.Data = settled
-	end
-	-- The data as stored, before any migration: a profile that did not change is not written again.
-	const stored = if journal then nil else Validate.check(record.Data, "Data", nil, Validate.slicer(clock))
-	const migrated = Migrate.run(plan, record.Data, Migrate.stored(record))
-	if not migrated.ok then
-		-- Never hand out, or write back, data this server cannot make sense of.
-		Claim.giveBack(context, key, taken.loadCount)
-		state.opening[key] = nil
+	-- A load that fails or throws past its claim keeps nothing: the key is given back first, with all
+	-- the claim took, or it would stay held by a live server with no session to renew or to release it
+	-- (issue 34).
+	const function drop()
+		LetGo.undo(context, key, taken)
 		stopListening(listener)
-		state.onError:fire(key, migrated.message)
-		return { ok = false, reason = migrated.reason }
 	end
-	record.Data = migrated.data
-	if state.reconcile and plan.schema == nil then
-		Record.reconcile(record.Data, state.template)
+	const made, answer = pcall(Enter.session, state, context, key, taken, listener)
+	if not made then
+		drop()
+		error(answer, 0) -- `Open.load` unmarks the key
 	end
-	local session: Session.Session
-	const profile = Profile.new(key, taken.loadCount, taken.lastSavedAt, record, clock.spawn, {
-		isActive = function(): boolean
-			return session.active and not session.releasing
-		end,
-		save = function(): boolean
-			return Session.save(context, session)
-		end,
-		release = function()
-			-- In a thread the library owns: a caller cancelled between two tries of the final write
-			-- must not stop the retries (see Apart).
-			Apart.run(clock, function(problem: any)
-				state.onError:fire(key, `a release failed after its caller was cancelled: {problem}`)
-			end, Session.release, context, session, "released")
-		end,
-		handle = function(handler: Inbox.Handler)
-			session.inbox:handle(handler)
-		end,
-	})
-	-- Migrated data is written at the first renewal, with its new schema version.
-	const encoded = if migrated.changed then nil else stored
-	session = {
-		key = key,
-		loadCount = taken.loadCount,
-		profile = profile,
-		context = context,
-		active = true,
-		releasing = false,
-		storedText = if encoded then encoded.text else "",
-		storedSize = if encoded then encoded.size else 0,
-		lastDataWrite = clock.now(),
-		nextRenew = clock.now() + state.config.renew * (1 + offset(key)),
-		serial = Serial.new(clock, function(problem: any)
-			state.onError:fire(key, `a write failed after its caller was cancelled: {problem}`)
-		end),
-		lastProblem = nil :: string?,
-		inbox = Inbox.new(clock, function()
-			session.saveSoon = true
-		end, function(message: string)
-			state.onError:fire(key, message)
-		end),
-		saveSoon = false,
-		receipts = Record.receipts(record.MetaData),
-		storedReceipts = {},
-		listener = listener,
-		pending = nil :: Session.Pending?,
-		clearJournal = journal ~= nil,
-		snapSeq = 0,
-		snapText = "",
-		snapshotted = false,
-		trading = false,
-		good = nil :: Types.Good?,
-		base = nil :: Types.Base?,
-	}
-	if encoded then
-		Snapshots.stored(context, session, encoded, record.Data)
+	const entered: Enter.Result = answer
+	if not entered.ok then
+		drop()
+		state.opening[key] = nil
+		if entered.message then
+			state.onError:fire(key, entered.message)
+		end
+		return { ok = false, reason = entered.reason }
 	end
-	listener.session = session
-	session.inbox:receive(Messages.list(record))
-	for _, id in session.receipts do
-		session.storedReceipts[id] = true
-	end
-	state.sessions[key] = session
-	context.deadline = nil -- the session lives on in this context; the load's deadline does not
-	if coroutine.status(asker) == "dead" then
-		-- Nobody is left to play on this profile or to release it. The key stays `opening` meanwhile,
-		-- so a later load of it and the shutdown both wait for the release.
+	const session = entered.session
+	const orphaned = coroutine.status(asker) == "dead"
+	if orphaned or state.closing() then
+		-- Nobody is left to play on this profile or to release it: its caller was cancelled, or the
+		-- shutdown began after the claim landed, and listed the sessions it releases before this one
+		-- was there (issue 34). It is released here with all the load read; no game ever saw the
+		-- profile, so the ending's reason is heard by nobody. The key stays `opening` meanwhile, so a
+		-- later load of it and the shutdown both wait for the release.
 		Session.release(context, session, "released")
 		state.opening[key] = nil
-		return { ok = false, reason = "cancelled" }
+		return { ok = false, reason = if orphaned then "cancelled" else "closing" }
 	end
 	state.opening[key] = nil
-	return { ok = true, profile = profile }
+	return { ok = true, profile = session.profile }
 end
 
 function Open.load(state: State, key: string, options: LoadOptions?): LoadResult

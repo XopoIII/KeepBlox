@@ -67,9 +67,6 @@ const function quarantine(context: Session.Context, storeName: string, key: stri
 	end)
 end
 
---> Lets go of a key this server has just taken but no longer wants (the player left, or shutdown).
-Claim.giveBack = LetGo.giveBack
-
 -- `mode` for a steal on the word of the owner's beat: it lands only while the record vouches for the
 -- beat (see Lock).
 const function onBeat(mode: Lock.Mode?): Lock.Mode
@@ -164,8 +161,13 @@ function Claim.open(
 		else
 			const outcome = claim :: Lock.Claim
 			if outcome.kind == "taken" then
-				if context.closing() or (cancel and cancel()) then
-					Claim.giveBack(context, key, outcome.loadCount)
+				-- `cancel` is the game's: one that throws now must not leave the key held either.
+				const looked, stop = pcall(stopped)
+				if not looked or stop then
+					LetGo.undo(context, key, outcome)
+					if not looked then
+						error(stop, 0)
+					end
 					return { ok = false, reason = if context.closing() then "closing" else "cancelled" }
 				end
 				return { ok = true, taken = outcome }

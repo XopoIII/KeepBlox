@@ -152,6 +152,7 @@ Spec.test("Cancelled load: a load that throws tells its caller, or the store, an
 	Spec.equal(string.find(caught, THROWN, 1, true) ~= nil, true, `threw {caught}`)
 	Spec.equal(heard.errors, {}, "a caller that heard the error is the only one told")
 	-- The key is not left marked as opening: the next load of it tries again, and is not told "open".
+	-- (What the throw leaves in the store is in tests/unit/LoadThrows.luau.)
 	Spec.equal(string.find(tostring(again), THROWN, 1, true) ~= nil, true, `the second load got {again}`)
 	-- Its caller cancelled meanwhile.
 	const orphaned = plain(build())
