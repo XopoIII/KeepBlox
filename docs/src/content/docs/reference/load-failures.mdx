@@ -7,7 +7,8 @@ import { Aside } from '@astrojs/starlight/components';
 
 `store:load` returns `{ ok = true, profile = ... }` or `{ ok = false, reason = ... }`. A failed load
 never hands out data and never leaves the key locked by this server: a key it had already claimed is
-given back before it returns.
+given back before it returns, with the last heartbeat of a dead previous owner stored first. The same
+holds for a load that throws (a compressed profile on a server that cannot decompress, for one).
 
 ```lua
 const result = store:load(`u_{player.UserId}`, {
