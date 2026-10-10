@@ -12,6 +12,9 @@
 --- leaves nothing half done: the load runs to its end, and a session it opens, which nobody is left
 --- to hold, is released at once with all it read. A later load of the key waits for that, then claims
 --- the key afresh.
+---
+--- `cancel` is the game's code. One that throws ends the load as one that answers true does, wherever
+--- the load stood, so nothing is left held or subscribed; then its error goes on to the caller.
 const Apart = require("./Apart")
 const Claim = require("./Claim")
 const Enter = require("./Enter")
@@ -43,6 +46,27 @@ export type LoadResult<T = any> = { ok: true, profile: Profile.Profile<T> } | { 
 export type State = Enter.State
 
 const Open = {}
+
+--> The game's `cancel` of `options`, made safe to ask anywhere: a throw is kept in `thrown` and
+--> answers true, then and from then on.
+const function guarded(options: LoadOptions?, thrown: { problem: any? }): LoadOptions?
+	const cancel = options and options.cancel
+	if options == nil or cancel == nil then
+		return options
+	end
+	const safe = table.clone(options)
+	safe.cancel = function(): boolean
+		if thrown.problem == nil then
+			const ok, answer = pcall(cancel)
+			if ok then
+				return answer
+			end
+			thrown.problem = if answer == nil then "KeepBlox: `cancel` threw nil" else answer
+		end
+		return true
+	end
+	return safe
+end
 
 const function stopListening(listener: Upkeep.Listener)
 	listener.done = true
@@ -124,7 +148,19 @@ const function open(state: State, key: string, options: LoadOptions?, deadline: 
 		-- was there (issue 34). It is released here with all the load read; no game ever saw the
 		-- profile, so the ending's reason is heard by nobody. The key stays `opening` meanwhile, so a
 		-- later load of it and the shutdown both wait for the release.
-		Session.release(context, session, "released")
+		-- A dead owner's last beat this load could not store is left to the next load (see Owed).
+		session.owed = taken.previous
+		-- A release that throws is tried again: this thread is all that holds the session.
+		local delay = state.config.backoffMin
+		while true do
+			const released, problem = pcall(Session.release, context, session, "released")
+			if released then
+				break
+			end
+			state.onError:fire(key, `the release of a load nobody holds failed, and is tried again: {problem}`)
+			services.clock.wait(delay)
+			delay = math.min(delay * 2, state.config.backoffMax)
+		end
 		state.opening[key] = nil
 		return { ok = false, reason = if orphaned then "cancelled" else "closing" }
 	end
@@ -132,14 +168,18 @@ const function open(state: State, key: string, options: LoadOptions?, deadline: 
 	return { ok = true, profile = session.profile }
 end
 
-function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
+function Open.load(state: State, key: string, asked: LoadOptions?): LoadResult
 	assert(type(key) == "string" and #key > 0 and #key <= 50, "KeepBlox: a key is 1-50 characters")
 	const clock = state.base.services.clock
+	const thrown: { problem: any? } = { problem = nil }
+	const options = guarded(asked, thrown)
 	-- One deadline for the whole load: waiting for a release here, the import, the claim and a trade's
 	-- settling all count against it, so the load answers within `loadTimeout`.
 	const deadline = clock.now() + state.config.loadTimeout
 	const waited = Settle.wait(state, clock, key, options and options.cancel, deadline)
-	if waited then
+	if thrown.problem ~= nil then
+		error(thrown.problem, 0)
+	elseif waited then
 		return { ok = false, reason = waited }
 	end
 	if state.sessions[key] or state.opening[key] then
@@ -155,6 +195,8 @@ function Open.load(state: State, key: string, options: LoadOptions?): LoadResult
 			-- A load that throws is over: its key must not stay marked as opening.
 			state.opening[key] = nil
 			error(result, 0)
+		elseif thrown.problem ~= nil and not result.ok then
+			error(thrown.problem, 0)
 		end
 		return result
 	end)

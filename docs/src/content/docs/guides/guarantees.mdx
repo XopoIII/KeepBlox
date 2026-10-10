@@ -102,9 +102,11 @@ scenario.
 
 A load that fails, gives up or throws leaves the stored data as it was, and no key held: a key it
 already claimed is given back before it answers. When the key was taken from a server that died with
-play only its last heartbeat held, that play is stored first, so the next server reads all of it. A
-load whose claim had landed when the shutdown began answers `"closing"` and is released like every
-other session. A failed read is never mistaken for a new player.
+play only its last heartbeat held, that play is stored first, so the next server reads all of it;
+when this server cannot store it, the key is given back with a note of that owner, and the next
+server stores it. A load whose claim had landed when the shutdown began answers `"closing"` and is
+released like every other session. A key a server is still found holding with no session is freed
+for the server that asks for it. A failed read is never mistaken for a new player.
 
 - `tests/unit/Store.luau`: "Store: a cancelled load gives the key back"
 - `tests/unit/Complaints.luau`: "Complaints: a load after shutdown began is refused and writes nothing (DataStore2#126, Lapis#37)"
@@ -114,6 +116,15 @@ other session. A failed read is never mistaken for a new player.
 - `tests/unit/LoadGivesBack.luau`: "Load gives back: a give-back the store refuses is tried again, and each refusal reported"
 - `tests/unit/LoadThrows.luau`: "Load throws: a key whose owner died with newer play in its last beat, a throw at every call past the claim leaves the key free and whole"
 - `tests/unit/LoadThrows.luau`: "Load throws: a profile this server cannot decompress is given back, not left held"
+- `tests/unit/LoadThrows.luau`: "Load throws: a last beat of edits this server cannot apply is reported, and left to the next"
+- `tests/unit/LoadOwes.luau`: "Load owes: a beat the data store refused as the server closed is left to the next server"
+- `tests/unit/LoadOwes.luau`: "Load owes: a load that fails after its beat could not be stored tries the beat again"
+- `tests/unit/Owed.luau`: "Owed: a note is void once any session has loaded the key since, and a claim still clears it"
+- `tests/unit/LooseEnds.luau`: "Loose ends: a key a live server holds with no session is freed for the server that asks"
+- `tests/unit/LooseEnds.luau`: "Loose ends: a key is not freed under a load of it, and a refused freeing is reported"
+- `tests/unit/LooseEnds.luau`: "Loose ends: a key a load may have taken unanswered is let go of at the second try"
+- `tests/unit/LooseCancel.luau`: "Loose cancel: a key another server holds and hands over, a cancel that throws at any point ends the load whole" (and four more scenes)
+- `tests/unit/LooseCancel.luau`: "Loose cancel: a load nobody holds is released though its release throws, at a later try"
 - `tests/unit/Complaints.luau`: "Complaints: a failed read never loads the template over saved data (ProfileStore p10 #195)"
 - `tests/unit/Migrate.luau`: "Migrate: data from a newer version is refused, the key let go, nothing written"
 - `tests/unit/Migrate.luau`: "Migrate: a failing migration refuses the load and leaves the data as it was"

@@ -49,8 +49,8 @@ const MUTANTS: { Mutant } = {
 	},
 	{
 		file = "src/Lock.luau",
-		from = "if not Record.isHere(active, identity) or active[3] ~= identity.guid then",
-		to = "if not Record.isHere(active, identity) then",
+		from = "else active and active[3] == identity.guid",
+		to = "else true",
 		breaks = "disown frees only the load that holds the key",
 	},
 	{
@@ -281,6 +281,10 @@ for _, mutant in require("./MutantsLane") do
 end
 -- A load and a release under a cancelled caller (0.6.8).
 for _, mutant in require("./MutantsApart") do
+	table.insert(MUTANTS, mutant)
+end
+-- The loose ends of giving a key back (0.6.10).
+for _, mutant in require("./MutantsLooseEnds") do
 	table.insert(MUTANTS, mutant)
 end
 -- What a load that gives up, fails or throws past its claim gives back (0.6.9).

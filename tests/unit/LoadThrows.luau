@@ -241,9 +241,8 @@ Spec.test("Load throws: a dead owner's whole last beat needs none of the data th
 	GiveUpRig.next(scene, "C", 6, GiveUpRig.FREE, "after A")
 end)
 
-Spec.test("Load throws: a last beat of edits this server cannot apply is reported, and the key given back", function()
-	-- Known, not fixed (issue 36): the edits were made against data only a server that decompresses
-	-- can read, and a key given back has no previous owner to recover from, so that beat is lost.
+Spec.test("Load throws: a last beat of edits this server cannot apply is reported, and left to the next", function()
+	-- The key is given back with a note of its dead owner, and the next server stores the beat (issue 36).
 	const function build(): Scene
 		return compressed(10, 3000, true)
 	end
@@ -258,7 +257,8 @@ Spec.test("Load throws: a last beat of edits this server cannot apply is reporte
 	end, thrown.world.scheduler.now + 60)
 	Spec.equal(thrownAfter(caught, ""), true, `threw {caught}`)
 	Spec.equal({ #thrown.errors, thrownAfter(thrown.errors[1], REPORT) }, { 1, true } :: { any }, thrown.errors[1])
-	GiveUpRig.next(thrown, "C", 5, GiveUpRig.FREE, "after the throw")
+	Spec.equal(LoadRig.stored(thrown.world).MetaData.KeepBlox.owed, { j = "job-B", c = 1, q = 0, at = 2 })
+	GiveUpRig.next(thrown, "C", 6, GiveUpRig.FREE, "after the throw")
 	-- The load gives up as its claim lands: it answers, and does not throw.
 	const left = build()
 	const options: KeepBlox.LoadOptions = { cancel = landing(left) }
@@ -269,7 +269,7 @@ Spec.test("Load throws: a last beat of edits this server cannot apply is reporte
 	end, left.world.scheduler.now + 60)
 	Spec.equal(answer, { ok = false, reason = "cancelled" })
 	Spec.equal({ #left.errors, thrownAfter(left.errors[1], REPORT) }, { 1, true } :: { any }, left.errors[1])
-	GiveUpRig.next(left, "C", 5, GiveUpRig.FREE, "after the answer")
+	GiveUpRig.next(left, "C", 6, GiveUpRig.FREE, "after the answer")
 end)
 
 Spec.test("Load throws: a `cancel` that throws as the claim lands leaves the key free and whole", function()

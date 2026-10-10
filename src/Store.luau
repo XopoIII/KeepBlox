@@ -138,6 +138,7 @@ function Store.new(name: string, options: Options): Store
 	const services = chosen.services
 	const sessions: { [string]: Session.Session } = {}
 	const opening: { [string]: thread } = {}
+	const ended: { [string]: number } = {}
 	local closing = false
 
 	const base: Session.Context = {
@@ -152,6 +153,7 @@ function Store.new(name: string, options: Options): Store
 			return closing
 		end,
 		forget = function(session: Session.Session)
+			ended[session.key] = session.loadCount
 			if sessions[session.key] == session then
 				sessions[session.key] = nil
 			end
@@ -182,6 +184,7 @@ function Store.new(name: string, options: Options): Store
 		end,
 		sessions = sessions,
 		opening = opening,
+		ended = ended,
 		closing = function(): boolean
 			return closing
 		end,

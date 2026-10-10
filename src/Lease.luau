@@ -204,14 +204,15 @@ function Lease.nextLook(context: Types.Context, watch: Watch): number
 end
 
 --> The snapshot the server `jobId` left of `key` for session `loadCount`, when it is newer than the
---> stored data (snapshot number above `stored`); nil otherwise.
+--> stored data (snapshot number above `stored`); nil otherwise. And whether MemoryStore answered: with
+--> no answer, nobody knows whether there is one.
 function Lease.snapshot(
 	context: Types.Context,
 	jobId: string,
 	key: string,
 	loadCount: number,
 	stored: number
-): Snapshot?
+): (Snapshot?, boolean)
 	const entry = Lease.read(context, jobId, key, false)
 	const id = `{context.storeName}/{key}`
 	local snapshot: any = nil
@@ -220,9 +221,9 @@ function Lease.snapshot(
 		snapshot = snapshot or (if all then all[id] else nil)
 	end
 	if type(snapshot) ~= "table" or snapshot.c ~= loadCount or type(snapshot.q) ~= "number" or snapshot.q <= stored then
-		return nil
+		return nil, entry ~= false
 	end
-	return snapshot
+	return snapshot, true
 end
 
 return Lease

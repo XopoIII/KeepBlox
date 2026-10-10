@@ -148,6 +148,7 @@ const function write(
 		userIds = table.clone(profile.UserIds),
 		robloxMetaData = Record.copy(profile.RobloxMetaData),
 		release = release,
+		owed = if release then session.owed else nil,
 		consumed = if data ~= nil then consumed else nil,
 		receipts = if data ~= nil then receipts else nil,
 		schemaVersion = if data ~= nil then plan.write else nil,

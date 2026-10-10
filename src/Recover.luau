@@ -22,14 +22,21 @@ const Types = require("./Types")
 const Recover = {}
 
 --> The record `key` continues from: `record` as claimed, or the previous owner's newer snapshot of it
---> once stored. `loadCount` is this session's.
-function Recover.run(context: Types.Context, key: string, loadCount: number, record: any, previous: Lock.Previous?): any
+--> once stored. `loadCount` is this session's. And whether a newer snapshot may be left unstored that
+--> a later try could still store: MemoryStore gave no answer, or the data store took no write.
+function Recover.run(
+	context: Types.Context,
+	key: string,
+	loadCount: number,
+	record: any,
+	previous: Lock.Previous?
+): (any, boolean)
 	if previous == nil or not Lease.available(context) then
-		return record
+		return record, false
 	end
-	const snapshot = Lease.snapshot(context, previous.jobId, key, previous.loadCount, previous.snap)
+	const snapshot, answered = Lease.snapshot(context, previous.jobId, key, previous.loadCount, previous.snap)
 	if snapshot == nil then
-		return record
+		return record, not answered
 	end
 	-- Edits apply only to the data they were made against (see Snapshots). A whole snapshot needs none
 	-- of the stored data, so it is not lost with a record this server cannot unpack.
@@ -38,7 +45,7 @@ function Recover.run(context: Types.Context, key: string, loadCount: number, rec
 		else Snapshots.data(snapshot, Codec.unpack(context.services.codec, record.Data))
 	if data == nil then
 		context.report(key, "a newer snapshot was found but was made against other data; the stored data is used")
-		return record
+		return record, false
 	end
 	const receipts = Record.receipts(record.MetaData)
 	for _, id in snapshot.rc or {} do
@@ -90,9 +97,9 @@ function Recover.run(context: Types.Context, key: string, loadCount: number, rec
 	end
 	if not ok or stored == nil then
 		context.report(key, "a newer snapshot was found but could not be stored; the stored data is used")
-		return record
+		return record, not ok
 	end
-	return stored
+	return stored, false
 end
 
 return Recover

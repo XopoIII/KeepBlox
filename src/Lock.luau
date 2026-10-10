@@ -11,11 +11,12 @@
 ---   Otherwise it writes nothing and reports the session lost. Every save bumps our lease and
 ---   `LastUpdate`, and reports another server's pending `ForceLoadSession`, so the owner hands over.
 --- - `disown` lets go of a key a claim may have taken without learning it did (its answer was lost),
----   and only if that very claim holds it.
+---   and only if that very claim holds it; or of one this server holds at a given load count.
 ---
 --- A transform returns the record to write, or nil to write nothing, plus an outcome for the caller.
 --- The engine may run it more than once; the last run's outcome is the one that counts.
 const Messages = require("./Messages")
+const Owed = require("./Owed")
 const Record = require("./Record")
 
 export type Owner = {
@@ -71,8 +72,8 @@ export type Mode = {
 --> which the record must still vouch for.
 export type Expected = { guid: string, loadCount: number, lease: number?, byBeat: boolean? }
 
---> The session a claim took the key from (a server that died or was cut off): where its snapshots are.
-export type Previous = { jobId: string, loadCount: number, snap: number }
+--> The session a claim recovers from: the one it took the key from, or one noted in the record.
+export type Previous = Owed.Previous
 
 export type Save =
 	{ kind: "saved", handOver: boolean, record: any, messages: { Messages.Entry } }
@@ -97,21 +98,15 @@ export type Payload = {
 	memory: boolean?,
 	--> The session's latest MemoryStore snapshot number, stored with the data (see Lease).
 	snap: number?,
+	--> With `release`: the owner this session took the key from, whose last beat it could not store.
+	owed: Previous?,
 }
 
 const Lock = {}
 
 const function take(record: any, identity: Record.Identity, now: number, mode: Mode?): Claim
 	const meta = record.MetaData
-	const before = meta.ActiveSession
-	local previous: Previous? = nil
-	if type(before) == "table" and not Record.isHere(before, identity) then
-		previous = {
-			jobId = tostring(before[2]),
-			loadCount = meta.SessionLoadCount or 0,
-			snap = tonumber(Record.ours(meta).snap) or 0,
-		}
-	end
+	const previous = Owed.previous(meta, identity)
 	meta.ActiveSession = { identity.placeId, identity.jobId, identity.guid }
 	meta.ForceLoadSession = nil
 	meta.SessionLoadCount = (meta.SessionLoadCount or 0) + 1
@@ -255,6 +250,9 @@ function Lock.save(
 	if payload.memory ~= nil then
 		Record.ours(meta).memory = if payload.memory then true else nil
 	end
+	if payload.owed ~= nil then
+		Owed.leave(meta, payload.owed)
+	end
 	if payload.journal ~= nil then
 		Record.ours(meta).trade = if payload.journal == false then nil else payload.journal
 	end
@@ -277,15 +275,16 @@ function Lock.save(
 	return value, { kind = "saved", handOver = handOver, record = value, messages = Messages.list(value) }
 end
 
---> The disown transform: frees the key if the load `identity` (its GUID) holds it, and writes nothing
---> otherwise.
-function Lock.disown(value: any, identity: Record.Identity, now: number): any?
+--> The disown transform: frees the key if the load `identity` (its GUID) holds it, or with `loadCount`
+--> if this server holds it at that load count; writes nothing otherwise.
+function Lock.disown(value: any, identity: Record.Identity, now: number, loadCount: number?): any?
 	if Record.classify(value) ~= "profile" then
 		return nil
 	end
 	const meta = value.MetaData
 	const active = meta.ActiveSession
-	if not Record.isHere(active, identity) or active[3] ~= identity.guid then
+	const named = if loadCount then meta.SessionLoadCount == loadCount else active and active[3] == identity.guid
+	if not Record.isHere(active, identity) or not named then
 		return nil
 	end
 	meta.ActiveSession = nil

@@ -167,6 +167,8 @@ function Record.ours(meta: any): {
 	snap: number?,
 	--> The last restore of this key (see Versions): the version it brought back, and when.
 	restored: { from: string, at: number }?,
+	--> A dead owner's last beat nobody could store yet, and the load count it was noted at (see Owed).
+	owed: { j: string, c: number, q: number, at: number }?,
 }
 	local state = meta.KeepBlox
 	if type(state) ~= "table" then
