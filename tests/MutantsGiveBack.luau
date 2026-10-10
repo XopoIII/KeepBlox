@@ -15,18 +15,6 @@ return {
 		breaks = "a load that gives up as its takeover lands stores the dead owner's last beat before it frees the key",
 	},
 	{
-		file = "src/Claim.luau",
-		from = "const looked, stop = pcall(stopped)",
-		to = "const looked, stop = true, stopped()",
-		breaks = "a `cancel` that throws as the claim lands does not leave the key held",
-	},
-	{
-		file = "src/Claim.luau",
-		from = "\t\t\t\t\tif not looked then\n\t\t\t\t\t\terror(stop, 0)\n\t\t\t\t\tend\n",
-		to = "",
-		breaks = "a `cancel` that throws as the claim lands still reaches the load's caller",
-	},
-	{
 		file = "src/LetGo.luau",
 		from = " and Record.ours(taken.record.MetaData).trade == nil",
 		to = "",
@@ -34,8 +22,8 @@ return {
 	},
 	{
 		file = "src/LetGo.luau",
-		from = "const ok, problem = pcall(Recover.run, context, key, taken.loadCount, taken.record, taken.previous)",
-		to = "const ok, problem = true, Recover.run(context, key, taken.loadCount, taken.record, taken.previous)",
+		from = "const ok, problem, unstored = pcall(Recover.run, context, key, taken.loadCount, taken.record, previous)",
+		to = "const ok, problem, unstored = true, Recover.run(context, key, taken.loadCount, taken.record, previous)",
 		breaks = "a last beat this server cannot store does not keep the key from being given back",
 	},
 	{
@@ -106,8 +94,8 @@ return {
 	},
 	{
 		file = "src/Enter.luau",
-		from = "\t\ttaken.previous = nil\n",
-		to = "",
+		from = "\t\t\ttaken.previous = nil\n\t\tend\n\telse\n",
+		to = "\t\tend\n\telse\n",
 		breaks = "a load undone after it stored the dead owner's last beat does not read and store it again",
 	},
 	{

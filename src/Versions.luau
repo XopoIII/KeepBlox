@@ -140,6 +140,8 @@ function Versions.restore(context: Session.Context, key: string, version: string
 				end
 			end
 			ours.restored = { from = version, at = clock.time() }
+			-- A dead owner's last beat was play on the data this restore replaces (see Owed).
+			ours.owed = nil
 			record.MetaData.LastUpdate = clock.time()
 			outcome = { ok = true, purchasesSince = since } :: Restored
 			return record

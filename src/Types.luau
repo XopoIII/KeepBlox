@@ -68,6 +68,9 @@ export type Session = {
 	pending: Pending?,
 	--> The record holds a settled trade's journal: the next write that stores this data clears it.
 	clearJournal: boolean,
+	--> The dead owner this session's key was taken from, whose last beat could not be stored: noted
+	--> in the record by the release of a session nobody played on (see Open, Owed).
+	owed: { jobId: string, loadCount: number, snap: number }?,
 	--> Snapshots of the data in this server's MemoryStore entry (see Lease): the number of the latest,
 	--> and its text. A write records the number, so a snapshot newer than the stored data is known.
 	snapSeq: number,

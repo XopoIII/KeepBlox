@@ -5,6 +5,54 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.10 - 2026-10-10
+
+The loose ends of giving a key back. A dead owner's last heartbeat is no longer lost when the load
+that took its key could not store it, and a key a live server holds with no session is no longer
+handed to nobody. Stored data, the lock protocol, the messages and what a load nobody stops spends
+are as in 0.6.9, and the two run side by side. The one addition to the record is a note under
+`MetaData.KeepBlox.owed`, which ProfileStore and an older KeepBlox neither read nor clear.
+
+### Fixed
+
+- A key given back **lost its dead owner's last heartbeat when this server could not store it**
+  ([#36](https://github.com/XopoIII/KeepBlox/issues/36)): the beat held edits against a compressed
+  record and this server has no codec, the data store took no write of it, or MemoryStore gave no
+  answer about it. The key was freed, and a free key has no previous owner to recover from. Now the
+  write that frees the key leaves a note of that owner in the record, and the next load recovers
+  from it as if it had taken the key from the dead server itself. The note counts only while the
+  key's load count is the one it was left at, so a session that played since (on any library) is
+  never written over by an older beat; a restore of the key drops it.
+- The same for **the session of a load nobody holds** (its caller was cancelled, or the store was
+  closing): its release leaves the note when the load could not store the beat.
+- A load that **failed after its beat could not be stored** (a migration that fails, a schema the
+  data does not fit) gave the key back without trying the beat again. Now the undoing tries it once
+  more, against the data as claimed.
+- A key **a live server held with no session** was handed to nobody for as long as that server lived
+  ([#37](https://github.com/XopoIII/KeepBlox/issues/37)): its beat moves, so no newcomer judges it
+  dead, and it dropped the hand-over request for a key it had no session for. Now such a request
+  frees the key, if the record still names this server at the load count the request names and the
+  store is not loading the key: one `UpdateAsync`, reported ("a key held with no session was freed
+  for the server asking for it"), and only on that path. A request for a session the store released
+  itself costs nothing, as before.
+- **Letting go of a key a load may have taken unanswered** was one silent try (#37). Now it is tried
+  again with the load's backoff, for `loadTimeout` of its own, never at a budget that leaves saves
+  less than their reserve, and a key that could not be let go of is reported.
+- A **`cancel` that throws** before the claim landed ended the load where it stood (#37): its
+  hand-over listener stayed subscribed, and a claim that had gone unanswered was not let go of. Now
+  a throw ends the load as an answer of `true` does, wherever the load stood, and then the error
+  goes on to the caller as before.
+- A **release that throws in a load nobody holds** left the session listed with nobody to release it
+  before shutdown (#37). Now it is reported and tried again with the backoff until it lands.
+
+### Compatibility
+
+- **With 0.6.9 and older, and with ProfileStore:** the note is one more field under
+  `MetaData.KeepBlox`, written only by a give-back that owes a beat. A server that does not know it
+  loads the key as it always did (the beat is then lost, as before 0.6.10), and leaves the note
+  where it is: its load moved the count, so the note is void, and the next 0.6.10 claim clears it.
+- A hand-over request that names no load count (an older KeepBlox wrote those) never frees a key.
+
 ## 0.6.9 - 2026-10-10
 
 What a load took it now either keeps, with everything it read, or gives back whole. A load that gives

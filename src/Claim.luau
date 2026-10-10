@@ -161,13 +161,8 @@ function Claim.open(
 		else
 			const outcome = claim :: Lock.Claim
 			if outcome.kind == "taken" then
-				-- `cancel` is the game's: one that throws now must not leave the key held either.
-				const looked, stop = pcall(stopped)
-				if not looked or stop then
+				if stopped() then
 					LetGo.undo(context, key, outcome)
-					if not looked then
-						error(stop, 0)
-					end
 					return { ok = false, reason = if context.closing() then "closing" else "cancelled" }
 				end
 				return { ok = true, taken = outcome }

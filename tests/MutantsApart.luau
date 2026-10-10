@@ -53,8 +53,8 @@ return {
 	},
 	{
 		file = "src/Open.luau",
-		from = '\t\tSession.release(context, session, "released")\n\t\tstate.opening[key] = nil\n',
-		to = '\t\tstate.opening[key] = nil\n\t\tSession.release(context, session, "released")\n',
+		from = "\t\t-- A release that throws is tried again: this thread is all that holds the session.\n",
+		to = "\t\tstate.opening[key] = nil\n",
 		breaks = "shutdown waits for the release of the session a cancelled load opens",
 	},
 	{

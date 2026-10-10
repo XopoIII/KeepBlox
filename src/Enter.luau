@@ -85,8 +85,17 @@ function Enter.session(
 	-- server that died may have left newer play in MemoryStore (see Recover).
 	const journal = Record.ours(record.MetaData).trade
 	if journal == nil then
-		record = Recover.run(context, key, taken.loadCount, record, taken.previous)
-		-- That beat is seen to: undoing this load from here on has nothing of it left to store (see LetGo).
+		local unstored
+		record, unstored = Recover.run(context, key, taken.loadCount, record, taken.previous)
+		if unstored then
+			-- Kept as claimed: undoing this load tries that beat again, against the data as stored.
+			taken.record = Record.copy(record)
+		else
+			-- That beat is seen to: undoing this load has nothing of it left to store (see LetGo).
+			taken.previous = nil
+		end
+	else
+		-- A profile in a trade has no snapshot (see Lease): nothing of its last owner is left to store.
 		taken.previous = nil
 	end
 	record.Data = Codec.unpack(services.codec, record.Data)
@@ -155,6 +164,7 @@ function Enter.session(
 		listener = listener,
 		pending = nil :: Session.Pending?,
 		clearJournal = journal ~= nil,
+		owed = nil :: Lock.Previous?,
 		snapSeq = 0,
 		snapText = "",
 		snapshotted = false,

@@ -2,6 +2,7 @@
 --- What a store does in the background: renewing its sessions, releasing them on shutdown, and
 --- listening for the messages other servers send to a session.
 const Lease = require("./Lease")
+const LetGo = require("./LetGo")
 const Services = require("./Services")
 const Session = require("./Session")
 
@@ -12,6 +13,9 @@ export type Internals = {
 	sessions: { [string]: Session.Session },
 	--> The keys being loaded (see Open).
 	opening: { [string]: thread },
+	--> The load count of the last session of each key that ended here: a request that names it came
+	--> for a session this store has seen off itself.
+	ended: { [string]: number },
 	closing: () -> boolean,
 }
 
@@ -27,8 +31,9 @@ const LISTEN_RETRY_MIN = 1
 const LISTEN_RETRY_MAX = 30
 
 --> Beats this server's MemoryStore entry every `heartbeat` seconds, from the start (see Lease), and
---> hands over the sessions another server asked for there. `beating.ok` says whether newcomers may
---> trust the beat: only then does a session's record say so.
+--> hands over the sessions another server asked for there. A key asked for that this store has no
+--> session for, and is not loading, is freed if the record still names this server (see LetGo.stray).
+--> `beating.ok` says whether newcomers may trust the beat: only then does a session's record say so.
 ---
 --> The trust is measured from when a beat was sent, not from when a call gives up (`callTimeout`): a
 --> newcomer judges a beat that stands still for two beats dead, so an owner whose beats stop landing
@@ -70,7 +75,12 @@ function Upkeep.beat(internals: Internals, beating: { ok: boolean, sentAt: numbe
 		end
 		for key, fence in requested or {} do
 			const session = internals.sessions[key]
-			if
+			if session == nil and fence ~= true and internals.ended[key] ~= fence then
+				-- A load of the key in flight holds it by right: its session is not listed yet.
+				if internals.opening[key] == nil then
+					clock.spawn(LetGo.stray, context, key, fence)
+				end
+			elseif
 				session
 				and session.active
 				and not session.releasing

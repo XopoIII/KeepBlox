@@ -175,7 +175,7 @@ characters.
 
 | Load option | Meaning |
 |---|---|
-| `cancel` | `() -> boolean`, polled while the load waits; `true` gives up with `"cancelled"`. Pass one that checks the player left. |
+| `cancel` | `() -> boolean`, polled while the load waits; `true` gives up with `"cancelled"`. Pass one that checks the player left. One that throws ends the load the same way, and `load` then throws its error. |
 | `steal` | Take the key at once from whoever holds it, as ProfileStore's `Steal = true`. For recovering a key stuck on a dead server by hand; a normal load never needs it. |
 | `quiet` | Never ask a live owner to hand the key over, so no player is kicked: fail with `"inUse"` instead. A dead owner is still taken over, once it is proven dead. For support tools. |
 
