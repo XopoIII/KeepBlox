@@ -283,5 +283,9 @@ end
 for _, mutant in require("./MutantsApart") do
 	table.insert(MUTANTS, mutant)
 end
+-- What a load that gives up, fails or throws past its claim gives back (0.6.9).
+for _, mutant in require("./MutantsGiveBack") do
+	table.insert(MUTANTS, mutant)
+end
 
 return MUTANTS

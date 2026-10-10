@@ -5,6 +5,79 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.9 - 2026-10-10
+
+What a load took it now either keeps, with everything it read, or gives back whole. A load that gives
+up, fails or throws no longer drops play that only a dead owner's last heartbeat held, and no longer
+leaves its key held by a server that has no session for it. Nothing about stored data, the lock
+payload, the keys, the messages or the number of requests changed for a load nobody stops: 0.6.8 and
+0.6.9 servers run side by side, and each reads what the other stored.
+
+### Fixed
+
+- A load that gave up **as its takeover of a dead owner's key landed** lost that owner's last
+  heartbeat ([#33](https://github.com/XopoIII/KeepBlox/issues/33)): the play since its last data store
+  write, up to `renew` seconds. The load gives up there when its `cancel` turns true (the player left
+  again) or its server begins to close while that one claim is on its way. The key was freed as it
+  was claimed, and the next load found a free key with nobody to recover from. Now the beat is stored
+  first (the same write a load that goes on makes), then the key is freed.
+- A load **whose claim had landed when the shutdown began** answered `ok`, and the shutdown, which had
+  listed its sessions before, never released that one
+  ([#34](https://github.com/XopoIII/KeepBlox/issues/34)): the key stayed held until the next server
+  found this one dead. Now the load releases the session itself, with a final save of all it read,
+  and the shutdown waits for that as it waits for the others.
+- A load that **threw past its claim** left the key held (#34), and on a server that lived on it was
+  handed to nobody: a newcomer sees a live owner and waits. Now the key is given back before the error
+  goes on, with a dead owner's last beat stored first. The same for a `cancel` function that throws
+  as the claim lands.
+- A **give-back the data store refused** was one silent try. Now each refusal is reported
+  ("a key its load gave up was not given back: ...") and the write is tried again with the load's
+  backoff, until the load's own deadline.
+- A dead owner's **whole** last beat is stored without reading the record it replaces, so a server
+  that cannot decompress that record no longer throws on it: the load answers with the beat's data.
+
+### Changed
+
+- A load that finds its store closing once its session is made answers **`"closing"`**, not `ok`. A
+  load whose claim landed after the shutdown began always answered `"closing"`; the one whose claim
+  landed just before it now does too. No game ever held the profile it used to get, so no `onSaving`
+  or `onEnded` of it is heard.
+- A load that gives up as its takeover lands spends **one MemoryStore read** more (the dead owner's
+  beat), and **one data store write** more when that beat is newer than the record. A load that
+  throws inside that recovery spends them again. No other path spends a request it did not: a load
+  nobody stops, a give-up on a key that was free or handed over, and a give-back the store takes at
+  once cost exactly what they did (`tests/unit/LoadGivesBack.luau` holds the numbers, read from
+  0.6.8's sources).
+- A give-back that is refused keeps its load from answering until it lands or `loadTimeout` is over,
+  and a shutdown waits for it within `shutdownDeadline`. Before, the load answered after one try.
+- Speed is unchanged: a load and a release on the simulator read 417 and 416 microseconds before and
+  after (medians of seven alternated runs, one of them noisy on both sides), and
+  `scripts/run-bench.sh` reads the same (it does not go through a load).
+
+### Added
+
+- `src/Enter.luau`: the half of a load past its claim, moved out of `Open.luau`, which now undoes
+  whatever fails or throws there.
+- Specs through the real paths (`tests/unit/LoadGivesUp.luau`, `LoadGivesBack.luau`,
+  `LoadThrows.luau`): the load's `cancel` turned true, and its store closed, at every step the world
+  takes while it runs, in five scenes (a new key, a live hand-over, a dead owner with newer play in
+  its last beat, an imported key, an unfinished trade), each followed by another server that must get
+  the key in time and read exactly what was played; a throw at every seam call past the claim in the
+  same scenes; the requests of each give-back, one by one. 401 specs.
+- 18 mutants (`tests/MutantsGiveBack.luau`), 101 in all.
+
+### Not fixed
+
+- A last beat this server **cannot store** is still lost when the key is given back
+  ([#36](https://github.com/XopoIII/KeepBlox/issues/36)): a beat of edits against a compressed record
+  on a server with no codec (reported through `store.onError`), or a data store that refuses the
+  beat's write for the whole load, as for a load that goes on. Keeping it needs a change to what other
+  servers read, which is its own decision.
+- There is no backstop for a key a live server holds with no session, should one still be left
+  (a give-back refused for all of `loadTimeout`); a claim that went unanswered is disowned in one
+  silent try; a `cancel` that throws before the claim lands still ends the load where it stood
+  ([#37](https://github.com/XopoIII/KeepBlox/issues/37)).
+
 ## 0.6.8 - 2026-10-10
 
 A game may now cancel a thread that is inside `store:load` or `profile:release()`: both run in a thread

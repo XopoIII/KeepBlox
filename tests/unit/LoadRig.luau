@@ -16,6 +16,8 @@ export type Scene = {
 	server: World.Server,
 	store: KeepBlox.Store<any>,
 	errors: { string },
+	--> What A's store was opened with, beside the template: another server's store takes the same.
+	options: { [string]: any }?,
 }
 
 --> What to do right after the caller was cancelled:
@@ -24,14 +26,19 @@ export type Scene = {
 --> - "close": shut the server down at once.
 export type After = "again" | "alone" | "close"
 
+--> The services a store is given in place of its server's own (a seam wrapped to fail, for one).
+export type Dress = (server: World.Server) -> any
+
 --> A store of `name` on a new server of `world`, with `options` added to its own.
 function LoadRig.store(
 	world: World.World,
 	name: string,
-	options: { [string]: any }?
+	options: { [string]: any }?,
+	dress: Dress?
 ): (KeepBlox.Store<any>, World.Server)
 	const server = world:server({ name = name, players = 1 })
-	const settings: { [string]: any } = { template = LoadRig.TEMPLATE, services = server.services }
+	const services = if dress then dress(server) else server.services
+	const settings: { [string]: any } = { template = LoadRig.TEMPLATE, services = services }
 	for key, value in options or {} do
 		settings[key] = value
 	end
@@ -39,17 +46,22 @@ function LoadRig.store(
 end
 
 --> A world of `seed`, with `before` run in it first, then server "A" and its store.
-function LoadRig.scene(seed: number, before: ((world: World.World) -> ())?, options: { [string]: any }?): Scene
+function LoadRig.scene(
+	seed: number,
+	before: ((world: World.World) -> ())?,
+	options: { [string]: any }?,
+	dress: Dress?
+): Scene
 	const world = World.new(seed)
 	if before then
 		before(world)
 	end
-	const store, server = LoadRig.store(world, "A", options)
+	const store, server = LoadRig.store(world, "A", options, dress)
 	const errors: { string } = {}
 	store.onError:connect(function(key: string, message: string)
 		table.insert(errors, `{key}: {message}`)
 	end)
-	return { world = world, server = server, store = store, errors = errors }
+	return { world = world, server = server, store = store, errors = errors, options = options }
 end
 
 --> Server B holds "u_1" with 5 coins stored and a sixth only in its beats; returns B.

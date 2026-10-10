@@ -100,12 +100,20 @@ scenario.
 
 ## A failed load never writes data
 
-A load that fails, or gives up, leaves the stored data as it was. A key it already claimed is given
-back unchanged. A failed read is never mistaken for a new player.
+A load that fails, gives up or throws leaves the stored data as it was, and no key held: a key it
+already claimed is given back before it answers. When the key was taken from a server that died with
+play only its last heartbeat held, that play is stored first, so the next server reads all of it. A
+load whose claim had landed when the shutdown began answers `"closing"` and is released like every
+other session. A failed read is never mistaken for a new player.
 
 - `tests/unit/Store.luau`: "Store: a cancelled load gives the key back"
 - `tests/unit/Complaints.luau`: "Complaints: a load after shutdown began is refused and writes nothing (DataStore2#126, Lapis#37)"
 - `tests/unit/Complaints.luau`: "Complaints: a load in flight when shutdown begins gives the key back (Lapis#30)"
+- `tests/unit/LoadGivesUp.luau`: "Load gives up: a key whose owner died with newer play in its last beat, left at every point, then another server loads it" (and four more scenes, each also with its server closing at every point)
+- `tests/unit/LoadGivesBack.luau`: "Load gives back: a takeover given up as it lands stores the dead owner's last beat, then frees"
+- `tests/unit/LoadGivesBack.luau`: "Load gives back: a give-back the store refuses is tried again, and each refusal reported"
+- `tests/unit/LoadThrows.luau`: "Load throws: a key whose owner died with newer play in its last beat, a throw at every call past the claim leaves the key free and whole"
+- `tests/unit/LoadThrows.luau`: "Load throws: a profile this server cannot decompress is given back, not left held"
 - `tests/unit/Complaints.luau`: "Complaints: a failed read never loads the template over saved data (ProfileStore p10 #195)"
 - `tests/unit/Migrate.luau`: "Migrate: data from a newer version is refused, the key let go, nothing written"
 - `tests/unit/Migrate.luau`: "Migrate: a failing migration refuses the load and leaves the data as it was"

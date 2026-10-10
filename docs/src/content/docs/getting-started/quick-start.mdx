@@ -118,8 +118,10 @@ The reasons you are most likely to see:
 | `"outbid"` | A third server asked for the key after this one, and gets it. |
 
 Every reason, including the schema and import ones, is on the
-[load failures](/KeepBlox/reference/load-failures/) page. A failed load never writes data: a key taken
-and then given up (the player left, or shutdown began) is released without changing it.
+[load failures](/KeepBlox/reference/load-failures/) page. A failed load never writes data of its
+own: a key taken and then given up (the player left, or shutdown began) is given back as it was taken.
+The one thing stored first is the last heartbeat of a server that died holding the key, which the
+next load could no longer recover.
 
 ### `cancel`
 

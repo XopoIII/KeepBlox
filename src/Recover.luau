@@ -31,8 +31,11 @@ function Recover.run(context: Types.Context, key: string, loadCount: number, rec
 	if snapshot == nil then
 		return record
 	end
-	-- Edits apply only to the data they were made against (see Snapshots).
-	const data = Snapshots.data(snapshot, Codec.unpack(context.services.codec, record.Data))
+	-- Edits apply only to the data they were made against (see Snapshots). A whole snapshot needs none
+	-- of the stored data, so it is not lost with a record this server cannot unpack.
+	const data = if snapshot.p == nil
+		then snapshot.d
+		else Snapshots.data(snapshot, Codec.unpack(context.services.codec, record.Data))
 	if data == nil then
 		context.report(key, "a newer snapshot was found but was made against other data; the stored data is used")
 		return record

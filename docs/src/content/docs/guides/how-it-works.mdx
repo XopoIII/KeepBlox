@@ -182,7 +182,9 @@ freezes, so trades and purchases stop on the stale copy.
 Each store binds to `BindToClose`. On shutdown it marks itself closing, so new loads fail with
 `"closing"`, then releases every open profile in parallel and waits for them at most
 `shutdownDeadline` (25 s; Roblox allows 30). Each release retries with a backoff until it is stored,
-the key turns out to be owned elsewhere, or the deadline passes.
+the key turns out to be owned elsewhere, or the deadline passes. A load still in flight is waited for
+too: it answers `"closing"` and gives back what it took, or, when its session was already made,
+releases it as the others are.
 
 <Aside>
 Every behaviour on this page is covered by a spec. [Guarantees](/KeepBlox/guides/guarantees/) names
