@@ -61,6 +61,48 @@ function Conformance.encoding()
 	end
 end
 
+-- UpdateAsync swallows a transform that throws or yields: nil, nil, nothing written, one run.
+function Conformance.transforms()
+	const store = DataStoreService:GetDataStore(`{Env.store}_throw`)
+	store:SetAsync("k", { n = 1 })
+	for _, case in { { "a string", "broke" }, { "a table", { broke = true } } } do
+		local runs = 0
+		const ok, value, info = pcall(function(): (any, any)
+			return store:UpdateAsync("k", function(old: any): any
+				runs += 1
+				old.n = 99
+				error(case[2], 0)
+			end)
+		end)
+		Env.check(
+			`transforms: one that throws {case[1]} answers nil, nil, once`,
+			ok and value == nil and info == nil and runs == 1
+		)
+	end
+	local yields = 0
+	const ok, value = pcall(function(): any
+		return store:UpdateAsync("k", function(): any
+			yields += 1
+			task.wait()
+			return { n = 2 }
+		end)
+	end)
+	Env.check("transforms: one that yields answers nil, once", ok and value == nil and yields == 1)
+	Env.check("transforms: none of them wrote", (store:GetAsync("k", uncached()) :: any).n == 1)
+	const map = game:GetService("MemoryStoreService"):GetSortedMap(`{Env.store}_throw`)
+	Env.check(
+		"transforms: a MemoryStore one that throws fails the call",
+		has(
+			thrown(function()
+				map:UpdateAsync("k", function(): any
+					error("broke", 0)
+				end, 60)
+			end),
+			"TransformCallbackFailed"
+		)
+	)
+end
+
 const function listed(store: DataStore, key: string): { DataStoreObjectVersionInfo }
 	return store:ListVersionsAsync(key, Enum.SortDirection.Ascending, 0, 0, 0):GetCurrentPage() :: any
 end

@@ -109,44 +109,37 @@ function Versions.restore(context: Session.Context, key: string, version: string
 	end
 	const clock = context.services.clock
 	local outcome: Restored = { ok = false, reason = "failed" } :: Restored
-	const ok = Call.run(
-		clock,
-		context.config.callTimeout,
-		context.dataStore.UpdateAsync,
-		context.dataStore,
-		key,
-		function(value: any): any
-			const kind = Record.classify(value)
-			if kind == "foreign" then
-				outcome = { ok = false, reason = "notAProfile" } :: Restored
-				return nil
-			end
-			const record = if kind == "profile"
-				then value
-				else Record.fresh(old.Data, clock.time(), value and value.GlobalUpdates)
-			if record.MetaData.ActiveSession ~= nil then
-				outcome = { ok = false, reason = "inUse" } :: Restored
-				return nil
-			end
-			record.Data = Record.copy(old.Data)
-			const ours = Record.ours(record.MetaData)
-			const storedAt = Migrate.stored(old)
-			ours.schemaVersion = if storedAt > 0 then storedAt else nil
-			const before = Record.receipts(old.MetaData)
-			const since = {}
-			for _, id in Record.receipts(record.MetaData) do
-				if not table.find(before, id) then
-					table.insert(since, id)
-				end
-			end
-			ours.restored = { from = version, at = clock.time() }
-			-- A dead owner's last beat was play on the data this restore replaces (see Owed).
-			ours.owed = nil
-			record.MetaData.LastUpdate = clock.time()
-			outcome = { ok = true, purchasesSince = since } :: Restored
-			return record
+	const ok = Call.update(clock, context.config.callTimeout, context.dataStore, key, function(value: any): any
+		const kind = Record.classify(value)
+		if kind == "foreign" then
+			outcome = { ok = false, reason = "notAProfile" } :: Restored
+			return nil
 		end
-	)
+		const record = if kind == "profile"
+			then value
+			else Record.fresh(old.Data, clock.time(), value and value.GlobalUpdates)
+		if record.MetaData.ActiveSession ~= nil then
+			outcome = { ok = false, reason = "inUse" } :: Restored
+			return nil
+		end
+		record.Data = Record.copy(old.Data)
+		const ours = Record.ours(record.MetaData)
+		const storedAt = Migrate.stored(old)
+		ours.schemaVersion = if storedAt > 0 then storedAt else nil
+		const before = Record.receipts(old.MetaData)
+		const since = {}
+		for _, id in Record.receipts(record.MetaData) do
+			if not table.find(before, id) then
+				table.insert(since, id)
+			end
+		end
+		ours.restored = { from = version, at = clock.time() }
+		-- A dead owner's last beat was play on the data this restore replaces (see Owed).
+		ours.owed = nil
+		record.MetaData.LastUpdate = clock.time()
+		outcome = { ok = true, purchasesSince = since } :: Restored
+		return record
+	end)
 	if not ok then
 		return { ok = false, reason = "failed" }
 	end

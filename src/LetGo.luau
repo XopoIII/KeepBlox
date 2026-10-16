@@ -31,16 +31,9 @@ function LetGo.giveBack(context: Session.Context, key: string, loadCount: number
 	local delay = config.backoffMin
 	const payload: Lock.Payload = { data = nil, release = true, owed = owed, stamp = Once.stamp() }
 	while true do
-		const ok, err = Call.run(
-			clock,
-			config.callTimeout,
-			context.dataStore.UpdateAsync,
-			context.dataStore,
-			key,
-			function(value: any): any
-				return (Lock.save(value, context.identity, loadCount, payload, clock.time()))
-			end
-		)
+		const ok, err = Call.update(clock, config.callTimeout, context.dataStore, key, function(value: any): any
+			return (Lock.save(value, context.identity, loadCount, payload, clock.time()))
+		end)
 		if ok then
 			return
 		end
@@ -82,16 +75,9 @@ function LetGo.disown(context: Session.Context, key: string)
 		const deadline = clock.now() + config.loadTimeout
 		local delay = config.backoffMin
 		while true do
-			const ok, err = Call.run(
-				clock,
-				config.callTimeout,
-				context.dataStore.UpdateAsync,
-				context.dataStore,
-				key,
-				function(value: any): any
-					return Lock.disown(value, context.identity, clock.time())
-				end
-			)
+			const ok, err = Call.update(clock, config.callTimeout, context.dataStore, key, function(value: any): any
+				return Lock.disown(value, context.identity, clock.time())
+			end)
 			if ok then
 				return
 			elseif clock.now() + delay >= deadline then
@@ -116,18 +102,11 @@ end
 function LetGo.stray(context: Session.Context, key: string, loadCount: number)
 	const clock = context.services.clock
 	local freed = false
-	const ok, err = Call.run(
-		clock,
-		context.config.callTimeout,
-		context.dataStore.UpdateAsync,
-		context.dataStore,
-		key,
-		function(value: any): any
-			const written = Lock.disown(value, context.identity, clock.time(), loadCount)
-			freed = written ~= nil
-			return written
-		end
-	)
+	const ok, err = Call.update(clock, context.config.callTimeout, context.dataStore, key, function(value: any): any
+		const written = Lock.disown(value, context.identity, clock.time(), loadCount)
+		freed = written ~= nil
+		return written
+	end)
 	if not ok then
 		context.report(key, `a key held with no session was not freed for the server asking for it: {err}`, "release")
 	elseif freed then

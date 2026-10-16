@@ -50,4 +50,42 @@ function Call.run(clock: Services.Clock, timeout: number, fn: (...any) -> ...any
 	return table.unpack(outcome, 1, (outcome :: any).n)
 end
 
+--> `transform`, made to tell whether its last run finished. The engine swallows an UpdateAsync
+--> transform that throws or yields: the call answers nil, nil, as if the transform had changed nothing
+--> (live check 2026-10-16). `broken()` is then the reason; nil when the last run returned.
+function Call.guard(transform: Services.Transform): (Services.Transform, () -> string?)
+	local broken: string? = nil
+	const function guarded(...: any): ...any
+		broken = "the transform did not finish"
+		const outcome = table.pack(pcall(transform, ...))
+		if not outcome[1] then
+			broken = `the transform failed: {tostring(outcome[2])}`
+			return nil
+		end
+		broken = nil
+		return table.unpack(outcome, 2, outcome.n)
+	end
+	return guarded :: any, function(): string?
+		return broken
+	end
+end
+
+--> `store:UpdateAsync(key, transform)` for at most `timeout` seconds, as `run`. A transform that threw
+--> (or yielded) fails the call with its reason, as a failed write does: nothing was written.
+function Call.update(
+	clock: Services.Clock,
+	timeout: number,
+	store: Services.DataStore,
+	key: string,
+	transform: Services.Transform
+): (boolean, ...any)
+	const guarded, broken = Call.guard(transform)
+	const results = table.pack(Call.run(clock, timeout, store.UpdateAsync, store, key, guarded))
+	const reason = broken()
+	if results[1] and reason then
+		return false, reason
+	end
+	return table.unpack(results, 1, results.n)
+end
+
 return Call

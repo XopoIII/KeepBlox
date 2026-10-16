@@ -162,10 +162,9 @@ const function write(
 			else nil,
 	}
 	local outcome: Lock.Save? = nil
-	const ok, err = Call.run(
+	const ok, err = Call.update(
 		clock,
 		context.config.callTimeout,
-		context.dataStore.UpdateAsync,
 		context.dataStore,
 		session.key,
 		function(value: any): any

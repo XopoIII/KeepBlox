@@ -41,6 +41,7 @@ const function steps(modules: Modules, which: string): { Step }
 			end,
 		},
 		{ name = "encoding", run = Conformance.encoding },
+		{ name = "transforms (engine)", run = Conformance.transforms },
 		{ name = "versions (engine)", run = Conformance.versions },
 		{ name = "messaging (engine)", run = Conformance.messaging },
 		{ name = "ordered (engine)", run = Conformance.ordered },

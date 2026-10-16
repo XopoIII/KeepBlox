@@ -10,6 +10,8 @@
 ---
 --- A message sent with an id (see Once) leaves the id in `GlobalUpdates[3]`, a list of `{id, at}`, by
 --- the same write that queues it, so a send tried again after a try that seemed to fail queues it once.
+--- A retry that finds the queue full leaves its id in `GlobalUpdates[4]`, so an earlier try that lands
+--- later does not queue what the sender was told was refused.
 --- The message itself is stored as given. ProfileStore and ProfileService read only the first two
 --- elements of `GlobalUpdates` and write the table back as they found it, so the list stays.
 const Once = require("./Once")
@@ -26,8 +28,17 @@ export type Sent =
 	--> The send ran past its time and changed nothing (see Once).
 	| { kind: "late" }
 
---> A send's id, and what the transform needs to keep it (see Once).
-export type Mark = { id: string, at: number, now: () -> number, time: () -> number, deadline: number, keep: number }
+--> A send's id, and what the transform needs to keep it (see Once). `again` is set from the second try
+--> on: a full queue such a try finds is stored with its id, since an earlier try may still land.
+export type Mark = {
+	id: string,
+	at: number,
+	now: () -> number,
+	time: () -> number,
+	deadline: number,
+	keep: number,
+	again: boolean?,
+}
 
 const Messages = {}
 
@@ -66,10 +77,16 @@ function Messages.append(value: any, message: any, limit: number, mark: Mark?): 
 				owner = if meta then meta.ActiveSession else nil,
 				loadCount = if meta then meta.SessionLoadCount or 0 else 0,
 			}
+	elseif mark and Once.seen(queue[4], mark.id) then
+		return nil, { kind = "full" }
 	elseif mark and mark.now() > mark.deadline then
 		return nil, { kind = "late" }
 	end
 	if #queue[2] >= limit then
+		if mark and mark.again then
+			queue[4] = Once.note(queue[4], mark.id, mark.at, mark.time(), mark.keep)
+			return record, { kind = "full" }
+		end
 		return nil, { kind = "full" }
 	end
 	queue[1] += 1

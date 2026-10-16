@@ -59,22 +59,28 @@ function Once.fence(ours: { fence: { number }? }, loadCount: number, stamp: numb
 	return true
 end
 
---> Whether `list` (a stored list, any shape) holds `id`.
-function Once.seen(list: any, id: string): boolean
+--> The entry of `id` in `list` (a stored list, any shape), or nil.
+function Once.find(list: any, id: string): Entry?
 	if type(list) ~= "table" then
-		return false
+		return nil
 	end
 	for _, entry in list do
 		if type(entry) == "table" and entry[1] == id then
-			return true
+			return entry
 		end
 	end
-	return false
+	return nil
 end
 
---> `list` (a stored list, any shape) with `id` added, started at wall clock `at`; ids older than `keep`
---> seconds by `now`, and the oldest past `KEEP`, are left out.
-function Once.note(list: any, id: string, at: number, now: number, keep: number): { Entry }
+--> Whether `list` (a stored list, any shape) holds `id`.
+function Once.seen(list: any, id: string): boolean
+	return Once.find(list, id) ~= nil
+end
+
+--> `list` (a stored list, any shape) with `id` added, started at wall clock `at`, with what became of
+--> it (`fate`, kept as the entry's third element) when that is worth telling a later try; ids older
+--> than `keep` seconds by `now`, and the oldest past `KEEP`, are left out.
+function Once.note(list: any, id: string, at: number, now: number, keep: number, fate: any?): { Entry }
 	const kept: { Entry } = {}
 	if type(list) == "table" then
 		for _, entry in list do
@@ -84,11 +90,11 @@ function Once.note(list: any, id: string, at: number, now: number, keep: number)
 				and type(entry[2]) == "number"
 				and now - entry[2] <= keep
 			then
-				table.insert(kept, { entry[1], entry[2] })
+				table.insert(kept, { entry[1], entry[2], entry[3] })
 			end
 		end
 	end
-	table.insert(kept, { id, at })
+	table.insert(kept, { id, at, fate })
 	while #kept > KEEP do
 		table.remove(kept, 1)
 	end

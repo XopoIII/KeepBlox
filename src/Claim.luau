@@ -130,10 +130,9 @@ function Claim.open(
 
 		tries += 1
 		local claim: Lock.Claim? = nil
-		const ok, err = Call.run(
+		const ok, err = Call.update(
 			clock,
 			math.clamp(deadline - clock.now(), 1, config.callTimeout),
-			context.dataStore.UpdateAsync,
 			context.dataStore,
 			key,
 			function(value: any, info: any): any

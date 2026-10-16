@@ -43,20 +43,14 @@ function Send.message(internals: Internals, key: string, message: any): Result
 		keep = lifetime + Once.SKEW,
 	}
 	local delay = context.config.backoffMin
-	for _ = 1, ATTEMPTS do
+	for attempt = 1, ATTEMPTS do
+		mark.again = attempt > 1
 		local sent: Messages.Sent? = nil
-		const ok = Call.run(
-			clock,
-			context.config.callTimeout,
-			context.dataStore.UpdateAsync,
-			context.dataStore,
-			key,
-			function(value: any): any
-				const record, outcome = Messages.append(value, message, Messages.LIMIT, mark)
-				sent = outcome
-				return record
-			end
-		)
+		const ok = Call.update(clock, context.config.callTimeout, context.dataStore, key, function(value: any): any
+			const record, outcome = Messages.append(value, message, Messages.LIMIT, mark)
+			sent = outcome
+			return record
+		end)
 		if ok and sent then
 			const outcome = sent :: Messages.Sent
 			if outcome.kind == "late" then

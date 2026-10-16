@@ -82,10 +82,9 @@ function Recover.run(
 		-- As a claim does: the first try waits for one request, later ones leave a reserve to saves.
 		Spare.wait(context, if tries == 0 then 1 else Spare.RESERVE, deadline, context.closing)
 		tries += 1
-		ok = Call.run(
+		ok = Call.update(
 			clock,
 			math.clamp(deadline - clock.now(), 1, config.callTimeout),
-			context.dataStore.UpdateAsync,
 			context.dataStore,
 			key,
 			function(value: any): any

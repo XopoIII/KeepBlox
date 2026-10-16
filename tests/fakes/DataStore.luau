@@ -10,7 +10,8 @@
 ---   timer." Cached reads cost no budget;
 --- - UpdateAsync's retry: if another server wrote the key between the read and the write, "UpdateAsync()
 ---   will call the function again, discarding the result of the previous call". The transform "cannot
----   yield"; returning nil cancels. UserIds and metadata it does not return are cleared.
+---   yield"; returning nil cancels. UserIds and metadata it does not return are cleared. A transform
+---   that throws or yields cancels too, without an error (measured, see UpdateAsync).
 const Backend = require("./Backend")
 const Budget = require("./Budget")
 const Clock = require("./Clock")
@@ -137,13 +138,15 @@ function DataStore.new(context: Context, store: string): Services.DataStore
 			travel()
 			const base = backend:latest(store, key)
 			const value, info = current(key)
-			-- Run as a coroutine, so a transform that yields is caught rather than suspending the call.
+			-- Run as a coroutine, so a transform that yields is caught rather than suspending the call. The
+			-- engine swallows a transform that throws or yields: it logs "Transform function error ...", and
+			-- the call answers nil, nil, writes nothing and does not run the transform again (live check
+			-- 2026-10-16: a string, a table and error(x, 0) alike, on a missing key and a stored one).
 			const thread = coroutine.create(transform)
 			const ok, newValue, userIds, metadata = coroutine.resume(thread, value, info)
-			if not ok then
-				error(newValue, 0)
-			elseif coroutine.status(thread) ~= "dead" then
-				error("UpdateAsync transform yielded: the callback function cannot yield", 0)
+			if not ok or coroutine.status(thread) ~= "dead" then
+				travel()
+				return nil, nil
 			end
 			if newValue == nil then
 				travel()

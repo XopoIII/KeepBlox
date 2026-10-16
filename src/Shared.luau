@@ -57,6 +57,24 @@ export type SharedStore = {
 }
 
 const TOPIC_LIMIT = 80
+--> Characters of a refusal's message kept with its id.
+const BRIEF = 200
+
+--> `text` cut to `BRIEF` characters, or nil when it is not valid UTF-8.
+const function brief(text: string): string?
+	const length = utf8.len(text)
+	if length == nil then
+		return nil
+	end
+	return if length <= BRIEF then text else string.sub(text, 1, (utf8.offset(text, BRIEF + 1) :: number) - 1)
+end
+
+--> The answer a stored refusal (`{reason, message}`, any shape) gives again.
+const function refusalOf(fate: any): Result
+	const reason = if type(fate) == "table" and fate[1] == "error" then "error" else "refused"
+	const message = if type(fate) == "table" and type(fate[2]) == "string" then fate[2] else nil
+	return { ok = false, reason = reason, message = message } :: Result
+end
 
 const Shared = {}
 
@@ -125,9 +143,12 @@ function Shared.new(name: string, options: Options): SharedStore
 			const id = origin.guid()
 			const started, startedAt = clock.now(), clock.time()
 			const lifetime = config.loadTimeout + config.callTimeout
+			local tries = 0
 			const ok, answer = retried(function(): any
+				tries += 1
+				const again = tries > 1
 				local outcome: Result = { ok = false, reason = "failed" }
-				chosen.dataStore:UpdateAsync(key, function(value: any): any
+				const guarded, broken = Call.guard(function(value: any): any
 					const kind = Record.classify(value)
 					if kind == "foreign" then
 						outcome = { ok = false, reason = "foreign" } :: Result
@@ -143,33 +164,53 @@ function Shared.new(name: string, options: Options): SharedStore
 						return nil
 					end
 					const ours = Record.ours(record.MetaData)
+					const keep = lifetime + Once.SKEW
 					if Once.seen(ours.applied, id) then
 						outcome = { ok = true, data = dataOf(record) } :: Result
+						return nil
+					end
+					const told = Once.find(ours.refused, id)
+					if told then
+						outcome = refusalOf(told[3])
 						return nil
 					elseif clock.now() - started > lifetime then
 						outcome = { ok = false, reason = "failed", message = "the update ran out of time" } :: Result
 						return nil
 					end
+					-- A refusal by a retry is stored with its id: an earlier try may still be on its way, and
+					-- must not land what the game was told did not (see Once).
+					const function refuse(reason: "error" | "refused", message: string): any
+						outcome = { ok = false, reason = reason, message = message } :: Result
+						if not again then
+							return nil
+						end
+						ours.refused =
+							Once.note(ours.refused, id, startedAt, clock.time(), keep, { reason, brief(message) })
+						return record
+					end
 					const data = dataOf(record)
 					const changed, thrown = pcall(change, data)
 					if not changed then
-						outcome = { ok = false, reason = "error", message = tostring(thrown) } :: Result
-						return nil
+						return refuse("error", tostring(thrown))
 					end
 					local _, refusal = Validate.check(data, "Data")
 					if refusal == nil and options.schema then
 						refusal = Schema.check(options.schema, data)
 					end
 					if refusal then
-						outcome = { ok = false, reason = "refused", message = refusal } :: Result
-						return nil
+						return refuse("refused", refusal)
 					end
 					record.Data = data
 					record.MetaData.LastUpdate = clock.time()
-					ours.applied = Once.note(ours.applied, id, startedAt, clock.time(), lifetime + Once.SKEW)
+					ours.applied = Once.note(ours.applied, id, startedAt, clock.time(), keep)
 					outcome = { ok = true, data = Record.copy(data) } :: Result
 					return record
 				end)
+				chosen.dataStore:UpdateAsync(key, guarded)
+				const problem = broken()
+				if problem then
+					error(problem, 0)
+				end
 				return outcome
 			end)
 			if not ok then

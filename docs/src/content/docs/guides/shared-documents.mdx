@@ -105,6 +105,20 @@ sees. A document keeps the newest 100, and forgets each one 600 s after its upda
 landed (the 600 s cover servers whose clocks disagree). So an update lands once as long as fewer than
 100 other updates of the same document land while it is still being tried.
 
+### A refusal stays a refusal
+
+An update that answers `"error"` or `"refused"` never lands later. The risk is the same late try: the
+first try waits past its deadline, the retry finds a bank of 50 and `change` refuses to spend 100, the
+game is told no, then another server adds 100 and the first try runs on 150. So a refusal found by a
+retry is stored with the update's id, in `MetaData.KeepBlox.refused` with its reason and the first 200
+characters of its message, and an earlier try that lands later finds it and changes nothing. A
+refusal on the first try is not stored, and costs no write: no earlier try exists.
+
+A transform that throws inside UpdateAsync does not fail the call on Roblox: the engine logs
+"Transform function error" and answers as if nothing were to be written (checked live, 2026-10-16).
+KeepBlox checks that each of its transforms finished, and treats one that did not as a failed write,
+tried again.
+
 ## watch
 
 `watch(key, handler)` calls `handler(data)` after each update of `key` made through a shared store, from

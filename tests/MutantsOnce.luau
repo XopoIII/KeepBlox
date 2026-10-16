@@ -5,7 +5,9 @@
 --- tests/Mutants.luau, which lists them with the rest.
 ---
 --- Left out as equivalent: the fence's `>=` as `>`. It lets the same write land twice, which writes the
---- same data again; only the lease moves one more, and nothing reads it as a count of writes.
+--- same data again; only the lease moves one more, and nothing reads it as a count of writes. And a
+--- shared update's check that its transform finished: `change` runs under pcall, so nothing else in
+--- the transform throws, and without the check the update answers "failed" with nothing written.
 
 return {
 	{
@@ -16,9 +18,39 @@ return {
 	},
 	{
 		file = "src/Shared.luau",
-		from = "\t\t\t\t\tours.applied = Once.note(ours.applied, id, startedAt, clock.time(), lifetime + Once.SKEW)\n",
+		from = "\t\t\t\t\tours.applied = Once.note(ours.applied, id, startedAt, clock.time(), keep)\n",
 		to = "\n",
 		breaks = "an update's id is stored with its change",
+	},
+	{
+		file = "src/Shared.luau",
+		from = "\t\t\t\t\t\tif not again then\n",
+		to = "\t\t\t\t\t\tif true then\n",
+		breaks = "an update refused by a retry stays refused when an earlier try lands late",
+	},
+	{
+		file = "src/Shared.luau",
+		from = "\t\t\t\t\tif told then\n",
+		to = "\t\t\t\t\tif false then\n",
+		breaks = "an update refused by a retry stays refused when an earlier try lands late",
+	},
+	{
+		file = "src/Messages.luau",
+		from = "\t\tif mark and mark.again then\n",
+		to = "\t\tif false then\n",
+		breaks = "a message refused by a retry for a full queue stays out when an earlier try lands late",
+	},
+	{
+		file = "src/Messages.luau",
+		from = "elseif mark and Once.seen(queue[4], mark.id) then",
+		to = "elseif false then",
+		breaks = "a message refused by a retry for a full queue stays out when an earlier try lands late",
+	},
+	{
+		file = "src/Call.luau",
+		from = "\tif results[1] and reason then\n",
+		to = "\tif false then\n",
+		breaks = "a transform that throws fails its call, though the engine swallows the error",
 	},
 	{
 		file = "src/Shared.luau",

@@ -35,7 +35,7 @@ seconds.
 | Result | Meaning |
 |---|---|
 | `{ ok = true }` | The message is stored in the queue. |
-| `{ ok = false, reason = "full" }` | The key already holds 1000 messages. Nothing already queued is dropped to make room. |
+| `{ ok = false, reason = "full" }` | The key already holds 1000 messages. Nothing already queued is dropped to make room, and the message is never queued later by a try that lands late. |
 | `{ ok = false, reason = "foreign" }` | The key holds something that is not a profile. |
 | `{ ok = false, reason = "failed" }` | The data store failed on every one of five attempts. The message may still have been queued, once. |
 
