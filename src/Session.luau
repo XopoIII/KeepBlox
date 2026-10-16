@@ -13,6 +13,7 @@ const Call = require("./Call")
 const Codec = require("./Codec")
 const Lock = require("./Lock")
 const Migrate = require("./Migrate")
+const Once = require("./Once")
 const Profile = require("./Profile")
 const Record = require("./Record")
 const Repair = require("./Repair")
@@ -154,6 +155,7 @@ const function write(
 		schemaVersion = if data ~= nil then plan.write else nil,
 		memory = context.beating ~= nil and context.beating(),
 		snap = session.snapSeq,
+		stamp = Once.stamp(),
 		-- A settled trade's journal goes only with data that matches memory (see Trade).
 		journal = if session.clearJournal and (data ~= nil or (encoded and encoded.text == session.storedText))
 			then false

@@ -48,4 +48,19 @@ function Owed.leave(meta: any, previous: Previous)
 		{ j = previous.jobId, c = previous.loadCount, q = previous.snap, at = meta.SessionLoadCount }
 end
 
+--> Notes in the record the session a claim takes the key from, so a claim of the same load that runs
+--> again after this one landed unanswered recovers from it too (see Lock). Cleared by the load's saves.
+function Owed.took(meta: any, previous: Previous?)
+	Record.ours(meta).from = if previous then { j = previous.jobId, c = previous.loadCount, q = previous.snap } else nil
+end
+
+--> The session the claim of this very load took the key from, as `Owed.took` noted it.
+function Owed.again(meta: any): Previous?
+	const from = Record.ours(meta).from
+	if type(from) ~= "table" or type(from.j) ~= "string" or type(from.c) ~= "number" then
+		return nil
+	end
+	return { jobId = from.j, loadCount = from.c, snap = tonumber(from.q) or 0 }
+end
+
 return Owed

@@ -53,11 +53,14 @@ function DataStore.new(context: Context, store: string): Services.DataStore
 		end
 	end
 
-	-- A fault for this call and phase: throws, or parks the call for good.
+	-- A fault for this call and phase: throws, parks the call for good, or holds it a while.
 	const function fault(op: string, key: string?, after: boolean)
 		const rule = faults:match(op, key, context.server, after)
 		if rule then
-			if rule.hang then
+			if rule.delay then
+				scheduler:wait(rule.delay)
+				return
+			elseif rule.hang then
 				scheduler:wait(math.huge)
 			end
 			error(rule.error, 0)

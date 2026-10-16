@@ -11,6 +11,7 @@
 --- server asks for it (`LetGo.stray`, issue 37).
 const Call = require("./Call")
 const Lock = require("./Lock")
+const Once = require("./Once")
 const Record = require("./Record")
 const Recover = require("./Recover")
 const Session = require("./Session")
@@ -28,6 +29,7 @@ function LetGo.giveBack(context: Session.Context, key: string, loadCount: number
 	const config = context.config
 	const deadline = context.deadline or clock.now() + config.loadTimeout
 	local delay = config.backoffMin
+	const payload: Lock.Payload = { data = nil, release = true, owed = owed, stamp = Once.stamp() }
 	while true do
 		const ok, err = Call.run(
 			clock,
@@ -36,7 +38,6 @@ function LetGo.giveBack(context: Session.Context, key: string, loadCount: number
 			context.dataStore,
 			key,
 			function(value: any): any
-				const payload: Lock.Payload = { data = nil, release = true, owed = owed }
 				return (Lock.save(value, context.identity, loadCount, payload, clock.time()))
 			end
 		)

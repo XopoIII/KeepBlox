@@ -3,7 +3,7 @@
 --- whether an owner lives, carries hand-over requests when MessagingService is down, and holds recent
 --- snapshots of its profiles, so a crash loses seconds of play instead of a `renew` interval.
 ---
---- Each server keeps one entry, `KB_servers[<JobId>] = { n, r, s }`, rewritten every `heartbeat`
+--- Each server keeps one entry, `KB_servers[<JobId>] = { n, r, s, x, k }`, rewritten every `heartbeat`
 --- seconds by each of its stores, and kept `snapshotTtl` seconds after the last beat:
 --- - `n` counts the beats. A newcomer that sees it stand still for two beats, or finds no entry, knows
 ---   the server died, and takes its keys; while it moves, the server lives.
@@ -15,11 +15,14 @@
 ---   messages already processed into it. A profile over `snapshotBytes` has one in `x` instead, holding
 ---   only its edits since it was stored (see Snapshots). Profiles whose edits do not fit either, holding
 ---   buffers, or in a trade have none; they are written at `renewFallback` instead.
+--- - `k["<store>"]` is the stamp of the store's latest beat (see Once): a beat that lands late, after a
+---   newer one, writes nothing, so it never puts older snapshots over newer ones.
 --- A newcomer that takes over a server's key takes its snapshot too, when it is newer than the stored
 --- data (see Open). One entry for all of a server's profiles keeps the cost to one call a beat per store.
 --- The data store transform still decides who may write, so a wrong verdict here can at worst end a
 --- live session early, never let two servers write (guarantee 2).
 const Call = require("./Call")
+const Once = require("./Once")
 const Snapshots = require("./Snapshots")
 const Types = require("./Types")
 
@@ -75,10 +78,17 @@ function Lease.beat(context: Types.Context, sessions: { [string]: Types.Session 
 	const prefix = `{context.storeName}/`
 	const taken = Snapshots.take(context, sessions, ENTRY_SHARE, final)
 	local requested: Requests = {}
+	const stamp = Once.stamp()
 	const ok = call(context, function(): any
 		return store:UpdateAsync(context.identity.jobId, function(current: any): any
 			requested = {}
 			const entry = if type(current) == "table" then current else {}
+			const stamps = if type(entry.k) == "table" then entry.k else {}
+			const latest = tonumber(stamps[context.storeName])
+			if latest and latest >= stamp then
+				return nil
+			end
+			stamps[context.storeName] = stamp
 			const requests = {}
 			for id, requester in if type(entry.r) == "table" then entry.r else {} do
 				if string.sub(id, 1, #prefix) == prefix then
@@ -106,6 +116,7 @@ function Lease.beat(context: Types.Context, sessions: { [string]: Types.Session 
 				r = requests,
 				s = replace(entry.s, taken.whole),
 				x = replace(entry.x, taken.edits),
+				k = stamps,
 			}
 		end, context.config.snapshotTtl)
 	end)

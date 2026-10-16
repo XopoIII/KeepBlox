@@ -25,6 +25,7 @@
 const Call = require("./Call")
 const Lock = require("./Lock")
 const Migrate = require("./Migrate")
+const Once = require("./Once")
 const Record = require("./Record")
 const Schema = require("./Schema")
 const Services = require("./Services")
@@ -92,6 +93,7 @@ const function write(context: Session.Context, session: Session.Session, data: a
 		journal = journal,
 		snap = session.snapSeq,
 		schemaVersion = if data ~= nil then context.plan.write else nil,
+		stamp = Once.stamp(),
 	}
 	local lost = false
 	const ok = Call.run(

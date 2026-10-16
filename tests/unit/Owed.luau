@@ -9,6 +9,8 @@ const Spec = require("../Spec")
 const A: Record.Identity = { placeId = 1, jobId = "job-A", guid = "guid-A" }
 const B: Record.Identity = { placeId = 1, jobId = "job-B", guid = "guid-B" }
 const C: Record.Identity = { placeId = 1, jobId = "job-C", guid = "guid-C" }
+-- A later load on A's server: every load has a GUID of its own.
+const A2: Record.Identity = { placeId = 1, jobId = "job-A", guid = "guid-A2" }
 const TEMPLATE = { coins = 0 }
 
 -- "u_1" as B held it when it died: its first session, its data stored at snapshot 3.
@@ -48,9 +50,13 @@ Spec.test("Owed: the next claim of the free key recovers from the owner the note
 	-- A key freed with no note has no previous owner.
 	const _, plain = Lock.claim(givenBack(false), C, TEMPLATE, 3000, false)
 	Spec.equal((plain :: any).previous, nil)
-	-- The server that left the note may be the one to use it.
-	const _, again = Lock.claim(givenBack(true), A, TEMPLATE, 3000, false)
+	-- The server that left the note may be the one to use it, in a later load.
+	const _, again = Lock.claim(givenBack(true), A2, TEMPLATE, 3000, false)
 	Spec.equal((again :: any).previous, { jobId = "job-B", loadCount = 1, snap = 3 })
+	-- The load that gave the key back takes nothing: a try of its claim landing late (issue 41).
+	const late, refused = Lock.claim(givenBack(true), A, TEMPLATE, 3000, false)
+	Spec.equal(late, nil)
+	Spec.equal(refused, { kind = "outbid" })
 end)
 
 Spec.test("Owed: a note is void once any session has loaded the key since, and a claim still clears it", function()
@@ -84,7 +90,7 @@ end)
 Spec.test("Owed: a key taken from a holder recovers from that holder, whatever note the record carries", function()
 	-- Held by A again, which died in its turn, with a note of B still in the record (left there by a
 	-- server that does not clear it).
-	const held = Lock.claim(givenBack(false), A, TEMPLATE, 2500, false)
+	const held = Lock.claim(givenBack(false), A2, TEMPLATE, 2500, false)
 	held.MetaData.KeepBlox.owed = { j = "job-B", c = 1, q = 3, at = held.MetaData.SessionLoadCount }
 	held.MetaData.KeepBlox.snap = 8
 	const record, claim = Lock.claim(Record.copy(held), C, TEMPLATE, 3000, false, { force = true })
@@ -94,7 +100,12 @@ Spec.test("Owed: a key taken from a holder recovers from that holder, whatever n
 	-- A server claiming the key it already holds has no previous owner, and clears the note too.
 	const own, mine = Lock.claim(Record.copy(held), A, TEMPLATE, 3000, false)
 	Spec.equal((mine :: any).previous, nil)
+	Spec.equal((mine :: any).loadCount, 4)
 	Spec.equal(own.MetaData.KeepBlox.owed, nil)
+	-- The load that holds it writes nothing, and answers as its claim did (issue 41).
+	const same, answer = Lock.claim(Record.copy(held), A2, TEMPLATE, 3000, false)
+	Spec.equal(same, nil)
+	Spec.equal({ (answer :: any).kind, (answer :: any).loadCount, (answer :: any).previous }, { "taken", 3 })
 	-- A claim that only asks leaves the record's note alone: it takes nothing.
 	const asked, busy = Lock.claim(Record.copy(held), C, TEMPLATE, 3000, false)
 	Spec.equal(busy.kind, "busy")
@@ -120,6 +131,27 @@ Spec.test("Owed: a key this server holds is disowned by its load count only when
 	Spec.equal(Lock.disown(Record.copy(freed), A, 2100, 2), nil)
 	Spec.equal(Lock.disown("text", A, 2100, 2), nil)
 	Spec.equal(Lock.disown(nil, A, 2100, 2), nil)
+end)
+
+Spec.test("Owed: a claim tried again after it landed recovers from the same owner, until the load saves", function()
+	-- A took the key from B and its answer was lost; its next try finds the key its own (issue 41).
+	const taken, first = Lock.claim(dead(), A, TEMPLATE, 2000, false, { force = true })
+	assert(first.kind == "taken", "A took the key from B")
+	Spec.equal(taken.MetaData.KeepBlox.from, { j = "job-B", c = 1, q = 3 })
+	const none, again = Lock.claim(Record.copy(taken), A, TEMPLATE, 2010, false)
+	Spec.equal(none, nil)
+	Spec.equal(again, {
+		kind = "taken",
+		loadCount = 2,
+		record = Record.copy(taken),
+		previous = { jobId = "job-B", loadCount = 1, snap = 3 },
+		lastSavedAt = 2000,
+	})
+	-- The load's first save clears the note: the beat is stored or left by then.
+	const saved = Lock.save(Record.copy(taken), A, 2, { data = { coins = 6 }, release = false }, 2020)
+	Spec.equal(saved.MetaData.KeepBlox.from, nil)
+	const _, later = Lock.claim(Record.copy(saved), A, TEMPLATE, 2030, false)
+	Spec.equal((later :: any).previous, nil)
 end)
 
 return nil

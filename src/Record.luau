@@ -8,13 +8,14 @@
 ---         ActiveSession = {PlaceId, JobId, GUID} | nil,
 ---         ForceLoadSession = {PlaceId, JobId} | nil,
 ---         MetaTags = {},
----         KeepBlox = { lease, owner },                            -- ours, and only ours
+---         KeepBlox = { lease, owner, ... },                       -- ours, and only ours
 ---       },
----       GlobalUpdates = {lastIndex, {{index, message}, ...}},
+---       GlobalUpdates = {lastIndex, {{index, message}, ...}, {{id, at}, ...}?},   -- sent ids: Once
 ---       RobloxMetaData = {}, UserIds = {}, WasOverwritten = false,
 ---     }
 ---
---- Our state lives under `MetaData.KeepBlox` and nowhere else. `lease` goes up by one on every write
+--- Our state lives under `MetaData.KeepBlox`, but for the ids of recently sent messages, which a key
+--- holding only messages keeps in `GlobalUpdates[3]` (see Messages). `lease` goes up by one on every write
 --- the owner makes, and `owner` is the GUID of the session that bumps it. A newcomer that sees the same
 --- lease for long enough knows the owner is dead, without reading anyone's clock.
 
@@ -169,6 +170,13 @@ function Record.ours(meta: any): {
 	restored: { from: string, at: number }?,
 	--> A dead owner's last beat nobody could store yet, and the load count it was noted at (see Owed).
 	owed: { j: string, c: number, q: number, at: number }?,
+	--> A shared document's recently applied update ids, `{id, at}` (see Once).
+	applied: { any }?,
+	--> The stamp and load count of the newest lock-guarded write (see Once): `{loadCount, stamp}`.
+	fence: { number }?,
+	--> The session a claim took the key from, kept until this load's first save, so a claim tried
+	--> again after it landed unanswered finds it (see Lock).
+	from: { j: string, c: number, q: number }?,
 }
 	local state = meta.KeepBlox
 	if type(state) ~= "table" then

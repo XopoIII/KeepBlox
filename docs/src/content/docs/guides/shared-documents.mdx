@@ -88,6 +88,23 @@ path of the bad value.
 Do something once only after `update` returns `ok`, never from inside `change`.
 </Aside>
 
+### Each update lands once
+
+A data store call that fails or times out may still have gone through: Roblox warns that a failed write
+"does not always guarantee that the backend write did not occur", and a call KeepBlox stops waiting for
+keeps running in the engine. Retried blindly, `data.bank += 100` would then land twice.
+
+So every `update` takes one id, the same for all its tries, and stores it in the document by the same
+write that stores the change. A try that finds its id already there changes nothing and returns the
+data as stored. A try also checks its own clock: one that runs more than `loadTimeout + callTimeout`
+seconds (140 s by default) after the update started changes nothing. A call that answers
+`reason = "failed"` may still have landed, but only once.
+
+The ids live in `MetaData.KeepBlox.applied`, as `{ id, os.time() }` pairs, beside the data the game
+sees. A document keeps the newest 100, and forgets each one 600 s after its update could last have
+landed (the 600 s cover servers whose clocks disagree). So an update lands once as long as fewer than
+100 other updates of the same document land while it is still being tried.
+
 ## watch
 
 `watch(key, handler)` calls `handler(data)` after each update of `key` made through a shared store, from

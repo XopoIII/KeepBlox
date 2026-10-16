@@ -10,6 +10,9 @@
 --- concurrent updates from many servers never overwrite each other. That is also its contract:
 --- `change` must not yield, and it may run more than once (the engine retries it when another server
 --- wrote in between). Data is checked as a profile's is, before the write, with the path of a bad value.
+--- A call is tried again when the data store fails, and a try that failed or timed out may still have
+--- gone through, so each update carries one id for all its tries, stored with the change: the change
+--- lands once (see Once). An update that answers "failed" may still land, once.
 --- `watch` hears about every update made through a shared store, from any server (MessagingService,
 --- best effort), and reads the document again.
 ---
@@ -19,6 +22,7 @@
 --- documents in memory and says so once through `onError`, as a profile store does (see Studio).
 const Call = require("./Call")
 const Config = require("./Config")
+const Once = require("./Once")
 const Record = require("./Record")
 const Report = require("./Report")
 const Schema = require("./Schema")
@@ -116,9 +120,14 @@ function Shared.new(name: string, options: Options): SharedStore
 		update = function(_: SharedStore, key: string, change: (data: any) -> ()): Result
 			assert(type(change) == "function", "KeepBlox: update needs a function")
 			prepare()
-			local outcome: Result = { ok = false, reason = "failed" }
-			const ok, problem = retried(function(): any
-				return chosen.dataStore:UpdateAsync(key, function(value: any): any
+			-- One id for every try of this update, so a try that seemed to fail and its retry apply once
+			-- (see Once).
+			const id = origin.guid()
+			const started, startedAt = clock.now(), clock.time()
+			const lifetime = config.loadTimeout + config.callTimeout
+			const ok, answer = retried(function(): any
+				local outcome: Result = { ok = false, reason = "failed" }
+				chosen.dataStore:UpdateAsync(key, function(value: any): any
 					const kind = Record.classify(value)
 					if kind == "foreign" then
 						outcome = { ok = false, reason = "foreign" } :: Result
@@ -131,6 +140,14 @@ function Shared.new(name: string, options: Options): SharedStore
 							reason = "locked",
 							message = "a session holds this key: it is a profile",
 						} :: Result
+						return nil
+					end
+					const ours = Record.ours(record.MetaData)
+					if Once.seen(ours.applied, id) then
+						outcome = { ok = true, data = dataOf(record) } :: Result
+						return nil
+					elseif clock.now() - started > lifetime then
+						outcome = { ok = false, reason = "failed", message = "the update ran out of time" } :: Result
 						return nil
 					end
 					const data = dataOf(record)
@@ -149,20 +166,23 @@ function Shared.new(name: string, options: Options): SharedStore
 					end
 					record.Data = data
 					record.MetaData.LastUpdate = clock.time()
+					ours.applied = Once.note(ours.applied, id, startedAt, clock.time(), lifetime + Once.SKEW)
 					outcome = { ok = true, data = Record.copy(data) } :: Result
 					return record
 				end)
+				return outcome
 			end)
 			if not ok then
-				return { ok = false, reason = "failed", message = tostring(problem) }
+				return { ok = false, reason = "failed", message = tostring(answer) }
 			end
-			if outcome.ok then
+			const result: Result = answer
+			if result.ok then
 				clock.spawn(function()
 					const messaging = chosen.services.messaging
 					pcall(messaging.PublishAsync, messaging, topic(key), { at = clock.time() })
 				end)
 			end
-			return outcome
+			return result
 		end,
 		watch = function(self: SharedStore, key: string, handler: (data: any) -> ()): Services.Connection
 			prepare()
