@@ -134,8 +134,8 @@ Spec.test("Cancelled load: a load that throws tells its caller, or the store, an
 		services.codec = nil
 		const store = KeepBlox.store("Profiles", { template = LoadRig.TEMPLATE, services = services })
 		const errors: { string } = {}
-		store.onError:connect(function(key: string, message: string)
-			table.insert(errors, `{key}: {message}`)
+		store.onError:connect(function(key: string, message: string, kind: KeepBlox.ErrorKind)
+			table.insert(errors, `{key}: {message} [{kind}]`)
 		end)
 		return { world = scene.world, server = scene.server, store = store, errors = errors }
 	end
@@ -166,7 +166,7 @@ Spec.test("Cancelled load: a load that throws tells its caller, or the store, an
 		1,
 		`reported {orphaned.errors[1]}`
 	)
-	Spec.equal(string.find(orphaned.errors[1], THROWN, 1, true) ~= nil, true)
+	Spec.equal(string.sub(orphaned.errors[1], -#THROWN - 7), `{THROWN} [load]`)
 	Spec.equal(#orphaned.world.scheduler.failures, 0)
 	const _, after = LoadRig.start(orphaned)
 	orphaned.world.scheduler:run(orphaned.world.scheduler.now + 5)
@@ -188,7 +188,7 @@ Spec.test("Cancelled load: a release, a hand-over and a shutdown reach the sessi
 	scheduler:run(scheduler.now + 10)
 	Spec.equal(LoadRig.heldBy(scene.world, scene.server), true, "the release cannot land yet")
 	Spec.equal(#scene.errors >= 3, true, "and its tries are reported")
-	Spec.equal(scene.errors[1], "u_1: save failed: 503: down")
+	Spec.equal(scene.errors[1], "u_1: save failed: 503: down [save]")
 	const _, waiting = LoadRig.start(scene)
 	scheduler:run(scheduler.now + 10)
 	Spec.equal(waiting.result, nil, "a load of the key waits for it")

@@ -43,7 +43,7 @@ function LetGo.giveBack(context: Session.Context, key: string, loadCount: number
 		if ok then
 			return
 		end
-		context.report(key, `a key its load gave up was not given back: {err}`)
+		context.report(key, `a key its load gave up was not given back: {err}`, "release")
 		if clock.now() + delay >= deadline then
 			return
 		end
@@ -63,7 +63,7 @@ function LetGo.undo(context: Session.Context, key: string, taken: Lock.Taken)
 	if previous ~= nil and Record.ours(taken.record.MetaData).trade == nil then
 		const ok, problem, unstored = pcall(Recover.run, context, key, taken.loadCount, taken.record, previous)
 		if not ok then
-			context.report(key, `the previous owner's last beat could not be stored: {problem}`)
+			context.report(key, `the previous owner's last beat could not be stored: {problem}`, "snapshot")
 		end
 		owed = if not ok or unstored then previous else nil
 	end
@@ -94,7 +94,7 @@ function LetGo.disown(context: Session.Context, key: string)
 			if ok then
 				return
 			elseif clock.now() + delay >= deadline then
-				context.report(key, `a key its load may have taken could not be let go: {err}`)
+				context.report(key, `a key its load may have taken could not be let go: {err}`, "release")
 				return
 			end
 			clock.wait(delay)
@@ -128,9 +128,9 @@ function LetGo.stray(context: Session.Context, key: string, loadCount: number)
 		end
 	)
 	if not ok then
-		context.report(key, `a key held with no session was not freed for the server asking for it: {err}`)
+		context.report(key, `a key held with no session was not freed for the server asking for it: {err}`, "release")
 	elseif freed then
-		context.report(key, "a key held with no session was freed for the server asking for it")
+		context.report(key, "a key held with no session was freed for the server asking for it", "release")
 	end
 end
 

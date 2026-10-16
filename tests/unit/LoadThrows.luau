@@ -160,12 +160,12 @@ end
 
 const THROWN = "KeepBlox: this profile is compressed, and this server cannot decompress"
 
--- Whether `text` is `head`, then the place the error was thrown at, then `THROWN`.
-const function thrownAfter(text: any, head: string): boolean
+-- Whether `text` is `head`, then the place the error was thrown at, then `ending`.
+const function thrownAfter(text: any, head: string, ending: string): boolean
 	return type(text) == "string"
 		and string.sub(text, 1, #head) == head
-		and string.sub(text, -#THROWN) == THROWN
-		and string.match(string.sub(text, #head + 1, -#THROWN - 1), "^[%w_/%.%-]*src/%a+:%d+: $") ~= nil
+		and string.sub(text, -#ending) == ending
+		and string.match(string.sub(text, #head + 1, -#ending - 1), "^[%w_/%.%-]*src/%a+:%d+: $") ~= nil
 end
 
 -- Server B stores "u_1" compressed, with `size` bytes of text and 5 coins; with `crash`, it then plays
@@ -209,7 +209,7 @@ Spec.test("Load throws: a profile this server cannot decompress is given back, n
 		caught = if ok then "nothing thrown" else problem
 		Spec.equal(LoadRig.heldBy(scene.world, scene.server), false, "A holds the key after the throw")
 	end, scheduler.now + 30)
-	Spec.equal(thrownAfter(caught, ""), true, `threw {caught}`)
+	Spec.equal(thrownAfter(caught, "", THROWN), true, `threw {caught}`)
 	Spec.equal(scene.errors, {})
 	-- The claim and the give-back: two requests, each a read and a write.
 	Spec.equal({ spent.StandardRead, spent.StandardWrite }, { 2, 2 })
@@ -246,7 +246,7 @@ Spec.test("Load throws: a last beat of edits this server cannot apply is reporte
 	const function build(): Scene
 		return compressed(10, 3000, true)
 	end
-	const REPORT = "u_1: the previous owner's last beat could not be stored: "
+	const HEAD, TAIL = "u_1: the previous owner's last beat could not be stored: ", `{THROWN} [snapshot]`
 	-- The load throws.
 	const thrown = build()
 	local caught: any = nil
@@ -255,8 +255,8 @@ Spec.test("Load throws: a last beat of edits this server cannot apply is reporte
 		caught = if ok then "nothing thrown" else problem
 		Spec.equal(LoadRig.heldBy(thrown.world, thrown.server), false, "A holds the key after the throw")
 	end, thrown.world.scheduler.now + 60)
-	Spec.equal(thrownAfter(caught, ""), true, `threw {caught}`)
-	Spec.equal({ #thrown.errors, thrownAfter(thrown.errors[1], REPORT) }, { 1, true } :: { any }, thrown.errors[1])
+	Spec.equal(thrownAfter(caught, "", THROWN), true, `threw {caught}`)
+	Spec.equal({ #thrown.errors, thrownAfter(thrown.errors[1], HEAD, TAIL) }, { 1, true } :: { any }, thrown.errors[1])
 	Spec.equal(LoadRig.stored(thrown.world).MetaData.KeepBlox.owed, { j = "job-B", c = 1, q = 0, at = 2 })
 	GiveUpRig.next(thrown, "C", 6, GiveUpRig.FREE, "after the throw")
 	-- The load gives up as its claim lands: it answers, and does not throw.
@@ -268,7 +268,7 @@ Spec.test("Load throws: a last beat of edits this server cannot apply is reporte
 		Spec.equal(LoadRig.heldBy(left.world, left.server), false, "A holds the key after its answer")
 	end, left.world.scheduler.now + 60)
 	Spec.equal(answer, { ok = false, reason = "cancelled" })
-	Spec.equal({ #left.errors, thrownAfter(left.errors[1], REPORT) }, { 1, true } :: { any }, left.errors[1])
+	Spec.equal({ #left.errors, thrownAfter(left.errors[1], HEAD, TAIL) }, { 1, true } :: { any }, left.errors[1])
 	GiveUpRig.next(left, "C", 6, GiveUpRig.FREE, "after the answer")
 end)
 

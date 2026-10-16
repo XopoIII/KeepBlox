@@ -4,6 +4,22 @@
 declare namespace KeepBlox {
 	type EndReason = "released" | "handedOver" | "lost" | "shutdown";
 
+	/** What a problem `onError` reports is about: one word of a fixed list, never a key or an id. */
+	type ErrorKind =
+		| "save"
+		| "refused"
+		| "repair"
+		| "load"
+		| "migration"
+		| "release"
+		| "snapshot"
+		| "quarantine"
+		| "leaderboard"
+		| "receipt"
+		| "message"
+		| "import"
+		| "studio";
+
 	type LoadFailure =
 		| "cancelled"
 		| "closing"
@@ -96,7 +112,7 @@ declare namespace KeepBlox {
 
 	interface Store<T extends object> {
 		readonly name: string;
-		readonly onError: Signal<[key: string, message: string]>;
+		readonly onError: Signal<[key: string, message: string, kind: ErrorKind]>;
 		load(key: string, options?: LoadOptions): LoadResult<T>;
 		profiles(): Record<string, Profile<T>>;
 		message(key: string, message: object): Sent;
@@ -153,8 +169,8 @@ declare namespace KeepBlox {
 
 	interface SharedStore<T extends object> {
 		readonly name: string;
-		/** Studio cannot reach live data, so the documents are kept in memory: once, with the key "". */
-		readonly onError: Signal<[key: string, message: string]>;
+		/** Studio cannot reach live data, so the documents are kept in memory: once, with the key "" and the kind "studio". */
+		readonly onError: Signal<[key: string, message: string, kind: ErrorKind]>;
 		read(key: string): SharedResult<T>;
 		update(key: string, change: (data: T) => void): SharedResult<T>;
 		watch(key: string, handler: (data: T) => void): { Disconnect(): void };

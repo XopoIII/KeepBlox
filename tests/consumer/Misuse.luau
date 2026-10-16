@@ -18,6 +18,12 @@ if result.ok then
 end
 const name: number = store.name -- error
 print(name)
+-- The kind `onError` hands a listener is a word of its list, not any string, and not a number.
+store.onError:connect(function(_key: string, _message: string, kind: number) -- error
+	print(kind)
+end)
+const kind: KeepBlox.ErrorKind = "saved" -- error
+print(kind)
 
 -- A misspelt setting is a type error under the new solver; the old one cannot tell a table with an
 -- unknown field from one without, and leaves it to the assert when the store opens.

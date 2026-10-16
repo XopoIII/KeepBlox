@@ -118,8 +118,8 @@ end
 -- Updates and reads a document, watched, and returns what `onError` said and what reached the backend.
 const function play(world: World.World, store: KeepBlox.SharedStore): ({ string }, { string }, any)
 	const errors: { string } = {}
-	store.onError:connect(function(key: string, message: string)
-		table.insert(errors, `{key}|{message}`)
+	store.onError:connect(function(key: string, message: string, kind: KeepBlox.ErrorKind)
+		table.insert(errors, `{key}|{message} [{kind}]`)
 	end)
 	const written: { string } = {}
 	world.backend:observe(function(event)
@@ -146,7 +146,7 @@ Spec.test("Shared: Studio in a place never published keeps documents in memory a
 	const world = World.new(4)
 	const store = KeepBlox.shared("Unpublished", { template = TEMPLATE, services = services(world, true, UNPUBLISHED) })
 	const errors, written, watched = play(world, store)
-	Spec.equal(errors, { "|This place is not published: profiles are kept in memory, and nothing is saved" })
+	Spec.equal(errors, { "|This place is not published: profiles are kept in memory, and nothing is saved [studio]" })
 	Spec.equal(written, {})
 	Spec.equal(watched, 2, "a watcher hears the updates made in memory")
 end)
@@ -156,7 +156,7 @@ Spec.test("Shared: Studio without API access falls back to memory after a read-o
 	world.faults:add({ error = "403: Cannot write to DataStore from studio if API access is not enabled." })
 	const store = KeepBlox.shared("NoAccess", { template = TEMPLATE, services = services(world, true) })
 	const errors, written = play(world, store)
-	Spec.equal(errors, { "|Studio has no API access: profiles are kept in memory, and nothing is saved" })
+	Spec.equal(errors, { "|Studio has no API access: profiles are kept in memory, and nothing is saved [studio]" })
 	Spec.equal(written, {})
 end)
 
@@ -178,8 +178,8 @@ for name, call in FIRST do
 		world.faults:add({ error = "403: Cannot write to DataStore from studio if API access is not enabled." })
 		const store = KeepBlox.shared(`First_{name}`, { template = TEMPLATE, services = services(world, true) })
 		const errors: { string } = {}
-		store.onError:connect(function(key: string, message: string)
-			table.insert(errors, `{key}|{message}`)
+		store.onError:connect(function(key: string, message: string, kind: KeepBlox.ErrorKind)
+			table.insert(errors, `{key}|{message} [{kind}]`)
 		end)
 		local took = math.huge
 		Sim.run(world.scheduler, "A", function()
@@ -187,7 +187,7 @@ for name, call in FIRST do
 			call(store)
 			took = world.scheduler.now - started
 		end, 120)
-		Spec.equal(errors, { "|Studio has no API access: profiles are kept in memory, and nothing is saved" })
+		Spec.equal(errors, { "|Studio has no API access: profiles are kept in memory, and nothing is saved [studio]" })
 		Spec.truthy(took < 2, `one refused read, no retries ({took} s)`)
 	end)
 end

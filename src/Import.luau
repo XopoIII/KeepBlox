@@ -74,7 +74,7 @@ const function retrying(
 		if ok then
 			return nil, value, info
 		end
-		context.report("", `import read failed: {value}`)
+		context.report("", `import read failed: {value}`, "import")
 		clock.wait(delay)
 		delay = math.min(delay * 2, context.config.backoffMax)
 	end

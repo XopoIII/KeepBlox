@@ -44,6 +44,14 @@ const name: string = store.name
 store.onError:connect(function(key: string, message: string)
 	print(name, key, message)
 end)
+-- The kind, a game's to count without parsing the message.
+const counts: { [KeepBlox.ErrorKind]: number } = {}
+store.onError:connect(function(_key: string, _message: string, kind: KeepBlox.ErrorKind)
+	counts[kind] = (counts[kind] or 0) + 1
+	if kind == "save" or kind == "leaderboard" or kind == "receipt" then
+		warn(kind)
+	end
+end)
 
 const result: KeepBlox.LoadResult = store:load("u_1", {
 	cancel = function(): boolean
@@ -145,6 +153,9 @@ print(outcome)
 const SHARED: KeepBlox.SharedOptions = { template = {}, config = { callTimeout = 10 } }
 const shared: KeepBlox.SharedStore = KeepBlox.shared("Guilds", SHARED)
 const sharedName: string = shared.name
+shared.onError:connect(function(_key: string, _message: string, kind: KeepBlox.ErrorKind)
+	print(kind)
+end)
 print(sharedName)
 
 -- A game that types its data names the shape once, on the store; every profile of it carries the shape.

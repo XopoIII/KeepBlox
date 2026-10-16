@@ -24,7 +24,7 @@ Spec.test(
 				times = 1,
 			})
 			Spec.equal(profile:save(), false)
-			Spec.equal(rigged.errors, { "u_1: save failed: 502: API Services rejected request" })
+			Spec.equal(rigged.errors, { "u_1: save failed: 502: API Services rejected request [save]" })
 			-- The same failure behind a write in flight: the caller that owns the save and the one that
 			-- joined it both hear `false`.
 			rigged.save(profile, "holder")
@@ -54,7 +54,7 @@ Spec.test(
 			Spec.equal(profile:save(), true)
 			Spec.equal(world.scheduler.now - started >= 20, true, "it waited for the lost write's deadline")
 			Spec.equal(world.scheduler.now - started < 22, true, "and no longer")
-			Spec.equal(rigged.errors, { "u_1: save failed: timeout" })
+			Spec.equal(rigged.errors, { "u_1: save failed: timeout [save]" })
 			Spec.equal(#rigged.log, loaded + 1)
 			Spec.equal(rigged.log[loaded + 1], { coins = 7, held = true })
 			profile:release()
@@ -100,7 +100,7 @@ Spec.test("Cancelled errors: a write that throws reaches its caller, those who j
 		hold(3)
 		world.scheduler:cancel(rigged.save(profile, "owner, cancelled"))
 		world.scheduler:wait(5)
-		Spec.equal(rigged.errors, { "u_1: a write failed after its caller was cancelled: the codec is down" })
+		Spec.equal(rigged.errors, { "u_1: a write failed after its caller was cancelled: the codec is down [save]" })
 		Spec.equal(#rigged.log, loaded + 2)
 		Spec.equal(rigged.log[loaded + 2], { coins = 3, held = true })
 		-- And the lane goes on once the codec is back.

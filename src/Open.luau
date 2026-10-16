@@ -136,7 +136,7 @@ const function open(state: State, key: string, options: LoadOptions?, deadline: 
 		drop()
 		state.opening[key] = nil
 		if entered.message then
-			state.onError:fire(key, entered.message)
+			state.onError:fire(key, entered.message, "migration")
 		end
 		return { ok = false, reason = entered.reason }
 	end
@@ -157,7 +157,11 @@ const function open(state: State, key: string, options: LoadOptions?, deadline: 
 			if released then
 				break
 			end
-			state.onError:fire(key, `the release of a load nobody holds failed, and is tried again: {problem}`)
+			state.onError:fire(
+				key,
+				`the release of a load nobody holds failed, and is tried again: {problem}`,
+				"release"
+			)
 			services.clock.wait(delay)
 			delay = math.min(delay * 2, state.config.backoffMax)
 		end
@@ -188,7 +192,7 @@ function Open.load(state: State, key: string, asked: LoadOptions?): LoadResult
 	const asker = coroutine.running()
 	state.opening[key] = asker
 	return Apart.run(clock, function(problem: any)
-		state.onError:fire(key, `a load failed after its caller was cancelled: {problem}`)
+		state.onError:fire(key, `a load failed after its caller was cancelled: {problem}`, "load")
 	end, function(): LoadResult
 		const ok, result = pcall(open, state, key, options, deadline, asker)
 		if not ok then

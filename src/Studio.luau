@@ -13,6 +13,7 @@
 --- Profile stores and shared stores both open through here (`choose`), and both call `guard`'s function
 --- before they use the data store.
 const MockServices = require("./MockServices")
+const Report = require("./Report")
 const Serial = require("./Serial")
 const Services = require("./Services")
 
@@ -46,7 +47,7 @@ function Studio.choose(
 	name: string,
 	mock: (boolean | string)?,
 	mode: Mode,
-	report: MockServices.Report?
+	report: Report.Report?
 ): Chosen
 	const inMemory = base.isStudio and mode ~= "live"
 	local services = base
@@ -81,11 +82,11 @@ end
 --> call: by then someone listens), and while access is not settled it settles it with one read, never a
 --> write, which would touch a live key. When Studio has no access, `chosen` moves to memory, `report`
 --> is told once, with the key "", and `moved` is called.
-function Studio.guard(chosen: Chosen, name: string, report: MockServices.Report, moved: (() -> ())?): () -> ()
+function Studio.guard(chosen: Chosen, name: string, report: Report.Report, moved: (() -> ())?): () -> ()
 	const checking = Serial.new(chosen.services.clock)
 	return function()
 		if chosen.notice then
-			report("", chosen.notice)
+			report("", chosen.notice, "studio")
 			chosen.notice = nil
 		end
 		if chosen.checked then
@@ -99,7 +100,7 @@ function Studio.guard(chosen: Chosen, name: string, report: MockServices.Report,
 			if not ok and Studio.isNoAccess(tostring(problem)) then
 				chosen.services = MockServices.wrap(chosen.services, "studio")
 				chosen.dataStore = chosen.services.dataStores:GetDataStore(name)
-				report("", Studio.notice(tostring(problem)))
+				report("", Studio.notice(tostring(problem)), "studio")
 				if moved then
 					moved()
 				end

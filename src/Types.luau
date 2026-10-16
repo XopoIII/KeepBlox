@@ -6,6 +6,7 @@ const Inbox = require("./Inbox")
 const Migrate = require("./Migrate")
 const Profile = require("./Profile")
 const Record = require("./Record")
+const Report = require("./Report")
 const Serial = require("./Serial")
 const Services = require("./Services")
 
@@ -17,7 +18,7 @@ export type Context = {
 	dataStore: Services.DataStore,
 	identity: Record.Identity,
 	--> Reports a problem with a key; the store turns it into its `onError` signal.
-	report: (key: string, message: string) -> (),
+	report: Report.Report,
 	--> True once the server began shutting down.
 	closing: () -> boolean,
 	--> The schema and migrations the data follows.

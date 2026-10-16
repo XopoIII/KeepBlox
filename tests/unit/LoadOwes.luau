@@ -13,7 +13,7 @@ const World = require("@fakes/World")
 
 type Scene = LoadRig.Scene
 
-const UNSTORED = "u_1: a newer snapshot was found but could not be stored; the stored data is used"
+const UNSTORED = "u_1: a newer snapshot was found but could not be stored; the stored data is used [snapshot]"
 
 -- Server B held "u_1" with 5 coins stored and a sixth only in its beats, and died (or the world
 -- `before` makes); A's store takes `options`. `onLanded` runs once, as the write that makes the key
@@ -180,7 +180,7 @@ Spec.test("Load owes: a load that fails after its beat could not be stored tries
 	Spec.equal(answer, { ok = false, reason = "migration" })
 	Spec.equal(made.errors[1], UNSTORED)
 	Spec.equal(#made.errors, 2)
-	Spec.equal(string.find(made.errors[2], "no way up", 1, true) ~= nil, true, made.errors[2])
+	Spec.equal(made.errors[2], "u_1: migration 1 failed: no way up [migration]")
 	Spec.equal(LoadRig.stored(made.world).Data.coins, 6, "the beat, stored by the undoing")
 	Spec.equal({ noted(made.world) }, { nil, true } :: { any })
 	GiveUpRig.next(made, "C", 6, GiveUpRig.FREE, "after the answer")

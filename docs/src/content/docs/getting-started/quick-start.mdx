@@ -196,9 +196,12 @@ so looking one up is cheap and holding it is safe.
 
 ## Errors
 
-`store.onError` fires with `(key, message)` for every problem worth logging: a failed call, refused
+`store.onError` fires with `(key, message, kind)` for every problem worth logging: a failed call, refused
 data, a quarantined value, a failed import read. The key is `""` for a problem not tied to one key. Log
-it; it is how bad data and outages become visible.
+it; it is how bad data and outages become visible. `kind` is one word of a fixed list (`"save"`,
+`"load"`, `"leaderboard"`, `"receipt"` and the rest, in the
+[store reference](/KeepBlox/reference/store/#onerror)), with no key or id in it: count it, or put it in an
+analytics row, without parsing the message.
 
 ## Next
 

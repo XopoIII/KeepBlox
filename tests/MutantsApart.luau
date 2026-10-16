@@ -65,20 +65,20 @@ return {
 	},
 	{
 		file = "src/Open.luau",
-		from = "state.onError:fire(key, `a load failed after its caller was cancelled: {problem}`)",
+		from = 'state.onError:fire(key, `a load failed after its caller was cancelled: {problem}`, "load")',
 		to = "",
 		breaks = "a load that throws after its caller was cancelled reaches onError",
 	},
 	{
 		file = "src/Enter.luau",
-		from = "state.onError:fire(key, `a release failed after its caller was cancelled: {problem}`)",
+		from = 'state.onError:fire(key, `a release failed after its caller was cancelled: {problem}`, "release")',
 		to = "",
 		breaks = "a release that throws after its caller was cancelled reaches onError",
 	},
 	{
 		file = "src/Enter.luau",
 		from = "\t\t\tApart.run(clock, function(problem: any)\n"
-			.. "\t\t\t\tstate.onError:fire(key, `a release failed after its caller was cancelled: {problem}`)\n"
+			.. '\t\t\t\tstate.onError:fire(key, `a release failed after its caller was cancelled: {problem}`, "release")\n'
 			.. '\t\t\tend, Session.release, context, session, "released")\n',
 		to = '\t\t\tSession.release(context, session, "released")\n',
 		breaks = "a release whose caller is cancelled between two tries still retries its final write",

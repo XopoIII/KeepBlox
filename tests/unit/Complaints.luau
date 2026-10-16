@@ -15,8 +15,8 @@ const function setup(players: number?): (World.World, World.Server, KeepBlox.Sto
 	const server = world:server({ name = "A", players = players or 1 })
 	const store = KeepBlox.store("Profiles", { template = TEMPLATE, services = server.services })
 	const errors: { string } = {}
-	store.onError:connect(function(key: string, message: string)
-		table.insert(errors, `{key}: {message}`)
+	store.onError:connect(function(key: string, message: string, kind: KeepBlox.ErrorKind)
+		table.insert(errors, `{key}: {message} [{kind}]`)
 	end)
 	return world, server, store, errors
 end

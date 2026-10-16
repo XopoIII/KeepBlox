@@ -20,6 +20,7 @@
 const Call = require("./Call")
 const Config = require("./Config")
 const Record = require("./Record")
+const Report = require("./Report")
 const Schema = require("./Schema")
 const Services = require("./Services")
 const Signal = require("./Signal")
@@ -40,9 +41,9 @@ export type Result =
 
 export type SharedStore = {
 	name: string,
-	--> Fires `(key, message)` for a problem worth logging. Today that is one: Studio cannot reach live
-	--> data, so the documents are kept in memory (key "", once, on the first call).
-	onError: Signal.Signal<string, string>,
+	--> Fires `(key, message, kind)` for a problem worth logging. Today that is one: Studio cannot reach
+	--> live data, so the documents are kept in memory (key "", kind "studio", once, on the first call).
+	onError: Signal.Signal<string, string, Report.ErrorKind>,
 	--> The document's data now (a copy); the template when it does not exist yet.
 	read: (self: SharedStore, key: string) -> Result,
 	--> Changes the document in one UpdateAsync (see the header). Returns the data stored.
@@ -65,11 +66,11 @@ function Shared.new(name: string, options: Options): SharedStore
 	const config = Config.resolve(options.config)
 	const origin = options.services or require("./RobloxServices").build()
 	const clock = origin.clock
-	const onError: Signal.Signal<string, string> = Signal.new(clock.spawn)
+	const onError: Signal.Signal<string, string, Report.ErrorKind> = Signal.new(clock.spawn)
 	-- `chosen` moves to memory when Studio cannot reach live data: its fields are read at each call.
 	const chosen = Studio.choose(origin, name, if options.mock == true then "shared" else options.mock, "live")
-	const prepare = Studio.guard(chosen, name, function(key: string, message: string)
-		onError:fire(key, message)
+	const prepare = Studio.guard(chosen, name, function(key: string, message: string, kind: Report.ErrorKind)
+		onError:fire(key, message, kind)
 	end)
 
 	const function topic(key: string): string

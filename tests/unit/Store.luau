@@ -23,8 +23,8 @@ const function setup(seed: number?): (World.World, World.Server, KeepBlox.Store,
 		{ template = TEMPLATE, services = server.services, config = { renew = 15, death = 35 } }
 	)
 	const errors: { string } = {}
-	store.onError:connect(function(key: string, message: string)
-		table.insert(errors, `{key}: {message}`)
+	store.onError:connect(function(key: string, message: string, kind: KeepBlox.ErrorKind)
+		table.insert(errors, `{key}: {message} [{kind}]`)
 	end)
 	return world, server, store, errors
 end
@@ -107,7 +107,7 @@ Spec.test("Store: a bad value is repaired in what is stored, reported once with 
 		profile:release()
 	end, 60)
 	Spec.equal(errors, {
-		"u_1: stored with a repair: Data.items[1].name: string is not valid UTF-8; its bad bytes were replaced (and 2 more)",
+		"u_1: stored with a repair: Data.items[1].name: string is not valid UTF-8; its bad bytes were replaced (and 2 more) [repair]",
 	})
 	const record = stored(world, "u_1")
 	Spec.equal(record.Data, { coins = 4, items = { { name = `bad{utf8.char(0xFFFD)}name` }, { name = "ok" } } })
@@ -127,7 +127,10 @@ Spec.test("Store: a table that contains itself does not break the save; the loop
 		Spec.equal(result.profile:save(), true)
 		result.profile:release()
 	end, 60)
-	Spec.equal(errors, { "u_1: stored with a repair: Data.items[1].owner: table contains itself (a cycle); left out" })
+	Spec.equal(
+		errors,
+		{ "u_1: stored with a repair: Data.items[1].owner: table contains itself (a cycle); left out [repair]" }
+	)
 	Spec.equal(stored(world, "u_1").Data, { coins = 5, items = { { name = "a" } } })
 end)
 
@@ -143,7 +146,7 @@ Spec.test("Store: data whose shape cannot be stored is refused with its path; th
 		Spec.equal(profile:save(), true, "the lease still renews")
 		profile:release()
 	end, 60)
-	Spec.equal(errors, { "u_1: not saved: Data.items.1: number key in a table that is not an array" })
+	Spec.equal(errors, { "u_1: not saved: Data.items.1: number key in a table that is not an array [refused]" })
 	const record = stored(world, "u_1")
 	Spec.equal(record.Data, { coins = 3, items = {} })
 	Spec.equal(record.MetaData.ActiveSession, nil)

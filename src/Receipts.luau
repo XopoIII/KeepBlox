@@ -57,12 +57,14 @@ function Receipts.handler(internals: Internals, options: Options): (receipt: Rec
 		if not table.find(session.receipts, id) then
 			const grant = options.products[receipt.ProductId]
 			if grant == nil then
-				internals.context().report(session.key, `no grant for product {receipt.ProductId}`)
+				internals.context().report(session.key, `no grant for product {receipt.ProductId}`, "receipt")
 				return "NotProcessedYet"
 			end
 			const ok, problem = pcall(grant, session.profile, receipt)
 			if not ok then
-				internals.context().report(session.key, `the grant for product {receipt.ProductId} failed: {problem}`)
+				internals
+					.context()
+					.report(session.key, `the grant for product {receipt.ProductId} failed: {problem}`, "receipt")
 				return "NotProcessedYet"
 			end
 			-- The id joins the list right after the grant, with no yield between: one snapshot holds both.

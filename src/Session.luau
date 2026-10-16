@@ -99,7 +99,7 @@ const function write(
 			const note = `stored with a repair: {fixes[1]}{if #fixes > 1 then ` (and {#fixes - 1} more)` else ""}`
 			if note ~= session.lastProblem then
 				session.lastProblem = note
-				context.report(session.key, note)
+				context.report(session.key, note, "repair")
 			end
 			if storable == snapshot then
 				snapshot = repaired
@@ -118,7 +118,7 @@ const function write(
 	if encoded == nil then
 		if problem ~= session.lastProblem then
 			session.lastProblem = problem
-			context.report(session.key, `not saved: {problem}`)
+			context.report(session.key, `not saved: {problem}`, "refused")
 		end
 		-- The last snapshot that could be stored is newer than the store's copy: that is stored instead,
 		-- with the messages and receipts that were in it (see Lease).
@@ -139,7 +139,7 @@ const function write(
 			data, problem = Codec.pack(context.services.codec, context.compress, storable, encoded)
 			if problem and problem ~= session.lastProblem then
 				session.lastProblem = problem
-				context.report(session.key, `not saved: {problem}`)
+				context.report(session.key, `not saved: {problem}`, "refused")
 			end
 		end
 	end
@@ -173,7 +173,7 @@ const function write(
 		end
 	)
 	if not ok then
-		context.report(session.key, `save failed: {err}`)
+		context.report(session.key, `save failed: {err}`, "save")
 		return false
 	end
 	const result = outcome :: Lock.Save

@@ -108,13 +108,16 @@ Spec.test("SnapshotDelta: edits made against other data than the record's are no
 	snapshot.b = "0000000000000000"
 	const b = store(world, "B")
 	const reports = {}
-	b.onError:connect(function(_: string, message: string)
-		table.insert(reports, message)
+	b.onError:connect(function(_: string, message: string, kind: KeepBlox.ErrorKind)
+		table.insert(reports, `{message} [{kind}]`)
 	end)
 	const profile = reload(world, b)
 	Spec.equal(profile.Data.coins, stored(world, "u_1").Data.coins)
 	Spec.equal(profile.Data.coins, 0, "the coins as stored with the things")
-	Spec.equal(reports, { "a newer snapshot was found but was made against other data; the stored data is used" })
+	Spec.equal(
+		reports,
+		{ "a newer snapshot was found but was made against other data; the stored data is used [snapshot]" }
+	)
 end)
 
 Spec.test("SnapshotDelta: a large profile whose edits do not fit is written every renewFallback", function()

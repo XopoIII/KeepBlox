@@ -41,10 +41,10 @@ guilds.onError:connect(function(key, message)
 end)
 ```
 
-`onError` fires `(key, message)` as a store's does. A shared store reports one thing through it: in
+`onError` fires `(key, message, kind)` as a store's does. A shared store reports one thing through it: in
 Studio, a place that cannot reach live data (never published, or without API access) keeps the documents
-in memory for the play test, and says so once, with the key `""`, on the first `read`, `update` or
-`watch`. See [Studio and testing](/KeepBlox/guides/studio-and-testing/). A failed `read` or `update` is
+in memory for the play test, and says so once, with the key `""` and the kind `"studio"`, on the first
+`read`, `update` or `watch`. See [Studio and testing](/KeepBlox/guides/studio-and-testing/). A failed `read` or `update` is
 not reported here: its result carries the reason.
 
 ## No session lock

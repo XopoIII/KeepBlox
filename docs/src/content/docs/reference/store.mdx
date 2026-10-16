@@ -86,6 +86,7 @@ The module exports the types of everything above, for annotating a game's own co
 | `KeepBlox.SharedStore`, `KeepBlox.SharedOptions` | A shared store, and the options `KeepBlox.shared` takes. |
 | `KeepBlox.Profile<T>`, `KeepBlox.EndReason` | A profile, and what its `onEnded` fires with. |
 | `KeepBlox.LoadOptions`, `KeepBlox.LoadResult<T>`, `KeepBlox.LoadFailure` | What `store:load` takes and answers, and the `reason` of a failure. |
+| `KeepBlox.ErrorKind` | The third argument of `onError`: what a problem is about, one word of a fixed list. |
 | `KeepBlox.ReceiptOptions`, `KeepBlox.Receipt`, `KeepBlox.ReceiptDecision` | What `store:receipts` and `KeepBlox.processReceipt` take, a purchase, and the name `store:receipts` answers with. |
 | `KeepBlox.Config`, `KeepBlox.ConfigOverrides` | Every setting, and the `config` option: any of them. |
 | `KeepBlox.Migration` | One migration: a step, or `{ up, down }`. |
@@ -148,18 +149,41 @@ The store's name, as passed to `KeepBlox.store`.
 ### onError
 
 ```lua
-store.onError: Signal<(key: string, message: string)>
+store.onError: Signal<(key: string, message: string, kind: KeepBlox.ErrorKind)>
 ```
 
 Fires for every problem worth logging: failed calls, refused data, quarantined values, failed migrations,
-failed leaderboard writes. `key` is the profile key, or `""` for a problem with no key. Listeners run in
-their own threads.
+failed leaderboard writes. `key` is the profile key, or `""` for a problem with no key. `message` is
+prose for a log, and may name the key. `kind` is one word from the list below, and never holds a key, an
+id or anything from the data, so a game can count it or put it in an analytics row as it is. Listeners
+run in their own threads, and a listener that takes only `(key, message)` works as before.
 
 ```lua
-store.onError:connect(function(key, message)
-	warn(`[KeepBlox] {key}: {message}`)
+local counts = {}
+store.onError:connect(function(key, message, kind)
+	warn(`[KeepBlox] {kind} {key}: {message}`)
+	counts[kind] = (counts[kind] or 0) + 1 -- the kind alone holds no key: fit for an analytics row
 end)
 ```
+
+| `kind` | What happened |
+|---|---|
+| `"save"` | A write of an open profile failed: a save, a renewal, a release, or a write whose caller was cancelled. It is tried again at the next save. |
+| `"refused"` | The data could not be stored: a value no data store holds, data off the schema, or a size over the limit, even compressed. The last good save stays. |
+| `"repair"` | The data was stored with a value repaired; the message names its path. |
+| `"load"` | A try of a load failed and is tried again, or a load failed after its caller was cancelled. |
+| `"migration"` | A load found data it cannot use: a newer schema version, a migration that threw, or data that does not fit the schema. The load fails with that reason. |
+| `"release"` | A key a load gave up was not given back, or not let go of; or a key this server held with no session was freed for the server asking for it, or could not be. |
+| `"snapshot"` | A dead server's last heartbeat could not be used or stored, so the stored data is used. |
+| `"quarantine"` | The stored value is not a profile: it was copied to `<store>__quarantine` and left untouched. |
+| `"leaderboard"` | A leaderboard's read function threw, or its ordered data store was not written. |
+| `"receipt"` | A purchase has no grant, or its grant threw; it is answered `NotProcessedYet`. |
+| `"message"` | A message was refused (the queue is full, or the key is not a profile) or not sent, or a message handler threw. |
+| `"import"` | A read from the library being moved from failed, and is tried again. |
+| `"studio"` | Studio keeps the data in memory, or could not read a live profile to copy. |
+
+A kind is added only in a release that says so in the changelog; none is renamed or removed. The type is
+`KeepBlox.ErrorKind`.
 
 ## Store methods
 

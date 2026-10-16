@@ -22,8 +22,8 @@ const function setup(options: { [string]: any }?): (World.World, World.Server, K
 	end
 	const store = KeepBlox.store("Profiles", storeOptions)
 	const errors: { string } = {}
-	store.onError:connect(function(key: string, message: string)
-		table.insert(errors, `{key}: {message}`)
+	store.onError:connect(function(key: string, message: string, kind: KeepBlox.ErrorKind)
+		table.insert(errors, `{key}: {message} [{kind}]`)
 	end)
 	return world, server, store, errors
 end
@@ -120,7 +120,7 @@ Spec.test("Boards: a board function that throws is reported; the save itself is 
 		Spec.equal(result.profile:save(), true)
 		world.scheduler:wait(1)
 	end, 60)
-	Spec.equal(errors, { "u_1: leaderboard broken failed: no field" })
+	Spec.equal(errors, { "u_1: leaderboard broken failed: no field [leaderboard]" })
 end)
 
 Spec.test("Boards: an answer is kept for a minute, to spare the small list budget", function()

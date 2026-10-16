@@ -80,8 +80,8 @@ const function setup(options: any?): (World.World, World.Server, KeepBlox.Store,
 			config = { renew = 15, death = 35 },
 		})
 	const errors = {}
-	store.onError:connect(function(_: string, message: string)
-		table.insert(errors, message)
+	store.onError:connect(function(_: string, message: string, kind: KeepBlox.ErrorKind)
+		table.insert(errors, `{message} [{kind}]`)
 	end)
 	return world, server, store, errors
 end
@@ -125,7 +125,7 @@ Spec.test("Migrate: data from a newer version is refused, the key let go, nothin
 	end, 60)
 	Spec.equal(stored(world).Data, { coins = 1, stats = { wins = 0, losses = 0 }, future = true })
 	Spec.equal(stored(world).MetaData.ActiveSession, nil)
-	Spec.equal(errors, { "the data is at schema version 3, newer than this server's 2" })
+	Spec.equal(errors, { "the data is at schema version 3, newer than this server's 2 [migration]" })
 end)
 
 Spec.test("Migrate: a failing migration refuses the load and leaves the data as it was", function()
@@ -160,7 +160,7 @@ Spec.test("Migrate: a save that breaks the schema is refused with its path", fun
 		result.profile.Data.coins = 5
 		result.profile:release()
 	end, 60)
-	Spec.equal(errors, { "not saved: Data.coins: -1 is below the minimum 0" })
+	Spec.equal(errors, { "not saved: Data.coins: -1 is below the minimum 0 [refused]" })
 	Spec.equal(stored(world).Data.coins, 5)
 end)
 

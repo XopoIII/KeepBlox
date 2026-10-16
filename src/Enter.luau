@@ -18,6 +18,7 @@ const Migrate = require("./Migrate")
 const Profile = require("./Profile")
 const Record = require("./Record")
 const Recover = require("./Recover")
+const Report = require("./Report")
 const Serial = require("./Serial")
 const Session = require("./Session")
 const Signal = require("./Signal")
@@ -47,7 +48,7 @@ export type State = {
 	sessions: { [string]: Session.Session },
 	--> The keys being loaded, each with the thread that asked for it.
 	opening: { [string]: thread },
-	onError: Signal.Signal<string, string>,
+	onError: Signal.Signal<string, string, Report.ErrorKind>,
 	closing: () -> boolean,
 	--> Runs before the first load: the Studio access check.
 	prepare: () -> (),
@@ -129,7 +130,7 @@ function Enter.session(
 			-- In a thread the library owns: a caller cancelled between two tries of the final write
 			-- must not stop the retries (see Apart).
 			Apart.run(clock, function(problem: any)
-				state.onError:fire(key, `a release failed after its caller was cancelled: {problem}`)
+				state.onError:fire(key, `a release failed after its caller was cancelled: {problem}`, "release")
 			end, Session.release, context, session, "released")
 		end,
 		handle = function(handler: Inbox.Handler)
@@ -150,13 +151,13 @@ function Enter.session(
 		lastDataWrite = clock.now(),
 		nextRenew = clock.now() + state.config.renew * (1 + offset(key)),
 		serial = Serial.new(clock, function(problem: any)
-			state.onError:fire(key, `a write failed after its caller was cancelled: {problem}`)
+			state.onError:fire(key, `a write failed after its caller was cancelled: {problem}`, "save")
 		end),
 		lastProblem = nil :: string?,
 		inbox = Inbox.new(clock, function()
 			session.saveSoon = true
 		end, function(message: string)
-			state.onError:fire(key, message)
+			state.onError:fire(key, message, "message")
 		end),
 		saveSoon = false,
 		receipts = Record.receipts(record.MetaData),
