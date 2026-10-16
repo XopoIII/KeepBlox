@@ -127,8 +127,13 @@ function MemoryStore.service(scheduler: Scheduler.Scheduler, faults: Faults.Faul
 		function handle.UpdateAsync(_: any, key: string, transform: (any, any) -> (any, any), expiration: number): any
 			charge("MemoryStoreUpdateAsync", key, updateUnits)
 			const old = live(items[key])
-			const value, sortKey =
-				transform(if old then Encoding.copy(old.value) else nil, if old then old.sortKey else nil)
+			-- A transform that throws fails the call with the engine's own text; one that yields is waited
+			-- for (live check 2026-10-16).
+			const ran, value, sortKey =
+				pcall(transform, if old then Encoding.copy(old.value) else nil, if old then old.sortKey else nil)
+			if not ran then
+				error("TransformCallbackFailed: Failed to invoke transformation function.", 0)
+			end
 			if value == nil then
 				return nil
 			end

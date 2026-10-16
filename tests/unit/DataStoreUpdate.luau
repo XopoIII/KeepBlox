@@ -92,24 +92,39 @@ Spec.test("UpdateAsync: userIds and metadata not returned are cleared", function
 	end)
 end)
 
-Spec.test("UpdateAsync: a transform that yields or throws fails the call and writes nothing", function()
+-- Measured live (2026-10-16): the engine logs the error and the call answers nil, nil, as if the
+-- transform had returned nil. The transform runs once. A transform that yields is treated the same.
+Spec.test("UpdateAsync: a transform that throws or yields answers nil, nil, runs once and writes nothing", function()
 	const world = World.new(1)
 	const scheduler = world.scheduler
 	const store = world:server({ name = "A" }).services.dataStores:GetDataStore("P")
 	Sim.run(scheduler, "A", function()
-		Spec.throws(function()
-			store:UpdateAsync("k", function(): number
+		store:SetAsync("k", { n = 1 })
+		for _, thrown in { "transform broke", { table = true } :: any } do
+			local runs = 0
+			const value, info = store:UpdateAsync("k", function(old: any): any
+				runs += 1
+				old.n = 99
+				error(thrown, 0)
+			end)
+			Spec.equal({ value, info, runs }, { nil, nil, 1 })
+		end
+		local yields = 0
+		Spec.equal({
+			store:UpdateAsync("k", function(): any
+				yields += 1
 				coroutine.yield()
-				return 1
-			end)
-		end, "cannot yield")
-		Spec.throws(function()
-			store:UpdateAsync("k", function(): number
-				error("transform broke", 0)
-			end)
-		end, "transform broke")
+				return { n = 2 }
+			end),
+		}, {})
+		Spec.equal(yields, 1)
+		Spec.equal(store:GetAsync("k", false), { n = 1 })
+		Spec.equal({ store:UpdateAsync("missing", function(): any
+			error("transform broke", 0)
+		end) }, {})
 	end)
-	Spec.equal(#world.backend:versions("P/global", "k"), 0)
+	Spec.equal(#world.backend:versions("P/global", "k"), 1)
+	Spec.equal(#world.backend:versions("P/global", "missing"), 0)
 end)
 
 -- The burst a new server starts with, as measured live (one player, 2026-09-30).

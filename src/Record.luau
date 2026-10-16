@@ -10,7 +10,8 @@
 ---         MetaTags = {},
 ---         KeepBlox = { lease, owner, ... },                       -- ours, and only ours
 ---       },
----       GlobalUpdates = {lastIndex, {{index, message}, ...}, {{id, at}, ...}?},   -- sent ids: Once
+---       GlobalUpdates = {lastIndex, {{index, message}, ...}, {{id, at}, ...}?, {{id, at}, ...}?},
+---                                                         -- sent ids, then ids refused as full: Once
 ---       RobloxMetaData = {}, UserIds = {}, WasOverwritten = false,
 ---     }
 ---
@@ -172,6 +173,8 @@ function Record.ours(meta: any): {
 	owed: { j: string, c: number, q: number, at: number }?,
 	--> A shared document's recently applied update ids, `{id, at}` (see Once).
 	applied: { any }?,
+	--> A shared document's update ids refused by a retry, `{id, at, {reason, message}}` (see Shared).
+	refused: { any }?,
 	--> The stamp and load count of the newest lock-guarded write (see Once): `{loadCount, stamp}`.
 	fence: { number }?,
 	--> The session a claim took the key from, kept until this load's first save, so a claim tried

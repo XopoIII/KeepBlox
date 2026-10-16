@@ -58,24 +58,17 @@ end
 function Trade.decide(context: Session.Context, storeName: string, id: string, want: "done" | "aborted"): string?
 	const store = tradesStore(context, storeName)
 	local outcome: string? = nil
-	const ok = Call.run(
-		context.services.clock,
-		context.config.callTimeout,
-		store.UpdateAsync,
-		store,
-		id,
-		function(value: any): any
-			if type(value) ~= "table" then
-				outcome = "aborted"
-				return if want == "aborted" then { state = "aborted" } else nil
-			end
-			if value.state == "open" then
-				value.state = want
-			end
-			outcome = value.state
-			return value
+	const ok = Call.update(context.services.clock, context.config.callTimeout, store, id, function(value: any): any
+		if type(value) ~= "table" then
+			outcome = "aborted"
+			return if want == "aborted" then { state = "aborted" } else nil
 		end
-	)
+		if value.state == "open" then
+			value.state = want
+		end
+		outcome = value.state
+		return value
+	end)
 	return if ok then outcome else nil
 end
 
@@ -96,10 +89,9 @@ const function write(context: Session.Context, session: Session.Session, data: a
 		stamp = Once.stamp(),
 	}
 	local lost = false
-	const ok = Call.run(
+	const ok = Call.update(
 		context.services.clock,
 		context.config.callTimeout,
-		context.dataStore.UpdateAsync,
 		context.dataStore,
 		session.key,
 		function(value: any): any
@@ -191,18 +183,11 @@ const function inLanes(
 	end
 	const id = context.services.guid()
 	const trades = tradesStore(context, storeName)
-	const opened = Call.run(
-		context.services.clock,
-		context.config.callTimeout,
-		trades.UpdateAsync,
-		trades,
-		id,
-		function(value: any): any
-			return if value == nil
-				then { state = "open", a = a.key, b = b.key, at = context.services.clock.time() }
-				else nil
-		end
-	)
+	const opened = Call.update(context.services.clock, context.config.callTimeout, trades, id, function(value: any): any
+		return if value == nil
+			then { state = "open", a = a.key, b = b.key, at = context.services.clock.time() }
+			else nil
+	end)
 	if not opened then
 		undo()
 		return { ok = false, reason = "failed", message = "the trade record could not be written" }

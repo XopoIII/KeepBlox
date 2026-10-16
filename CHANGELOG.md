@@ -5,6 +5,33 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.13 - 2026-10-17
+
+A refusal stays a refusal, and a transform that throws is a failed write. Two gaps 0.6.12 left open,
+found by reading Ledger's "safe datastores" notes and checked against Roblox. The API is unchanged.
+
+### Fixed
+
+- **A shared `update` could land after the game was told it did not.** Its first try waited past the
+  call's deadline, the retry found that `change` refused (`"error"` or `"refused"`), and the game got
+  that answer; then the first try ran on newer data and applied the change. A refusal found by a retry
+  is now stored with the update's id in `MetaData.KeepBlox.refused` (`{ id, at, { reason, message } }`,
+  the message cut to 200 characters), so the late try finds it and changes nothing; a retry that
+  finds it answers the same refusal. A refusal on the first try writes nothing, as before.
+- **`store:message` could queue a message after it answered `"full"`**, the same way. A retry that
+  finds the queue full stores the send's id in `GlobalUpdates[4]`.
+- **A transform that throws was read as "nothing to write".** On Roblox UpdateAsync does not fail when
+  its transform throws or yields: it logs "Transform function error" and answers `nil, nil`, writing
+  nothing (checked live on 2026-10-16, for a string, a table and `error(x, 0)`, on a missing key and a
+  stored one; MemoryStore's UpdateAsync does fail, with "TransformCallbackFailed"). Every lock-guarded
+  write now goes through `Call.update`, which checks that its transform finished and turns one that did
+  not into a failed write. The fakes copy the engine: the data store fake used to throw.
+
+### Compatibility
+
+- ProfileStore and KeepBlox 0.6.12 keep `MetaData.KeepBlox.refused` and `GlobalUpdates[4]` and ignore
+  them; their own retries are as safe as before.
+
 ## 0.6.12 - 2026-10-16
 
 A change lands once, though its call is tried again
