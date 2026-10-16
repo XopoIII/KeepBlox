@@ -37,7 +37,15 @@ seconds.
 | `{ ok = true }` | The message is stored in the queue. |
 | `{ ok = false, reason = "full" }` | The key already holds 1000 messages. Nothing already queued is dropped to make room. |
 | `{ ok = false, reason = "foreign" }` | The key holds something that is not a profile. |
-| `{ ok = false, reason = "failed" }` | The data store failed on every one of five attempts. |
+| `{ ok = false, reason = "failed" }` | The data store failed on every one of five attempts. The message may still have been queued, once. |
+
+A try that fails or times out may still have queued the message, so every try of one send carries the
+same id, stored beside the queue in `GlobalUpdates[3]` by the write that queues the message. A try that
+finds its id there queues nothing more, and one that runs past `loadTimeout + callTimeout` seconds
+after the send started queues nothing at all. The message itself is stored exactly as you gave it. The
+list holds at most 100 ids and forgets each one 600 s after its send could last have landed.
+ProfileStore and ProfileService read only the first two elements of `GlobalUpdates` and write the
+table back as they found it.
 
 The message must be storable data, like profile data. A message that cannot be stored is refused with
 an error before anything is sent.

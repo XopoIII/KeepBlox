@@ -43,8 +43,10 @@ end)
 Spec.test("Fencing: a claim that landed unanswered and was then given up leaves the key free", function()
 	-- A claim whose answer is lost may still have landed (PaxosLease Revisited, arXiv 2609.14640: an
 	-- abandoned attempt must not leave a phantom owner). Here it lands, the player leaves at once, and
-	-- the load gives up; the live server must not keep the key it never learnt it had.
-	for _, ending in { "cancel", "timeout" } do
+	-- the load gives up; the live server must not keep the key it never learnt it had. A load whose next
+	-- try is answered learns that its claim landed and keeps the key, writing nothing more ("learnt",
+	-- issue 41): its first try's answer never comes, but the store answers a try that writes nothing.
+	for _, ending in { "cancel", "timeout", "learnt" } do
 		const world = World.new(4)
 		const a = KeepBlox.store("Profiles", {
 			template = TEMPLATE,
@@ -61,10 +63,14 @@ Spec.test("Fencing: a claim that landed unanswered and was then given up leaves 
 					server = "A",
 					key = "u_1",
 					error = if ending == "cancel" then "502: API Services rejected request" else nil,
-					hang = if ending == "timeout" then true else nil,
+					hang = if ending ~= "cancel" then true else nil,
 					times = if ending == "cancel" then 1 else nil,
 					after = true,
 				})
+				if ending == "timeout" then
+					-- The next try is lost on its way out: the load never learns.
+					world.faults:add({ op = "UpdateAsync", server = "A", key = "u_1", hang = true, times = 1 })
+				end
 			end
 		end)
 		local first: any = nil
@@ -74,8 +80,17 @@ Spec.test("Fencing: a claim that landed unanswered and was then given up leaves 
 					return ending == "cancel" and gone
 				end,
 			})
+			if ending == "learnt" then
+				Spec.equal(first.ok, true, ending)
+				const record = (world.backend:latest("Profiles/global", "u_1") :: any).value
+				Spec.equal(record.MetaData.SessionLoadCount, 1)
+				const profile: any = first.profile
+				profile:release()
+			end
 		end, 30)
-		Spec.equal(first, { ok = false, reason = if ending == "cancel" then "cancelled" else "timeout" }, ending)
+		if ending ~= "learnt" then
+			Spec.equal(first, { ok = false, reason = if ending == "cancel" then "cancelled" else "timeout" }, ending)
+		end
 		world.faults:clear()
 		local took = math.huge
 		Sim.run(world.scheduler, "B", function()

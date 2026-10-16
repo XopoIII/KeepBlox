@@ -77,6 +77,9 @@ handed over like any other move:
   another ProfileStore server.
 - Offline messages cross between the libraries in both directions, and each is handled once.
 - ProfileStore keeps KeepBlox's `MetaData.KeepBlox` when it rewrites a key.
+- A message sent by KeepBlox leaves its id in `GlobalUpdates[3]`. ProfileStore reads only the first two
+  elements of `GlobalUpdates`, so it delivers the message as usual and keeps the list when it rewrites
+  the key.
 
 These are proven by the specs in `tests/scenario/Compat.luau`, including "Compat: a rolling migration
 with crashes keeps every invariant".

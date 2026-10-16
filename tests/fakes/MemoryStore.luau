@@ -58,7 +58,11 @@ function MemoryStore.service(scheduler: Scheduler.Scheduler, faults: Faults.Faul
 		const rule = faults:match(op, key, server, false)
 		scheduler:wait(faults:sample())
 		if rule then
-			if rule.hang then
+			if rule.delay then
+				-- A request held on its way, which then runs on whatever is stored by then (see Faults).
+				scheduler:wait(rule.delay)
+				return
+			elseif rule.hang then
 				scheduler:wait(math.huge)
 			end
 			error(rule.error, 0)

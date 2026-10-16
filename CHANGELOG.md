@@ -5,6 +5,72 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.12 - 2026-10-16
+
+A change lands once, though its call is tried again
+([#41](https://github.com/XopoIII/KeepBlox/issues/41)). A data store call that fails or times out
+may still have gone through ("a failed write does not always guarantee that the backend write did not
+occur"), and a call the library stops waiting for keeps running in the engine and can land later. A
+shared document's `update` retried such a call, so `data.bank += 100` could land twice, and
+`store:message` could queue one message twice. The same late landing could also put a session's older
+save over a newer one, start a load's session over, take back a key its load had let go, or put an
+older heartbeat snapshot over a newer one. The API is unchanged; the record gains three small fields
+that ProfileStore and KeepBlox 0.6.11 neither read nor drop, so they run side by side with 0.6.12.
+
+### Fixed
+
+- **A shared document's `update` could apply its change twice** when a try failed or timed out after
+  its write landed. Every update now takes one id for all its tries, stored in
+  `MetaData.KeepBlox.applied` by the write that makes the change; a try that finds its id changes
+  nothing and returns the data as stored. A try that runs more than `loadTimeout + callTimeout`
+  seconds after the update started changes nothing at all. `{ ok = false, reason = "failed" }` still
+  means the change may have landed, but only once.
+- **`store:message` could queue a message twice**, the same way. Every send carries one id for its
+  tries, stored beside the queue in `GlobalUpdates[3]`; the message table is stored exactly as given.
+- **A save that timed out could land after a newer one** and put older data, an older receipt list and
+  an older message queue back until the next save. Every lock-guarded write (a session's save, a
+  trade's write, the store of a dead owner's last beat, a give-back) now carries a stamp that only
+  grows on a server, kept as `MetaData.KeepBlox.fence = { loadCount, stamp }`; a write whose stamp is
+  not above the stored one for its load writes nothing.
+- **A claim that timed out and landed after its retry started the load's session over**: it moved the
+  load count, and the session's next save found itself lost. A claim that finds the key held by its
+  own load (the same GUID) now writes nothing and answers as that load's claim did, recovering from
+  the same previous owner (noted in `MetaData.KeepBlox.from` until the load's first save). One that
+  lands after its load let the key go takes nothing, where it used to hold the key for nobody.
+- **A heartbeat that landed late could put older snapshots over newer ones** in MemoryStore. Each
+  store's beat now carries a stamp (`k` in the server's entry), and a beat older than the stored one
+  writes nothing.
+
+### Bounds
+
+- An id list holds at most 100 ids (`Once.KEEP`), and forgets each one `loadTimeout + callTimeout +
+  600` seconds (740 s by default) after its call started, by the clock of the server that writes next.
+  The 600 s cover servers whose clocks disagree. So a change lands once while fewer than 100 other
+  changes of the same key land while it is still being tried. Each id costs about 50 bytes.
+
+### Compatibility
+
+- ProfileStore keeps `MetaData.KeepBlox` when it rewrites a key, and reads only the first two
+  elements of `GlobalUpdates`, writing the table back as it found it: messages sent by KeepBlox are
+  delivered by ProfileStore as before, and the list of ids stays. A game can still switch back.
+- KeepBlox 0.6.11 keeps the new fields too, and ignores them: a 0.6.11 server neither checks ids nor
+  fences its saves, so during a rollout its own calls are as safe as before and no safer.
+
+### Added
+
+- `src/Once.luau`: the ids, their bounds and the stamps. `src/LockTypes.luau`: the lock's types, moved
+  out of `src/Lock.luau` to keep it under 300 lines.
+- A fault the harness lacked: a call held for `delay` seconds that then runs, before its read (a
+  request queued past its caller's deadline, which runs late on whatever is stored by then) or after
+  its write (it landed, and answers late). The data store and MemoryStore fakes both have it.
+- Specs: `tests/unit/Once.luau` and `tests/unit/OnceLate.luau`, each fault beside a genuine failure
+  that is retried and lands once, and beside a second change that must land too; all failed on 0.6.11
+  (bank 200 for 100, two messages for one, 1 coin stored over 2, a lost session, a key held for
+  nobody, the older snapshot recovered). `tests/unit/Owed.luau` and `tests/unit/Fencing.luau` now
+  give each load its own GUID, as loads have, and check a claim tried again after it landed. 450
+  specs.
+- 16 mutants (`tests/MutantsOnce.luau`) on the new guards; 173 in all.
+
 ## 0.6.11 - 2026-10-16
 
 `onError` says what a problem is about. A listener used to get `(key, message)`, and the message is

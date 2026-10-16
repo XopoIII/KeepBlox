@@ -271,29 +271,21 @@ const MUTANTS: { Mutant } = {
 	},
 }
 
--- The heartbeat snapshots of large profiles and the hand-over's reused verdict (0.5).
-for _, mutant in require("./MutantsSnapshots") do
-	table.insert(MUTANTS, mutant)
-end
--- The write lane and the shared manual save under a cancelled caller (0.6.7).
-for _, mutant in require("./MutantsLane") do
-	table.insert(MUTANTS, mutant)
-end
--- A load and a release under a cancelled caller (0.6.8).
-for _, mutant in require("./MutantsApart") do
-	table.insert(MUTANTS, mutant)
-end
--- The loose ends of giving a key back (0.6.10).
-for _, mutant in require("./MutantsLooseEnds") do
-	table.insert(MUTANTS, mutant)
-end
--- What a load that gives up, fails or throws past its claim gives back (0.6.9).
-for _, mutant in require("./MutantsGiveBack") do
-	table.insert(MUTANTS, mutant)
-end
--- The kind each report hands `onError` (0.6.11).
-for _, mutant in require("./MutantsKinds") do
-	table.insert(MUTANTS, mutant)
+-- The mutants kept in files of their own, each with the release that brought it.
+for _, more in
+	{
+		require("./MutantsSnapshots"), -- the heartbeat snapshots of large profiles, the hand-over's reused verdict (0.5)
+		require("./MutantsLane"), -- the write lane and the shared manual save under a cancelled caller (0.6.7)
+		require("./MutantsApart"), -- a load and a release under a cancelled caller (0.6.8)
+		require("./MutantsLooseEnds"), -- the loose ends of giving a key back (0.6.10)
+		require("./MutantsGiveBack"), -- what a load that gives up, fails or throws past its claim gives back (0.6.9)
+		require("./MutantsKinds"), -- the kind each report hands `onError` (0.6.11)
+		require("./MutantsOnce"), -- a change kept to once, though its call is tried again or lands late (0.6.12)
+	} :: { { Mutant } }
+do
+	for _, mutant in more do
+		table.insert(MUTANTS, mutant)
+	end
 end
 
 return MUTANTS

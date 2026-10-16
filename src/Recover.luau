@@ -14,6 +14,7 @@ const Call = require("./Call")
 const Codec = require("./Codec")
 const Lease = require("./Lease")
 const Lock = require("./Lock")
+const Once = require("./Once")
 const Record = require("./Record")
 const Snapshots = require("./Snapshots")
 const Spare = require("./Spare")
@@ -68,6 +69,7 @@ function Recover.run(
 		consumed = consumed,
 		schemaVersion = snapshot.v,
 		snap = 0,
+		stamp = Once.stamp(),
 	}
 	const clock = context.services.clock
 	const config = context.config

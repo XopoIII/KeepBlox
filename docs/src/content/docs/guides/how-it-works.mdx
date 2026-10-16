@@ -21,16 +21,22 @@ A key holds ProfileStore's record, so either library can read it:
 		ActiveSession = { PlaceId, JobId, GUID }, -- or nil
 		ForceLoadSession = { PlaceId, JobId }, -- or nil
 		MetaTags = {},
-		KeepBlox = { lease = ..., owner = ... }, -- KeepBlox's own state, and nowhere else
+		KeepBlox = { lease = ..., owner = ..., ... }, -- KeepBlox's own state
 	},
-	GlobalUpdates = { lastIndex, { { index, message }, ... } },
+	GlobalUpdates = { lastIndex, { { index, message }, ... }, { { id, at }, ... }? },
 	RobloxMetaData = {}, UserIds = {}, WasOverwritten = false,
 }
 ```
 
 `MetaData.KeepBlox.lease` goes up by one on every write the owner makes. A newcomer that sees the same
 lease for long enough knows the owner stopped writing, without reading anyone's clock. ProfileStore
-keeps `MetaData.KeepBlox` when it rewrites a key.
+keeps `MetaData.KeepBlox` when it rewrites a key. The one thing KeepBlox keeps elsewhere is the list of
+recently sent message ids in `GlobalUpdates[3]`, since a key that only holds messages has no
+`MetaData`; ProfileStore keeps that too (see [Messages and edits](/KeepBlox/guides/messages-and-edits/)).
+
+Each write the lock guards also carries a stamp, `MetaData.KeepBlox.fence = { loadCount, stamp }`, that
+only grows on a server. A save whose stamp is not above the stored one for its load writes nothing, so a
+save that timed out and lands after a newer one never puts older data back.
 
 ## The lock
 

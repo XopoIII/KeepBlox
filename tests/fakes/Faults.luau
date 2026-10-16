@@ -2,9 +2,13 @@
 --- Injected faults and latency for the fake services.
 ---
 --- A rule matches a call by operation, key and server (each optional: nil matches all), and fires a
---- number of times (nil: forever). It either throws, or hangs the call for good. A rule can fire
---- `after` the write commits: the docs warn that a failed write "does not always guarantee that the
---- backend write did not occur" (error-codes-and-limits), and the library must survive exactly that.
+--- number of times (nil: forever). It throws, hangs the call for good, or holds it for `delay` seconds
+--- and lets it go on. A rule can fire `after` the write commits: the docs warn that a failed write "does
+--- not always guarantee that the backend write did not occur" (error-codes-and-limits), and the library
+--- must survive exactly that. A delay is a request that waits and then runs: over the budget, "requests
+--- are added to a queue" and sent later (data-stores/error-codes-and-limits, "Throttling"), and a
+--- caller that stopped waiting does not stop the request. Held before the read, the call runs late,
+--- on whatever is stored by then; held `after` the write, it committed and answers late.
 const Prng = require("./Prng")
 
 export type Rule = {
@@ -15,6 +19,8 @@ export type Rule = {
 	error: string?,
 	--> The call never returns (a request lost in flight).
 	hang: boolean?,
+	--> Seconds the call is held before it goes on (a request queued, or its answer slow).
+	delay: number?,
 	--> Fire after the write has committed, not before it.
 	after: boolean?,
 	--> How many more times the rule fires; nil for every matching call.
@@ -43,7 +49,7 @@ function Faults.new(random: Prng.Prng): Faults
 		latency = { min = 0.05, max = 0.25 },
 
 		add = function(_: Faults, rule: Rule)
-			assert(rule.error or rule.hang, "a fault rule needs an error or hang = true")
+			assert(rule.error or rule.hang or rule.delay, "a fault rule needs an error, hang = true or a delay")
 			table.insert(rules, table.clone(rule))
 		end,
 
