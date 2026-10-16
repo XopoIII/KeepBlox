@@ -9,10 +9,8 @@
 const MockMemory = require("./MockMemory")
 const MockOrdered = require("./MockOrdered")
 const Record = require("./Record")
+const Report = require("./Report")
 const Services = require("./Services")
-
---> Hears of a problem with a key: the store's `onError`.
-export type Report = (key: string, message: string) -> ()
 
 type Entry = { value: any, version: number, userIds: { number }, metadata: { [string]: any }, updatedMs: number }
 
@@ -48,7 +46,7 @@ const function store(
 	entries: { [string]: Entry },
 	clock: Services.Clock,
 	seed: Services.DataStore?,
-	report: Report?
+	report: Report.Report?
 ): Services.DataStore
 	-- Keys already read from `seed`, so each is copied once and memory wins from then on. A key memory
 	-- already holds is not read at all.
@@ -67,7 +65,8 @@ const function store(
 			if report then
 				report(
 					key,
-					`The live profile could not be read for the copy ({value}): this play test starts from the template`
+					`The live profile could not be read for the copy ({value}): this play test starts from the template`,
+					"studio"
 				)
 			end
 		elseif value ~= nil and entries[key] == nil then
@@ -152,7 +151,7 @@ function MockServices.wrap(
 	base: Services.Services,
 	name: string,
 	copyLive: boolean?,
-	report: Report?
+	report: Report.Report?
 ): Services.Services
 	local set = sets[name]
 	if not set then

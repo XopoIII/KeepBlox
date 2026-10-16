@@ -19,6 +19,7 @@ const Migrate = require("./Migrate")
 const Open = require("./Open")
 const Profile = require("./Profile")
 const Record = require("./Record")
+const Report = require("./Report")
 const Schema = require("./Schema")
 const Receipts = require("./Receipts")
 const Send = require("./Send")
@@ -78,8 +79,9 @@ export type LoadFailure = Open.Failure
 --> `T` is the shape of the profiles' data: `Store` alone is a store of `any`.
 export type Store<T = any> = {
 	name: string,
-	--> Fires `(key, message)` for every problem worth logging: failed calls, refused data, quarantine.
-	onError: Signal.Signal<string, string>,
+	--> Fires `(key, message, kind)` for every problem worth logging: failed calls, refused data, quarantine.
+	--> `kind` is one word of a fixed list, never a key or an id (see Report); a listener may take two.
+	onError: Signal.Signal<string, string, Report.ErrorKind>,
 	load: (self: Store<T>, key: string, options: LoadOptions?) -> LoadResult<T>,
 	--> The open profiles, by key.
 	profiles: (self: Store<T>) -> { [string]: Profile.Profile<T> },
@@ -128,9 +130,9 @@ function Store.new(name: string, options: Options): Store
 		`KeepBlox: studio is "live", "memory" or "copy", not "{studio}"`
 	)
 	const origin = options.services or require("./RobloxServices").build()
-	const onError: Signal.Signal<string, string> = Signal.new(origin.clock.spawn)
-	const function report(key: string, message: string)
-		onError:fire(key, message)
+	const onError: Signal.Signal<string, string, Report.ErrorKind> = Signal.new(origin.clock.spawn)
+	const function report(key: string, message: string, kind: Report.ErrorKind)
+		onError:fire(key, message, kind)
 	end
 	-- Studio may put the store in memory: at once (an unpublished place), or after the read its first
 	-- load makes (no API access). Either is reported on that first load, once someone listens.

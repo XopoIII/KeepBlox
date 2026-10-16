@@ -21,6 +21,7 @@
 --- (5 + 2 per player): a write waits for the next save when that budget is spent, and `leaderboard`
 --- keeps each answer for `cache` seconds.
 const Call = require("./Call")
+const Report = require("./Report")
 const Services = require("./Services")
 
 export type Board = (data: any) -> number?
@@ -56,7 +57,7 @@ function Boards.new(
 	storeName: string,
 	boards: { [string]: Board },
 	options: Options?,
-	report: (key: string, message: string) -> (),
+	report: Report.Report,
 	timeout: number
 ): Boards
 	for name, read in boards do
@@ -85,7 +86,7 @@ function Boards.new(
 			end
 		end)
 		if not ok then
-			report(key, `leaderboard {name} not written: {problem}`)
+			report(key, `leaderboard {name} not written: {problem}`, "leaderboard")
 		end
 		return ok
 	end
@@ -103,7 +104,7 @@ function Boards.new(
 				for name, read in boards do
 					const ok, raw = pcall(read, data)
 					if not ok then
-						report(key, `leaderboard {name} failed: {raw}`)
+						report(key, `leaderboard {name} failed: {raw}`, "leaderboard")
 						continue
 					end
 					const value = if type(raw) == "number" and raw == raw then math.floor(raw) else nil

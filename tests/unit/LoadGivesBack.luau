@@ -133,8 +133,8 @@ Spec.test("Load gives back: a give-back the store refuses is tried again, and ea
 	end, started + 60)
 	Spec.equal(answer, { ok = false, reason = "cancelled" })
 	Spec.equal(scene.errors, {
-		"u_1: a key its load gave up was not given back: 503: down",
-		"u_1: a key its load gave up was not given back: 503: down",
+		"u_1: a key its load gave up was not given back: 503: down [release]",
+		"u_1: a key its load gave up was not given back: 503: down [release]",
 	})
 	-- The load's backoff: a second, then two.
 	const waited = answeredAt - landedAt
@@ -182,7 +182,7 @@ Spec.test("Load gives back: a give-back the store never takes ends at the load's
 	-- seconds, and a seventh try would come past the deadline.
 	Spec.equal(#scene.errors, 6)
 	for _, message in scene.errors do
-		Spec.equal(message, "u_1: a key its load gave up was not given back: 503: down")
+		Spec.equal(message, "u_1: a key its load gave up was not given back: 503: down [release]")
 	end
 	Spec.equal(#watching.writes, 1, "the beat")
 	Spec.equal(watching.writes[1].Data, { coins = 6 })

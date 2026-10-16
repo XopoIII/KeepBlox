@@ -115,7 +115,7 @@ Spec.test("Loose cancel: a load nobody holds is released though its release thro
 		-- `backoffMax`): six tries in 18 s.
 		scheduler:wait(18)
 	end, scheduler.now + 19)
-	const REPORT = "u_1: the release of a load nobody holds failed, and is tried again: the codec is down"
+	const REPORT = "u_1: the release of a load nobody holds failed, and is tried again: the codec is down [release]"
 	Spec.equal(rig.errors, { REPORT, REPORT, REPORT, REPORT, REPORT, REPORT })
 	Spec.equal(CancelRig.stored(world).MetaData.ActiveSession ~= nil, true, "still held")
 	rig.codec.broken = false

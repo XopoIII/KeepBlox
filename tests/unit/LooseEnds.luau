@@ -12,7 +12,7 @@ const World = require("@fakes/World")
 type Scene = LoadRig.Scene
 
 const DOWN = "503: down"
-const FREED = "u_1: a key held with no session was freed for the server asking for it"
+const FREED = "u_1: a key held with no session was freed for the server asking for it [release]"
 
 -- Runs `fn` once, as the write that makes "u_1" A's commits.
 const function onLanded(scene: Scene, fn: () -> ())
@@ -131,7 +131,7 @@ Spec.test("Loose ends: a key a load may have taken unanswered is let go of at th
 		Spec.equal(LoadRig.heldBy(scene.world, scene.server), false, "let go of in the background")
 	end, scheduler.now + 60)
 	Spec.equal(answeredAt >= 0, true)
-	Spec.equal(scene.errors, { `u_1: load attempt failed: {DOWN}` }, "a try that is made again is not reported")
+	Spec.equal(scene.errors, { `u_1: load attempt failed: {DOWN} [load]` }, "a try that is made again is not reported")
 	GiveUpRig.next(scene, "C", 0, GiveUpRig.FREE, "after the answer")
 	Spec.equal(#scheduler.failures, 0)
 end)
@@ -159,8 +159,8 @@ Spec.test("Loose ends: a key that could never be let go of is reported once, aft
 	end, scheduler.now + 120)
 	const reportedAfter = reportedAt - answeredAt
 	Spec.equal(scene.errors, {
-		`u_1: load attempt failed: {DOWN}`,
-		`u_1: a key its load may have taken could not be let go: {DOWN}`,
+		`u_1: load attempt failed: {DOWN} [load]`,
+		`u_1: a key its load may have taken could not be let go: {DOWN} [release]`,
 	})
 	-- Tried 0, 1, 3, 7, 12, 17, 22 and 27 seconds after the answer; a ninth try would come past 30.
 	Spec.equal(reportedAfter >= 27 and reportedAfter < 30, true, `it gave up {reportedAfter} s after the answer`)
@@ -200,7 +200,7 @@ Spec.test("Loose ends: a load's tries to let go have a window of their own, and 
 		Spec.equal(LoadRig.heldBy(scene.world, scene.server), false, "let go of once the budget was back")
 	end, scheduler.now + 120)
 	for _, message in scene.errors do
-		Spec.equal(message, `u_1: load attempt failed: {DOWN}`)
+		Spec.equal(message, `u_1: load attempt failed: {DOWN} [load]`)
 	end
 	Spec.equal(#scheduler.failures, 0)
 end)
@@ -242,7 +242,10 @@ Spec.test("Loose ends: a key is not freed under a load of it, and a refused free
 	Sim.run(stuck.world.scheduler, "C", function()
 		Spec.equal(first:load("u_1"), { ok = false, reason = "timeout" })
 	end, stuck.world.scheduler.now + 30)
-	Spec.equal(stuck.errors, { `u_1: a key held with no session was not freed for the server asking for it: {DOWN}` })
+	Spec.equal(
+		stuck.errors,
+		{ `u_1: a key held with no session was not freed for the server asking for it: {DOWN} [release]` }
+	)
 	GiveUpRig.next(stuck, "D", 0, 6, "asked again")
 	Spec.equal(stuck.errors[2], FREED)
 end)

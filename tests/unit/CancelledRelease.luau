@@ -82,7 +82,11 @@ const function freed(session: Held, label: string, failure: string?)
 	Spec.equal(#rigged.log, session.loaded + 1, `{label}: one write landed`)
 	Spec.equal(rigged.log[session.loaded + 1], { coins = 7, held = false })
 	Spec.equal(rigged.server.budget.spent.StandardWrite, session.spent + 1, `{label}: one retry`)
-	Spec.equal(rigged.errors, { `u_1: save failed: {failure or REJECTED}` }, `{label}: the failure was reported once`)
+	Spec.equal(
+		rigged.errors,
+		{ `u_1: save failed: {failure or REJECTED} [save]` },
+		`{label}: the failure was reported once`
+	)
 	Spec.equal(session.finals, { "released with 7" }, `{label}: one final onSaving`)
 	Spec.equal(session.ended, { "released" }, `{label}: one onEnded`)
 	Spec.equal(session.profile:isActive(), false)
@@ -251,7 +255,10 @@ Spec.test("Cancelled release: a release that throws reaches its caller, or the s
 	Spec.equal(heard.rig.errors, {}, "a caller that heard the error is the only one told")
 	const orphaned, gone = broken(true)
 	Spec.equal(gone, { returned = false, caught = nil })
-	Spec.equal(orphaned.rig.errors, { "u_1: a release failed after its caller was cancelled: the codec is down" })
+	Spec.equal(
+		orphaned.rig.errors,
+		{ "u_1: a release failed after its caller was cancelled: the codec is down [release]" }
+	)
 	Spec.equal(#orphaned.rig.world.scheduler.failures, 0)
 	-- The session is still there to be released once the codec is back: the shutdown does it.
 	orphaned.rig.codec.broken = false

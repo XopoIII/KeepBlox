@@ -30,6 +30,7 @@ const Migrate = require("@self/Migrate")
 const Profile = require("@self/Profile")
 const Receipts = require("@self/Receipts")
 const Record = require("@self/Record")
+const Report = require("@self/Report")
 const Schema = require("@self/Schema")
 const Shared = require("@self/Shared")
 const Store = require("@self/Store")
@@ -48,6 +49,8 @@ export type LoadOptions = Store.LoadOptions
 export type LoadResult<T = any> = Store.LoadResult<T>
 --> Why a load failed: the `reason` of a `LoadResult` that is not ok.
 export type LoadFailure = Store.LoadFailure
+--> What a problem `onError` reports is about: one word of a fixed list, never a key or an id (see Report).
+export type ErrorKind = Report.ErrorKind
 --> A purchase as `MarketplaceService.ProcessReceipt` hands it over, what `store:receipts` and
 --> `KeepBlox.processReceipt` take, and the name of the decision `store:receipts` answers with.
 export type Receipt = Receipts.Receipt

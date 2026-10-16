@@ -47,7 +47,7 @@ function Send.message(internals: Internals, key: string, message: any): Result
 		if ok and sent then
 			const outcome = sent :: Messages.Sent
 			if outcome.kind == "full" or outcome.kind == "foreign" then
-				context.report(key, `message refused: the queue is {outcome.kind}`)
+				context.report(key, `message refused: the queue is {outcome.kind}`, "message")
 				return { ok = false, reason = outcome.kind }
 			end
 			const here = internals.sessions[key]
@@ -66,7 +66,7 @@ function Send.message(internals: Internals, key: string, message: any): Result
 		clock.wait(delay)
 		delay = math.min(delay * 2, context.config.backoffMax)
 	end
-	context.report(key, "message not sent: the data store kept failing")
+	context.report(key, "message not sent: the data store kept failing", "message")
 	return { ok = false, reason = "failed" }
 end
 

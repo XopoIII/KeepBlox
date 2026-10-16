@@ -27,8 +27,8 @@ const function setup(seed: number?): (World.World, World.Server, KeepBlox.Store,
 	const server = world:server({ name = "A" })
 	const store = KeepBlox.store("Profiles", { template = { coins = 0 }, services = server.services })
 	const errors = {}
-	store.onError:connect(function(_: string, message: string)
-		table.insert(errors, message)
+	store.onError:connect(function(_: string, message: string, kind: KeepBlox.ErrorKind)
+		table.insert(errors, `{message} [{kind}]`)
 	end)
 	const decide = store:receipts({
 		keyFor = function(userId: number): string
@@ -117,7 +117,7 @@ Spec.test("Receipts: data that cannot be stored means the purchase is not grante
 		Spec.equal(stored(world).Data.coins, 100)
 		result.profile:release()
 	end, 60)
-	Spec.equal(errors[1], "not saved: Data.bad.1: number key in a table that is not an array")
+	Spec.equal(errors[1], "not saved: Data.bad.1: number key in a table that is not an array [refused]")
 end)
 
 Spec.test("Receipts: a bad value the data store would refuse does not hold up a purchase: it is repaired", function()
@@ -141,7 +141,7 @@ Spec.test("Receipts: an unknown product is not granted, and says why", function(
 		Spec.equal(decide({ PlayerId = 7, PurchaseId = "r9", ProductId = 99 }), "NotProcessedYet")
 		result.profile:release()
 	end, 30)
-	Spec.equal(errors, { "no grant for product 99" })
+	Spec.equal(errors, { "no grant for product 99 [receipt]" })
 end)
 
 Spec.test("Receipts: the history keeps the newest ids only", function()

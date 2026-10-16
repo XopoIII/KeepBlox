@@ -78,8 +78,8 @@ Spec.test("Codec: data too large even compressed is refused, and the last save s
 	const world = World.new(2)
 	const a = open(world, "A", COMPRESS)
 	const errors: { string } = {}
-	a.onError:connect(function(_: string, message: string)
-		table.insert(errors, message)
+	a.onError:connect(function(_: string, message: string, kind: KeepBlox.ErrorKind)
+		table.insert(errors, `{message} [{kind}]`)
 	end)
 	-- Noise does not compress: six megabytes of it stay well over four.
 	const random = world.scheduler.random
@@ -101,6 +101,7 @@ Spec.test("Codec: data too large even compressed is refused, and the last save s
 		result.profile:release()
 	end, 120)
 	Spec.truthy(string.find(errors[1], "still over the 4194304 byte limit when compressed", 1, true) ~= nil, errors[1])
+	Spec.equal(string.sub(errors[1], -10), " [refused]", errors[1])
 	Spec.equal(stored(world, "u_1").Data, { log = { "kept" } })
 end)
 

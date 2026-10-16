@@ -67,7 +67,7 @@ return {
 	},
 	{
 		file = "src/Enter.luau",
-		from = "state.onError:fire(key, `a write failed after its caller was cancelled: {problem}`)",
+		from = 'state.onError:fire(key, `a write failed after its caller was cancelled: {problem}`, "save")',
 		to = "",
 		breaks = "a write that throws after its caller was cancelled reaches onError",
 	},

@@ -60,7 +60,11 @@ const function ask(context: Session.Context, owner: Lock.Owner)
 end
 
 const function quarantine(context: Session.Context, storeName: string, key: string, value: any)
-	context.report(key, "the stored value is not a profile; it was copied to quarantine and left untouched")
+	context.report(
+		key,
+		"the stored value is not a profile; it was copied to quarantine and left untouched",
+		"quarantine"
+	)
 	pcall(function()
 		const aside = context.services.dataStores:GetDataStore(`{storeName}__quarantine`)
 		aside:SetAsync(key, { value = value, at = context.services.clock.time(), jobId = context.identity.jobId })
@@ -151,7 +155,7 @@ function Claim.open(
 		probe = false
 		if not ok or claim == nil then
 			unsure = true
-			context.report(key, `load attempt failed: {err}`)
+			context.report(key, `load attempt failed: {err}`, "load")
 			if Gate.open(context.services) then
 				-- The store is failing: after this load's own backoff, it waits its turn to try it.
 				probe = Gate.wait(context.services, delay, deadline, stopped)

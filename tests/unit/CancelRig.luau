@@ -52,8 +52,8 @@ function CancelRig.new(options: { [string]: any }?): Rig
 	end
 	const store = KeepBlox.store("Profiles", settings :: any)
 	const errors: { string } = {}
-	store.onError:connect(function(key: string, message: string)
-		table.insert(errors, `{key}: {message}`)
+	store.onError:connect(function(key: string, message: string, kind: KeepBlox.ErrorKind)
+		table.insert(errors, `{key}: {message} [{kind}]`)
 	end)
 	const answers: { [string]: boolean } = {}
 	return {

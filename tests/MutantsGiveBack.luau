@@ -28,13 +28,13 @@ return {
 	},
 	{
 		file = "src/LetGo.luau",
-		from = "context.report(key, `the previous owner's last beat could not be stored: {problem}`)",
+		from = 'context.report(key, `the previous owner\'s last beat could not be stored: {problem}`, "snapshot")',
 		to = "",
 		breaks = "a last beat that could not be stored before the key was given back is reported",
 	},
 	{
 		file = "src/LetGo.luau",
-		from = "context.report(key, `a key its load gave up was not given back: {err}`)",
+		from = 'context.report(key, `a key its load gave up was not given back: {err}`, "release")',
 		to = "",
 		breaks = "a give-back the data store refused is reported",
 	},

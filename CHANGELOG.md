@@ -5,6 +5,42 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.11 - 2026-10-16
+
+`onError` says what a problem is about. A listener used to get `(key, message)`, and the message is
+prose that often names the key (for most games a user id): a game could put neither in an analytics
+row, and could not tell a failed save from a failed leaderboard write or a grant that threw without
+parsing it. Now every report carries a third argument, `kind`, one word of a fixed list with no key or
+id in it. Nothing about stored data, the lock protocol, the messages or the requests changed: 0.6.10
+and 0.6.11 servers run side by side.
+
+### Added
+
+- `onError` fires `(key, message, kind)`, on a profile store and on a shared store. `kind` is one of
+  `"save"`, `"refused"`, `"repair"`, `"load"`, `"migration"`, `"release"`, `"snapshot"`,
+  `"quarantine"`, `"leaderboard"`, `"receipt"`, `"message"`, `"import"` and `"studio"`; the
+  [store reference](https://xopoiii.github.io/KeepBlox/reference/store/#onerror) says what each
+  means. Each report of the library names exactly one. A kind is added only in a release that says
+  so here; none is renamed or removed.
+- `KeepBlox.ErrorKind`, the type of that list, and the same in the roblox-ts declarations.
+- `src/Report.luau`: the list, and the type of the function every report goes through. That function
+  takes the kind as a required argument, so a report that leaves it out, or names a word not on the
+  list, fails the type gate.
+- Specs: every report a spec already makes is now checked with its kind (the listeners record
+  `<key>: <message> [<kind>]`), and `tests/unit/ErrorKinds.luau` makes the ones no spec made (a
+  quarantined value, a grant that throws, a message refused, not sent or whose handler throws, a board
+  not written, a failed read of the old store), each beside the same call when nothing goes wrong,
+  and a listener of two arguments beside one of three. `tests/unit/Typings.luau` holds the roblox-ts
+  list to the Luau one. 431 specs.
+- 29 mutants (`tests/MutantsKinds.luau`), one a report, each swapping its kind for another; 157 in all.
+- `tests/consumer`: a listener of three arguments under both solvers, and a kind of the wrong type
+  refused under both.
+
+### Compatibility
+
+- A listener of two arguments keeps working, in Luau (either type solver) and in roblox-ts: the
+  third argument is extra. The messages are as they were.
+
 ## 0.6.10 - 2026-10-10
 
 The loose ends of giving a key back. A dead owner's last heartbeat is no longer lost when the load

@@ -44,7 +44,11 @@ function Recover.run(
 		then snapshot.d
 		else Snapshots.data(snapshot, Codec.unpack(context.services.codec, record.Data))
 	if data == nil then
-		context.report(key, "a newer snapshot was found but was made against other data; the stored data is used")
+		context.report(
+			key,
+			"a newer snapshot was found but was made against other data; the stored data is used",
+			"snapshot"
+		)
 		return record, false
 	end
 	const receipts = Record.receipts(record.MetaData)
@@ -96,7 +100,7 @@ function Recover.run(
 		delay = math.min(delay * 2, config.backoffMax)
 	end
 	if not ok or stored == nil then
-		context.report(key, "a newer snapshot was found but could not be stored; the stored data is used")
+		context.report(key, "a newer snapshot was found but could not be stored; the stored data is used", "snapshot")
 		return record, not ok
 	end
 	return stored, false

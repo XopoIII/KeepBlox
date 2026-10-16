@@ -291,5 +291,9 @@ end
 for _, mutant in require("./MutantsGiveBack") do
 	table.insert(MUTANTS, mutant)
 end
+-- The kind each report hands `onError` (0.6.11).
+for _, mutant in require("./MutantsKinds") do
+	table.insert(MUTANTS, mutant)
+end
 
 return MUTANTS

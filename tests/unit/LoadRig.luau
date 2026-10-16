@@ -58,8 +58,8 @@ function LoadRig.scene(
 	end
 	const store, server = LoadRig.store(world, "A", options, dress)
 	const errors: { string } = {}
-	store.onError:connect(function(key: string, message: string)
-		table.insert(errors, `{key}: {message}`)
+	store.onError:connect(function(key: string, message: string, kind: KeepBlox.ErrorKind)
+		table.insert(errors, `{key}: {message} [{kind}]`)
 	end)
 	return { world = world, server = server, store = store, errors = errors, options = options }
 end

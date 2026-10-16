@@ -57,4 +57,23 @@ Spec.test("Typings: every Store and Profile field, and every export, is declared
 	check(exported(), "KeepBlox")
 end)
 
+-- The words of a union of string literals, in order: `"a" | "b"`, across lines.
+const function words(union: string): { string }
+	const found = {}
+	for word in string.gmatch(union, '"([%a]+)"') do
+		table.insert(found, word)
+	end
+	return found
+end
+
+Spec.test("Typings: the kinds onError fires are the same list in Luau and for roblox-ts", function()
+	const luau = assert(string.match(fs.readFile("src/Report.luau"), "\nexport type ErrorKind =(.-)\n\n"))
+	const declared = assert(string.match(DECLARATIONS, "\n\ttype ErrorKind =(.-);"))
+	const kinds = words(luau)
+	Spec.equal(#kinds, 13)
+	Spec.equal(words(declared), kinds)
+	-- The listener of each store is told the kind, by that type.
+	Spec.equal(select(2, string.gsub(DECLARATIONS, "kind: ErrorKind%]>", "")), 2)
+end)
+
 return nil

@@ -112,13 +112,13 @@ return {
 	},
 	{
 		file = "src/LetGo.luau",
-		from = 'context.report(key, "a key held with no session was freed for the server asking for it")',
+		from = 'context.report(key, "a key held with no session was freed for the server asking for it", "release")',
 		to = "",
 		breaks = "a stray key that was freed is reported: something left it held",
 	},
 	{
 		file = "src/LetGo.luau",
-		from = "context.report(key, `a key held with no session was not freed for the server asking for it: {err}`)",
+		from = 'context.report(key, `a key held with no session was not freed for the server asking for it: {err}`, "release")',
 		to = "",
 		breaks = "a stray key the store refused to free is reported",
 	},
@@ -142,7 +142,7 @@ return {
 	},
 	{
 		file = "src/LetGo.luau",
-		from = "context.report(key, `a key its load may have taken could not be let go: {err}`)",
+		from = 'context.report(key, `a key its load may have taken could not be let go: {err}`, "release")',
 		to = "",
 		breaks = "a key that could never be let go of is reported",
 	},

@@ -60,15 +60,15 @@ Spec.test("Mock: Studio without API access falls back to memory after a read-onl
 	world.faults:add({ error = "403: Cannot write to DataStore from studio if API access is not enabled." })
 	const store = KeepBlox.store("Profiles", { template = { coins = 0 }, services = services })
 	const errors: { string } = {}
-	store.onError:connect(function(_: string, message: string)
-		table.insert(errors, message)
+	store.onError:connect(function(_: string, message: string, kind: KeepBlox.ErrorKind)
+		table.insert(errors, `{message} [{kind}]`)
 	end)
 	Sim.run(world.scheduler, "A", function()
 		const result = store:load("u_1")
 		assert(result.ok, "loaded in memory")
 		result.profile:release()
 	end, 60)
-	Spec.equal(errors, { "Studio has no API access: profiles are kept in memory, and nothing is saved" })
+	Spec.equal(errors, { "Studio has no API access: profiles are kept in memory, and nothing is saved [studio]" })
 	Spec.equal(seen, {})
 end)
 
@@ -97,8 +97,8 @@ for _, mode in { "live", "copy" } do
 			studio = mode :: any,
 		})
 		const errors: { string } = {}
-		store.onError:connect(function(key: string, message: string)
-			table.insert(errors, `{key}|{message}`)
+		store.onError:connect(function(key: string, message: string, kind: KeepBlox.ErrorKind)
+			table.insert(errors, `{key}|{message} [{kind}]`)
 		end)
 		Sim.run(world.scheduler, "A", function()
 			const result = store:load("u_1")
@@ -111,7 +111,7 @@ for _, mode in { "live", "copy" } do
 			Spec.equal(again.profile.Data.coins, 3, "memory keeps the play test's data")
 			again.profile:release()
 		end, 60)
-		Spec.equal(errors, { `|{UNPUBLISHED_NOTICE}` })
+		Spec.equal(errors, { `|{UNPUBLISHED_NOTICE} [studio]` })
 		Spec.equal(seen, {})
 	end)
 end
@@ -187,8 +187,8 @@ end
 
 const function listen(store: KeepBlox.Store): { string }
 	const errors: { string } = {}
-	store.onError:connect(function(key: string, message: string)
-		table.insert(errors, `{key}|{message}`)
+	store.onError:connect(function(key: string, message: string, kind: KeepBlox.ErrorKind)
+		table.insert(errors, `{key}|{message} [{kind}]`)
 	end)
 	return errors
 end
@@ -231,7 +231,7 @@ Spec.test("Mock: studio = copy that cannot read the live profile starts from the
 	end, world.scheduler.now + 60)
 	Spec.equal(errors, {
 		"u_1|The live profile could not be read for the copy (502: API Services rejected request): "
-			.. "this play test starts from the template",
+			.. "this play test starts from the template [studio]",
 	})
 	Spec.equal(byStudio, {}, "studio writes")
 	Spec.equal((world.backend:latest("Unread/global", "u_1") :: any).value.Data.coins, 42)
