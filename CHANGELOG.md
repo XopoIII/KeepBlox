@@ -5,6 +5,32 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.6.14 - 2026-10-21
+
+A player who leaves while their load is in flight and joins the same server again is no longer told
+`"open"`, and gets their profile sooner than any release and new claim could give it. The API is
+unchanged.
+
+### Fixed
+
+- **A quick rejoin during the load was told `"open"`.** A load waited before claiming only for a
+  session being released, or for an earlier load whose caller's thread was dead. An earlier load whose
+  player had left (its `cancel` answering true) but which still stood inside a data store call (up to
+  `callTimeout`, and longer while the store answered errors) was not waited for, so the player's new
+  load got `"open"` and the game kicked them. Seen in a live game, on a server where `UpdateAsync`
+  answered 502s. Now every later load waits while a load for a caller who is gone is in flight.
+
+### Changed
+
+- **The earlier load hands its session to the rejoin.** The first later load that waits is the earlier
+  load's heir: the earlier load no longer gives up on its `cancel` while the heir waits, goes on to
+  open the session, and hands it over; its own caller gets `"cancelled"`. One claim in all, nothing
+  released and claimed again, and the rejoin answers within 0.1 s of the earlier load's end. Before, a
+  rejoin after a cancelled thread waited for a release, then made a claim of its own: two more data
+  store writes, each up to `callTimeout`. When the earlier load opens nothing, or the heir leaves too,
+  the key is given back as before and the next load claims it afresh.
+- A second load while the first load's player is still there gets `"open"` at once, as before.
+
 ## 0.6.13 - 2026-10-17
 
 A refusal stays a refusal, and a transform that throws is a failed write. Two gaps 0.6.12 left open,

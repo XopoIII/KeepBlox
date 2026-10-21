@@ -187,7 +187,8 @@ done. The data freezes when the release begins, so the final save holds every ch
 Just before that, `profile.onSaving` fires with `final = true`: the last chance to write into `Data`.
 
 A player who rejoins the same server while their release is still running does not get `"open"`: the
-new load waits for the release, then claims the key afresh.
+new load waits for the release, then claims the key afresh. One who rejoins while their first load is
+still running is handed the session that load opens.
 
 ## Finding open profiles
 

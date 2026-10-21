@@ -15,6 +15,7 @@ const Inbox = require("./Inbox")
 const Lock = require("./Lock")
 const Messages = require("./Messages")
 const Migrate = require("./Migrate")
+const Opening = require("./Opening")
 const Profile = require("./Profile")
 const Record = require("./Record")
 const Recover = require("./Recover")
@@ -46,8 +47,8 @@ export type State = {
 	--> The store's context. Its services can change once (Studio without access switches to memory).
 	base: Session.Context,
 	sessions: { [string]: Session.Session },
-	--> The keys being loaded, each with the thread that asked for it.
-	opening: { [string]: thread },
+	--> The keys being loaded (see Opening).
+	opening: { [string]: Opening.Opening },
 	onError: Signal.Signal<string, string, Report.ErrorKind>,
 	closing: () -> boolean,
 	--> Runs before the first load: the Studio access check.

@@ -1,9 +1,11 @@
 --!strict
 --- Loading a key: from the claim to the live session the game holds.
 ---
---- A player who leaves and joins the same server again before the release finished (a quick rejoin,
---- or a teleport that failed) does not get "open": the load waits for that release (see Settle), then
---- claims the key afresh. A session that is still live is a second load of the same key, and gets "open".
+--- A player who leaves and joins the same server again (a quick rejoin, or a teleport that failed) does
+--- not get "open". Before the release finished, the load waits for that release (see Settle), then
+--- claims the key afresh. While their earlier load is still in flight, the new load waits as its heir,
+--- and the earlier one goes on and hands it the session it opens (see Opening). A session that is still
+--- live, or a load whose caller is still there, is a second load of the same key, and gets "open".
 ---
 --- A template store fills keys the stored data lacks with copies from the template, deeply, on every
 --- load (a schema store does the same through its defaults). Existing values are never replaced.
@@ -21,6 +23,7 @@ const Enter = require("./Enter")
 const Import = require("./Import")
 const LetGo = require("./LetGo")
 const Lock = require("./Lock")
+const Opening = require("./Opening")
 const Profile = require("./Profile")
 const Session = require("./Session")
 const Settle = require("./Settle")
@@ -75,9 +78,16 @@ const function stopListening(listener: Upkeep.Listener)
 	end
 end
 
--- The load of a key marked as opening, in a thread of its own. `asker` is the thread that waits for
--- it: once the game has cancelled that thread, nobody is left to hold the profile.
-const function open(state: State, key: string, options: LoadOptions?, deadline: number, asker: thread): LoadResult
+-- The load of a key marked as opening, in a thread of its own. `opening` names the thread that waits
+-- for it: once the game has cancelled that thread, nobody is left to hold the profile, unless an heir
+-- waits for it. `options.cancel` is the one the load looks at (`Opening.polled`).
+const function open(
+	state: State,
+	key: string,
+	options: LoadOptions?,
+	deadline: number,
+	opening: Opening.Opening
+): LoadResult
 	const cancel = options and options.cancel
 	state.prepare()
 	const services = state.base.services
@@ -141,7 +151,15 @@ const function open(state: State, key: string, options: LoadOptions?, deadline: 
 		return { ok = false, reason = entered.reason }
 	end
 	const session = entered.session
-	const orphaned = coroutine.status(asker) == "dead"
+	const heir = opening.heir
+	if heir and Opening.wants(heir) and Opening.gone(opening) and not state.closing() then
+		-- Its caller is gone and the key's next load waits for it (a quick rejoin): the session is that
+		-- load's now, as if it had made the claim itself. Nothing is released and nothing claimed again.
+		heir.profile = session.profile
+		state.opening[key] = nil
+		return { ok = false, reason = "cancelled" }
+	end
+	const orphaned = coroutine.status(opening.asker) == "dead"
 	if orphaned or state.closing() then
 		-- Nobody is left to play on this profile or to release it: its caller was cancelled, or the
 		-- shutdown began after the claim landed, and listed the sessions it releases before this one
@@ -180,21 +198,32 @@ function Open.load(state: State, key: string, asked: LoadOptions?): LoadResult
 	-- One deadline for the whole load: waiting for a release here, the import, the claim and a trade's
 	-- settling all count against it, so the load answers within `loadTimeout`.
 	const deadline = clock.now() + state.config.loadTimeout
-	const waited = Settle.wait(state, clock, key, options and options.cancel, deadline)
+	const cancel = options and options.cancel
+	const heir: Opening.Heir = { thread = coroutine.running(), cancel = cancel, profile = nil }
+	const waited, handed = Settle.wait(state, clock, key, heir, deadline)
 	if thrown.problem ~= nil then
 		error(thrown.problem, 0)
 	elseif waited then
 		return { ok = false, reason = waited }
+	elseif handed then
+		return { ok = true, profile = handed }
 	end
 	if state.sessions[key] or state.opening[key] then
 		return { ok = false, reason = "open" }
 	end
-	const asker = coroutine.running()
-	state.opening[key] = asker
+	const opening = Opening.new(coroutine.running(), cancel)
+	state.opening[key] = opening
+	-- The load gives up when its caller does, but not while an heir waits for what it opens.
+	local polled = options
+	if cancel then
+		const looked = table.clone(options :: LoadOptions)
+		looked.cancel = Opening.polled(opening)
+		polled = looked
+	end
 	return Apart.run(clock, function(problem: any)
 		state.onError:fire(key, `a load failed after its caller was cancelled: {problem}`, "load")
 	end, function(): LoadResult
-		const ok, result = pcall(open, state, key, options, deadline, asker)
+		const ok, result = pcall(open, state, key, polled, deadline, opening)
 		if not ok then
 			-- A load that throws is over: its key must not stay marked as opening.
 			state.opening[key] = nil
