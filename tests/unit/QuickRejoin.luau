@@ -4,8 +4,8 @@
 --- session it opens, wherever the earlier load stood. One claim in all, and no later than the earlier
 --- load would have answered (src/Opening.luau, src/Settle.luau, src/Open.luau).
 const LoadRig = require("./LoadRig")
-const Opening = require("@keepblox/Opening")
 const LoadScenes = require("./LoadScenes")
+const Opening = require("@keepblox/Opening")
 const Sim = require("./Sim")
 const Spec = require("../Spec")
 const World = require("@fakes/World")
