@@ -31,7 +31,8 @@ unchanged.
 - **A read with the ordered list budget spent no longer calls `GetSortedAsync`.** It answers with
   the last answer to the same query, however old, and raises `"the ordered list budget is spent"`
   when there is none. Before, the call was made and Roblox queued or refused it.
-- Built and checked with LuneBlox 0.10.18, StyLua 2.6.0 and lefthook 2.2.2.
+- Built and checked with LuneBlox 0.10.18, StyLua 2.6.0 and lefthook 2.2.2; the documentation site
+  with Astro 7.4.1.
 
 ## 0.6.14 - 2026-10-21
 
