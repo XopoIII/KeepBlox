@@ -3,6 +3,7 @@
 --- listening for the messages other servers send to a session.
 const Lease = require("./Lease")
 const LetGo = require("./LetGo")
+const Opening = require("./Opening")
 const Services = require("./Services")
 const Session = require("./Session")
 
@@ -12,7 +13,7 @@ export type Internals = {
 	context: () -> Session.Context,
 	sessions: { [string]: Session.Session },
 	--> The keys being loaded (see Open).
-	opening: { [string]: thread },
+	opening: { [string]: Opening.Opening },
 	--> The load count of the last session of each key that ended here: a request that names it came
 	--> for a session this store has seen off itself.
 	ended: { [string]: number },

@@ -281,6 +281,7 @@ for _, more in
 		require("./MutantsGiveBack"), -- what a load that gives up, fails or throws past its claim gives back (0.6.9)
 		require("./MutantsKinds"), -- the kind each report hands `onError` (0.6.11)
 		require("./MutantsOnce"), -- a change kept to once, though its call is tried again or lands late (0.6.12)
+		require("./MutantsRejoin"), -- a quick rejoin while the earlier load is in flight (0.6.14)
 	} :: { { Mutant } }
 do
 	for _, mutant in more do

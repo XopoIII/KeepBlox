@@ -17,6 +17,7 @@ const Edit = require("./Edit")
 const Import = require("./Import")
 const Migrate = require("./Migrate")
 const Open = require("./Open")
+const Opening = require("./Opening")
 const Profile = require("./Profile")
 const Record = require("./Record")
 const Report = require("./Report")
@@ -139,7 +140,7 @@ function Store.new(name: string, options: Options): Store
 	const chosen = Studio.choose(origin, name, options.mock, studio, report)
 	const services = chosen.services
 	const sessions: { [string]: Session.Session } = {}
-	const opening: { [string]: thread } = {}
+	const opening: { [string]: Opening.Opening } = {}
 	const ended: { [string]: number } = {}
 	local closing = false
 

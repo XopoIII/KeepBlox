@@ -33,7 +33,7 @@ end
 | `"outbid"` | This server decided to take the key over, but a third server asked for it since then. That server wins. | Kick with a message asking the player to rejoin. |
 | `"inUse"` | Only for a `quiet` load (and `store:edit`): a live server holds the key. | Send a message with `store:message`, or try again later. |
 | `"legacyLocked"` | Only with `import`: the library being imported from still holds the key (its lock is fresh) until the load times out. The old server is still saving the player's last session. | Kick with a message asking the player to rejoin. |
-| `"open"` | The key is already open, or being opened, on this server: a second load of the same key. | A bug in the game: load each key once and share the profile. |
+| `"open"` | The key is already open on this server, or being opened for a caller who is still there: a second load of the same key. | A bug in the game: load each key once and share the profile. |
 | `"newerSchema"` | The stored data is at a schema version newer than this server's. Old code never rewrites data it does not understand. | Kick; this server runs old code. The player can join a server with the new version. |
 | `"migration"` | A migration threw on the stored data. `store.onError` reports which migration and the error. | Kick, and fix the migration. Test migrations with `KeepBlox.migrate`. |
 | `"schema"` | After the migrations and defaults, the data does not fit the schema. `store.onError` reports the path. | Kick, and fix the schema or add a migration. |
@@ -43,8 +43,11 @@ stored data stays as it was. See [Schema and migrations](/KeepBlox/guides/schema
 
 <Aside>
 A player who leaves and rejoins the same server before the release finished does not get `"open"`: the
-load waits for that release, then claims the key afresh. The same holds when the earlier load's thread
-was cancelled by the game: the load waits until that one has been undone.
+load waits for that release, then claims the key afresh. Nor does one who leaves while their load is
+still in flight (its `cancel` answers true, or the game cancelled its thread) and joins again: the new
+load waits for the earlier one, which goes on and hands it the session it opens. One claim in all, and
+the new load answers as soon as the earlier one would have. When the earlier load opens nothing, the
+new one claims the key afresh once it is over.
 </Aside>
 
 ## Edit reasons

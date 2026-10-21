@@ -80,10 +80,13 @@ Spec.test("Cancelled load: a second load of a key whose first caller was cancell
 	scheduler:cancel(caller)
 	const started = scheduler.now
 	const _, second = LoadRig.start(scene)
-	Spec.equal(second.result, nil, 'not "open": it waits for the first load to be undone')
+	Spec.equal(second.result, nil, 'not "open": it waits for the first load, as its heir')
 	scheduler:run(started + 5)
 	assert(second.result and second.result.ok, "the second loaded")
-	Spec.equal(second.result.profile.loadCount, 2, "after the session the cancelled load opened, and released")
+	-- The session the cancelled load opened, handed over: one claim, nothing released or claimed again.
+	Spec.equal(second.result.profile.loadCount, 1, "the session the cancelled load opened")
+	Spec.equal(second.result.profile:isActive(), true)
+	Spec.equal({ scene.server.budget.spent.StandardRead, scene.server.budget.spent.StandardWrite }, { 1, 1 })
 	Spec.equal(#scene.world.backend:versions("Profiles/global", "u_1"), 1)
 	Spec.equal(scene.errors, {})
 	-- The wait is the load's own: it gives up on `cancel`, and counts against `loadTimeout`.

@@ -47,7 +47,7 @@ return {
 	},
 	{
 		file = "src/Open.luau",
-		from = '\tconst orphaned = coroutine.status(asker) == "dead"\n',
+		from = '\tconst orphaned = coroutine.status(opening.asker) == "dead"\n',
 		to = "\tconst orphaned = false\n",
 		breaks = "the session a cancelled load opens is released, not left open with nobody holding it",
 	},
@@ -85,14 +85,14 @@ return {
 	},
 	{
 		file = "src/Settle.luau",
-		from = ' and (asker == nil or coroutine.status(asker) ~= "dead")',
-		to = "",
+		from = "const inherited = opening ~= nil and Opening.gone(opening)",
+		to = "const inherited = false",
 		breaks = 'a load of a key whose earlier load is being undone waits for it, and is not told "open"',
 	},
 	{
 		file = "src/Settle.luau",
-		from = "\t\tif (existing == nil or not existing.releasing) and",
-		to = "\t\tif",
+		from = "const releasing = existing ~= nil and existing.releasing",
+		to = "const releasing = false",
 		breaks = "a load of a key this server is still releasing waits for the release",
 	},
 	{
