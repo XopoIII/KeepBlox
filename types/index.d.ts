@@ -123,7 +123,24 @@ declare namespace KeepBlox {
 		edit(key: string, edit: (data: T) => void, options?: { cancel?: () => boolean }): EditResult<T>;
 		close(): void;
 		trade(keyA: string, keyB: string, change: (dataA: T, dataB: T) => void): TradeResult;
-		leaderboard(name: string, query?: { count?: number; ascending?: boolean }): LeaderboardEntry[];
+		leaderboard(name: string, query?: LeaderboardQuery): LeaderboardEntry[];
+		/** The entry nearest above `value` (the lowest value higher than it), or undefined. */
+		leaderboardAbove(name: string, value: number, query?: LeaderboardQuery): LeaderboardEntry | undefined;
+		/** The current period of a leaderboard with a period, by this server's clock. */
+		leaderboardPeriod(name: string): number | undefined;
+	}
+
+	interface LeaderboardQuery {
+		count?: number;
+		ascending?: boolean;
+		/** Which period of a leaderboard with a period; the current one by default. */
+		period?: number;
+	}
+
+	/** A leaderboard that starts again empty every `length` seconds, counted from the Unix time `origin`. */
+	interface PeriodLeaderboard<T> {
+		read: (data: T, period: number) => number | undefined;
+		period: { length: number; origin?: number };
 	}
 
 	interface Importer {
@@ -153,7 +170,7 @@ declare namespace KeepBlox {
 		reconcile?: boolean;
 		studio?: "live" | "memory" | "copy";
 		import?: Importer;
-		leaderboards?: Record<string, (data: T) => number | undefined>;
+		leaderboards?: Record<string, ((data: T) => number | undefined) | PeriodLeaderboard<T>>;
 		leaderboardOptions?: { interval?: number; cache?: number };
 		compress?: { above: number };
 	}

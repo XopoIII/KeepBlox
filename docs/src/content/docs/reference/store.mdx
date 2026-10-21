@@ -132,7 +132,7 @@ is, so `KeepBlox.processReceipt(store, ...)` and a handler taking `KeepBlox.Prof
 | `reconcile` | boolean | Fill keys the stored data lacks from the template, deeply, on every load. Existing values are never replaced. Default `true`. A schema store fills from the schema's defaults instead. |
 | `studio` | `"live"`, `"memory"` or `"copy"` | What Studio play tests do with data. Default `"live"`. Live servers ignore it. See [Studio and testing](/KeepBlox/guides/studio-and-testing/). |
 | `import` | Importer | Where a key's data comes from on its first load, when moving from another library. |
-| `leaderboards` | `{ [string]: (data) -> number? }` | Boards mirrored to ordered data stores. See [Leaderboards](/KeepBlox/guides/leaderboards/). |
+| `leaderboards` | `{ [string]: ((data) -> number?) \| { read, period } }` | Boards mirrored to ordered data stores. See [Leaderboards](/KeepBlox/guides/leaderboards/). |
 | `leaderboardOptions` | `{ interval: number?, cache: number? }` | Seconds between one profile's board writes (default 60), and seconds a `leaderboard` answer is kept (default 60). |
 | `compress` | `{ above: number }` | Store profiles over `above` bytes compressed. Off by default: ProfileStore cannot read a compressed profile. See [Large profiles](/KeepBlox/guides/large-profiles/). |
 
@@ -293,12 +293,28 @@ them, and they are not granted again.
 ### leaderboard
 
 ```lua
-store:leaderboard(name: string, query: { count: number?, ascending: boolean? }?): { { key: string, value: number } }
+store:leaderboard(name: string, query: { count: number?, ascending: boolean?, period: number? }?): { { key: string, value: number } }
 ```
 
 The top of a leaderboard, highest first unless `ascending`. `count` defaults to 10 and is clamped to
-1..100. Raises an error when the store has no board `name`. See
-[Leaderboards](/KeepBlox/guides/leaderboards/).
+1..100; `period` reads a given period of a board with a period. Raises an error when the store has no
+board `name`. See [Leaderboards](/KeepBlox/guides/leaderboards/).
+
+### leaderboardAbove
+
+```lua
+store:leaderboardAbove(name: string, value: number, query: { period: number? }?): { key: string, value: number }?
+```
+
+The entry nearest above `value` (the lowest value higher than it), or nil.
+
+### leaderboardPeriod
+
+```lua
+store:leaderboardPeriod(name: string): number?
+```
+
+The current period of a board with a period, by this server's clock; nil for a board without one.
 
 ### close
 

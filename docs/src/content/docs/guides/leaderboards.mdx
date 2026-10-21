@@ -33,6 +33,32 @@ function receives the data as it was stored, and returns a number, or nil.
 Each board is the ordered data store `"<store>__<board>"`, keyed by profile key. With the store above,
 the boards are `Profiles__coins` and `Profiles__wins`.
 
+## Boards with a period
+
+A board that starts again empty every week, or every day, is declared with a period:
+
+```lua
+leaderboards = {
+	weekly = {
+		read = function(data, week)
+			return if data.week == week then data.weekCoins else nil
+		end,
+		-- 1970-01-05 00:00 UTC was a Monday: each period runs from Monday to Monday, UTC.
+		period = { length = 604800, origin = 345600 },
+	},
+},
+```
+
+- Each period is its own ordered data store, `"<store>__<board>_<n>"`, where `n` is
+  `floor((now - origin) / length)` by the server's wall clock (`os.time`). Servers' clocks differ by
+  seconds, so the last seconds of a period may land on either side.
+- `read` is given the period it is read for. A game that keeps its own count for the period can
+  return nil until that count has started again.
+- The first write in a new period is made whatever the last period held: the new store has nothing
+  for the key yet.
+- `store:leaderboardPeriod(name)` gives the current `n` (nil for a board without a period), and
+  `store:leaderboard(name, { period = n })` reads any period, such as last week's winner.
+
 ## Values
 
 - A value is stored as an integer: KeepBlox floors it with `math.floor`.
@@ -63,8 +89,10 @@ about 30 + 5 per player a minute for writes (`OrderedWrite`) and 5 + 2 per playe
   write is reported through `store.onError` and tried again the same way. A write skipped or failed
   at the release has no later save to retry it: the board keeps its previous value for that key until
   the profile is next loaded and saved.
-- **Reads.** `store:leaderboard` keeps each answer for `cache` seconds (default 60), per board, count
-  and order. Calls within that time return a copy of the cached answer and cost nothing.
+- **Reads.** `store:leaderboard` keeps each answer for `cache` seconds (default 60), per board,
+  period, count and order. Calls within that time return a copy of the cached answer and cost nothing.
+  With the `OrderedList` budget spent, a read answers with the last answer to the same query, however
+  old, and raises `"the ordered list budget is spent"` when it has none.
 
 ## Reading a board
 
@@ -74,8 +102,23 @@ about 30 + 5 per player a minute for writes (`OrderedWrite`) and 5 + 2 per playe
 |---|---|
 | `count` | How many entries from the top. Default 10; clamped to 1..100. |
 | `ascending` | `true` for lowest first. Default: highest first. |
+| `period` | Which period of a board with a period. Default: the current one. |
 
 It raises an error when the store has no leaderboards, or no board of that name.
+
+## The entry above a value
+
+`store:leaderboardAbove(name, value, query)` returns the entry nearest above `value`: the lowest value
+higher than it, or nil when nothing is. It costs one `GetSortedAsync` of one entry, and its answer is
+kept for `cache` seconds. With a page of the top read once, it tells a player outside that page who
+is next to pass, and by how much:
+
+```lua
+const above = store:leaderboardAbove("coins", myCoins)
+if above then
+	print(`{above.key} is {above.value - myCoins} ahead`)
+end
+```
 
 <Aside type="caution">
 A cache miss calls `GetSortedAsync` directly, and a failure of that call is raised, not returned. Wrap

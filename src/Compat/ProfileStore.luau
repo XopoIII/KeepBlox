@@ -20,8 +20,8 @@
 ---   `LOAD_REPEAT_PERIOD` and `FIRST_LOAD_REPEAT` are accepted by `SetConstant` but have no effect.
 --- - `KeyInfo` is nil. `MessageHandler` works on active profiles only, not in view mode.
 --- - A full message queue refuses `MessageAsync` (false) instead of dropping the oldest message.
-const Config = require("../Config")
 const CompatProfile = require("./Profile")
+const Config = require("../Config")
 const MockServices = require("../MockServices")
 const Record = require("../Record")
 const Services = require("../Services")

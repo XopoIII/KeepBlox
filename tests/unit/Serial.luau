@@ -1,9 +1,9 @@
 --!strict
 --- The one-at-a-time lane behind each session's writes (src/Serial.luau).
-const KeepBlox = require("@keepblox")
-const Serial = require("@keepblox/Serial")
 const Clock = require("@fakes/Clock")
+const KeepBlox = require("@keepblox")
 const Scheduler = require("@fakes/Scheduler")
+const Serial = require("@keepblox/Serial")
 const Sim = require("./Sim")
 const Spec = require("../Spec")
 const World = require("@fakes/World")

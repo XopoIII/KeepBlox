@@ -6,8 +6,8 @@
 --- process, one data store budget and the real DataStore, MessagingService and MemoryStore. `crash()`
 --- freezes one where it stands: every call it makes from then on, and every call in flight when it
 --- returns, never comes back, and its subscriptions hear nothing.
-const HttpService = game:GetService("HttpService")
 const DataStoreService = game:GetService("DataStoreService")
+const HttpService = game:GetService("HttpService")
 
 export type Server = {
 	name: string,
