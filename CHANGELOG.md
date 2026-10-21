@@ -5,6 +5,33 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.7.0 - 2026-10-21
+
+Leaderboards that start again every period, the entry just above a value, and reads that answer
+from their last answer while the ordered list budget is spent. Existing boards and their stores are
+unchanged.
+
+### Added
+
+- **A board with a period.** A board can be `{ read = function(data, period) ... end, period =
+  { length = seconds, origin = unixTime? } }`: one ordered data store a period,
+  `"<store>__<board>_<n>"`, where `n` counts whole periods from `origin` (default 0) by the server's
+  wall clock. A weekly board from Monday 00:00 UTC is `{ length = 604800, origin = 345600 }`. `read`
+  is told the period it is read for, so a game can return nil for a count it has not yet started
+  again. The first write of a new period is made whatever the last period held.
+- **`store:leaderboard(name, { period = n })`** reads a past (or any) period of such a board; the
+  current one is read by default. `store:leaderboardPeriod(name)` gives the current period, nil for a
+  board without one.
+- **`store:leaderboardAbove(name, value, query?)`**: the entry nearest above `value`, the lowest one
+  higher than it (`GetSortedAsync(true, 1, floor(value) + 1)`), or nil at the top. Answers are kept
+  for `cache` seconds, as `leaderboard`'s are, and let go once older.
+
+### Changed
+
+- **A read with the ordered list budget spent no longer calls `GetSortedAsync`.** It answers with
+  the last answer to the same query, however old, and raises `"the ordered list budget is spent"`
+  when there is none. Before, the call was made and Roblox queued or refused it.
+
 ## 0.6.14 - 2026-10-21
 
 A player who leaves while their load is in flight and joins the same server again is no longer told

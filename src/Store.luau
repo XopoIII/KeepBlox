@@ -106,6 +106,10 @@ export type Store<T = any> = {
 	trade: (self: Store<T>, keyA: string, keyB: string, change: (dataA: T, dataB: T) -> ()) -> Trade.Result,
 	--> The top of a leaderboard, `{key, value}` entries, highest first unless asked otherwise.
 	leaderboard: (self: Store<T>, name: string, query: Boards.Query?) -> { Boards.Entry },
+	--> The entry nearest above `value` on a leaderboard (the lowest value higher than it), or nil.
+	leaderboardAbove: (self: Store<T>, name: string, value: number, query: Boards.Query?) -> Boards.Entry?,
+	--> The current period of a leaderboard with a period, by this server's clock; nil without one.
+	leaderboardPeriod: (self: Store<T>, name: string) -> number?,
 }
 
 const Store = {}
@@ -260,6 +264,14 @@ function Store.new(name: string, options: Options): Store
 		leaderboard = function(_: Store, boardName: string, query: Boards.Query?): { Boards.Entry }
 			assert(boards, "KeepBlox: this store has no leaderboards")
 			return boards:top(boardName, query)
+		end,
+		leaderboardAbove = function(_: Store, boardName: string, value: number, query: Boards.Query?): Boards.Entry?
+			assert(boards, "KeepBlox: this store has no leaderboards")
+			return boards:above(boardName, value, query)
+		end,
+		leaderboardPeriod = function(_: Store, boardName: string): number?
+			assert(boards, "KeepBlox: this store has no leaderboards")
+			return boards:period(boardName)
 		end,
 		edit = function(_: Store, key: string, edit: (data: any) -> (), editOptions: Edit.Options?): Edit.Result
 			return Edit.run(state, key, edit, editOptions)
