@@ -5,6 +5,39 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.8.0 - 2026-10-24
+
+Scheduled jobs: work due at a time, kept in a data store and run by whichever server sweeps first
+once its time has come, whether or not its player is in the game. Nothing that existed changes.
+
+### Added
+
+- **`KeepBlox.schedule(name, options?)`** opens a schedule (`Schedule`): one job a key, `{ due, data }`
+  with `due` in whole Unix seconds. `put`, `remove` and `update` change a key's job in one UpdateAsync,
+  each landing once though its call is tried again (as a shared update does); `read` gives it back.
+- **`schedule:sweep(handler, options?)`** reads the keys due now from an ordered data store beside the
+  jobs (`<name>_due`), takes each with a claim (`claim` seconds, default 120) so one server holds it,
+  and runs `handler(key, job)`, which may yield. It answers nil (done), a job to keep, or false to
+  leave it; a game's change made while it ran wins over its answer. A job no sweep finished for `keep`
+  seconds past its time (default a day) is dropped. A sweep stops while fewer than `reserve` standard
+  writes are left in the server's budget (default 20), and returns what it did by key.
+- The index is never written blind: while a key holds a job its second is no later than the job's
+  time, through any interleaving of servers. An update only lowers it; a sweep moves it only from the
+  second it saw, then reads the record again (`JobIndex`).
+- A new `onError` kind, `"schedule"`: a job stored but not indexed, or a handler that threw.
+- roblox-ts declarations for all of it, and the guide "Scheduled jobs".
+
+### Tests
+
+- 13 specs (`tests/unit/Schedule.luau`, `tests/unit/ScheduleRace.luau`): a job run once its time has
+  come, kept, left or thrown, moved later, removed, dropped, refused; three servers sweeping at once run
+  each job once; a dead server's job is run by another once its claim expires; a game's change wins over
+  a handler's answer; the budget's reserve; a put whose call landed and failed lands once; a job put
+  while a sweep parks its key is found.
+- 10 mutants (`tests/MutantsSchedule.luau`), each failing those specs.
+- The ordered data store fake now holds a request for a fault's `delay` and serves it on what is
+  stored by then, as the standard store's fake does.
+
 ## 0.7.0 - 2026-10-21
 
 Leaderboards that start again every period, the entry just above a value, and reads that answer

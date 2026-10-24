@@ -57,7 +57,11 @@ function Ordered.new(context: Context, store: string): Services.OrderedDataStore
 		budget:acquire(types :: any, queue, Errors.queueFull(305, op))
 		const rule = faults:match(op, key, context.server, false)
 		if rule then
-			if rule.hang then
+			-- a request held in a queue, then served on what is stored by then, as the standard store's
+			if rule.delay then
+				scheduler:wait(rule.delay)
+				return
+			elseif rule.hang then
 				scheduler:wait(math.huge)
 			end
 			error(rule.error, 0)

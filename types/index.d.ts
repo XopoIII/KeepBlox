@@ -18,7 +18,8 @@ declare namespace KeepBlox {
 		| "receipt"
 		| "message"
 		| "import"
-		| "studio";
+		| "studio"
+		| "schedule";
 
 	type LoadFailure =
 		| "cancelled"
@@ -193,6 +194,54 @@ declare namespace KeepBlox {
 		watch(key: string, handler: (data: T) => void): { Disconnect(): void };
 	}
 
+	/** A job of a schedule: when it is due, in whole Unix seconds, and its data. */
+	interface Job<D = unknown> {
+		due: number;
+		data: D;
+	}
+
+	interface ScheduleOptions {
+		/** Seconds a server holds a job it took before another may take it. Default 120. */
+		claim?: number;
+		/** Seconds a job is kept past its due time while no sweep finishes it. Default a day. */
+		keep?: number;
+		mock?: boolean | string;
+		config?: ConfigOverrides;
+	}
+
+	type ScheduleResult<D> = { ok: true; job?: Job<D> } | { ok: false; reason: "error" | "refused" | "foreign" | "failed"; message?: string };
+
+	/** What a sweep's handler answers: undefined when done, a job to keep it for later, false to leave it. */
+	type Handled<D> = Job<D> | false | undefined;
+
+	interface SweepOptions {
+		/** Due keys one sweep reads at most. Default 50, at most 100. */
+		limit?: number;
+		/** Standard writes left in the server's budget below which the sweep stops. Default 20. */
+		reserve?: number;
+	}
+
+	interface Swept {
+		done: number;
+		kept: number;
+		left: number;
+		failed: number;
+		dropped: number;
+		busy: number;
+		early: number;
+	}
+
+	interface Schedule<D = unknown> {
+		readonly name: string;
+		/** A job stored but not indexed, or a handler that threw (kind "schedule"); Studio in memory (kind "studio"). */
+		readonly onError: Signal<[key: string, message: string, kind: ErrorKind]>;
+		read(key: string): ScheduleResult<D>;
+		update(key: string, change: (job: Job<D> | undefined) => Job<D> | undefined): ScheduleResult<D>;
+		put(key: string, due: number, data: D): ScheduleResult<D>;
+		remove(key: string): ScheduleResult<D>;
+		sweep(handler: (key: string, job: Job<D>) => Handled<D>, options?: SweepOptions): Swept;
+	}
+
 	interface Defaults {
 		renew: number;
 		death: number;
@@ -262,6 +311,7 @@ declare namespace KeepBlox {
 interface KeepBlox {
 	store<T extends object>(name: string, options: KeepBlox.StoreOptions<T>): KeepBlox.Store<T>;
 	shared<T extends object>(name: string, options: KeepBlox.SharedOptions<T>): KeepBlox.SharedStore<T>;
+	schedule<D = unknown>(name: string, options?: KeepBlox.ScheduleOptions): KeepBlox.Schedule<D>;
 	readonly defaults: KeepBlox.Defaults;
 	readonly schema: KeepBlox.Schema;
 	readonly importers: KeepBlox.Importers;

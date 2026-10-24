@@ -20,6 +20,7 @@
 --- | `"message"` | A message was refused or not sent, or a message handler threw |
 --- | `"import"` | A read from the library being moved from failed, and is tried again |
 --- | `"studio"` | Studio keeps the data in memory, or could not read a live profile to copy |
+--- | `"schedule"` | A scheduled job was stored but not indexed, or its handler threw |
 ---
 --- A kind is added only in a release that says so in its changelog; none is ever renamed or removed.
 
@@ -37,6 +38,7 @@ export type ErrorKind =
 	| "message"
 	| "import"
 	| "studio"
+	| "schedule"
 
 --> Hears of a problem: the store's `onError`. Every site names its kind; none can leave it out.
 export type Report = (key: string, message: string, kind: ErrorKind) -> ()
