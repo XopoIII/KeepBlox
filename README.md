@@ -19,7 +19,7 @@ KeepBlox keeps session-locked player profiles on DataStore. It reads and writes 
 ProfileStore and speaks its lock protocol, so a game can switch by changing one `require`, run old and
 new servers side by side during the rollout, and switch back.
 
-> **Status: 0.7.0.** Everything below is proven in the simulator, against ProfileStore, five other
+> **Status: 0.8.0.** Everything below is proven in the simulator, against ProfileStore, five other
 > libraries and a game with no library. It is also checked on Roblox's real DataStore, MessagingService
 > and MemoryStore in a private test experience (`tests/live`), overload included. It runs in one live
 > public game (Grabby Pit) since early October 2026. That is one game and a short time: try it in a test
@@ -59,6 +59,8 @@ fail (`tests/Mutate.luau`), and the save check is fuzzed against the store's enc
 - Offline and admin edits that never kick a player (`store:edit`), and offline messages (`store:message`).
 - Trades between two profiles that land in both or in neither (`store:trade`).
 - Shared documents for guilds and clans, updated atomically from any server (`KeepBlox.shared`).
+- Jobs due at a time, kept in a data store and run by whichever server sweeps first, with no
+  MemoryStore quota to outgrow (`KeepBlox.schedule`).
 - Leaderboards mirrored to ordered data stores (`leaderboards`).
 - A schema with numbered, testable migrations; deep defaults for template stores.
 - Releases you can roll back: migrations with a way back (`{ up, down }`) and `writeVersion`, so the
@@ -112,7 +114,7 @@ local store = KeepBlox.store("Profiles", {
 
 ## Install
 
-- **Wally:** `KeepBlox = "xopoiii/keepblox@0.7.0"` under `[server-dependencies]`.
+- **Wally:** `KeepBlox = "xopoiii/keepblox@0.8.0"` under `[server-dependencies]`.
 - **pesde:** `pesde add xopoiii/keepblox -t roblox_server -a KeepBlox`.
 - **Studio:** `KeepBlox.rbxm` from the [latest release](https://github.com/XopoIII/KeepBlox/releases/latest).
 

@@ -31,6 +31,7 @@ const Profile = require("@self/Profile")
 const Receipts = require("@self/Receipts")
 const Record = require("@self/Record")
 const Report = require("@self/Report")
+const Schedule = require("@self/Schedule")
 const Schema = require("@self/Schema")
 const Shared = require("@self/Shared")
 const Store = require("@self/Store")
@@ -41,6 +42,13 @@ export type StoreOptions = Store.Options
 export type SharedStore = Shared.SharedStore
 --> What `KeepBlox.shared` takes.
 export type SharedOptions = Shared.Options
+export type Schedule = Schedule.Schedule
+--> What `KeepBlox.schedule` takes, a job, what a sweep's handler answers, takes and does.
+export type ScheduleOptions = Schedule.Options
+export type Job = Schedule.Job
+export type Handled = Schedule.Handled
+export type SweepOptions = Schedule.SweepOptions
+export type Swept = Schedule.Swept
 export type Profile<T = any> = Profile.Profile<T>
 --> Why a session ended: what `profile.onEnded` fires with.
 export type EndReason = Profile.EndReason
@@ -72,6 +80,9 @@ KeepBlox.defaults = Config.DEFAULT
 
 --> Opens the shared store `name`: documents no server owns, changed atomically by any (see Shared).
 KeepBlox.shared = Shared.new
+
+--> Opens the schedule `name`: jobs due at a time, run by whichever server sweeps first (see Schedule).
+KeepBlox.schedule = Schedule.new
 
 --> Builders for a store's `schema` (see Schema).
 KeepBlox.schema = Schema

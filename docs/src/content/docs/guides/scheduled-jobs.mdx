@@ -1,0 +1,163 @@
+---
+title: Scheduled jobs
+description: KeepBlox.schedule keeps jobs due at a time in a data store, and runs each once on whichever server sweeps first after its time has come, whether or not its player is in the game.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Some things must happen later, whether or not anyone is in the game by then: a reminder to send when
+a crop is ripe, a reward to grant when a friend finishes a quest, an offer that ends. `KeepBlox.schedule`
+opens a store of such jobs. Each key holds one job: a time it is due and some data. Any server can put
+one, and every server sweeps from time to time; whichever sweeps first after a job's time takes it and
+runs it.
+
+```lua
+const reminders = KeepBlox.schedule("Reminders")
+
+-- when the crop is planted
+reminders:put(`u_{userId}`, os.time() + 3600, { crop = "pumpkin" })
+
+-- on every server, every half minute or so
+task.spawn(function()
+	while true do
+		reminders:sweep(function(key, job)
+			sendReminder(key, job.data)
+			return nil -- done
+		end)
+		task.wait(30)
+	end
+end)
+```
+
+## Why not MemoryStore
+
+A sorted map in MemoryStore is the usual way to keep such a queue, and it works until the game grows.
+A memory store's quota grows with the players in the experience **at once**: 64 KB and about 1 KB more
+for each. What a game schedules for players who are away grows with **all** its players. A game of a
+thousand daily players and twenty at once can fill its quota with reminders alone, and every other use
+of MemoryStore (KeepBlox's own heartbeats among them) fails with it.
+
+A schedule keeps its jobs in a data store instead. It costs data store requests from each server's own
+budget, and a job waits safely for as long as no server runs.
+
+## Options
+
+`KeepBlox.schedule(name, options?)` takes the data store name and:
+
+| Option | Meaning |
+|---|---|
+| `claim` | Seconds a server holds a job it took before another server may take it. Default 120. |
+| `keep` | Seconds a job is kept past its due time while no sweep finishes it. Past that it is dropped when next found, and counted as `dropped`. Default 86400 (a day). |
+| `config` | Overrides for the defaults (see [Config](/KeepBlox/reference/config/)). A schedule uses `loadTimeout`, `callTimeout`, `backoffMin` and `backoffMax`. |
+| `mock` | Keep the jobs in memory: `true`, or the name of a scratch set (see [Studio and testing](/KeepBlox/guides/studio-and-testing/)). |
+| `services` | The engine services; tests pass fakes. |
+
+The ordered data store beside the jobs is named `<name>_due`.
+
+## put, update, remove, read
+
+```lua
+reminders:put(key, due, data)     -- set the key's job, replacing any
+reminders:remove(key)             -- remove it
+reminders:update(key, function(job)
+	-- job is a copy, nil for none; return the job to keep, or nil to remove it
+	const data = if job then job.data else { kinds = {} }
+	data.kinds.egg = eggTime
+	return { due = math.min(eggTime, data.kinds.scouts or math.huge), data = data }
+end)
+const result = reminders:read(key) -- { ok = true, job = { due = ..., data = ... } } or job = nil
+```
+
+`due` is a time in whole Unix seconds of the server's clock (`os.time()`); a fraction is dropped. A job
+is `{ due = number, data = any }`, and its data is checked as a profile's is: every value must be
+storable, and a refusal names the path of the bad value.
+
+`update` runs `change(job)` inside one `UpdateAsync`, on the job stored at that moment, with the same
+contract as a [shared document](/KeepBlox/guides/shared-documents/)'s update: **it must not yield, and it
+may run more than once**. Each update takes one id for all its tries, stored with the change, so an
+update whose call failed but went through lands once. `put` and `remove` are updates.
+
+All four return `{ ok = true, job = ... }` (the job stored, nil for none) or
+`{ ok = false, reason = ..., message = ... }`:
+
+| Reason | When |
+|---|---|
+| `"error"` | `change` threw. Nothing is written. |
+| `"refused"` | The job's due is not a time in seconds, or its data cannot be stored. Nothing is written. |
+| `"foreign"` | The key holds a value that is not a job. It is left untouched. |
+| `"failed"` | The data store kept failing until `loadTimeout` passed; or the job was stored but its index could not be written (see below). |
+
+## sweep
+
+`sweep(handler, options?)` reads the keys whose time has come, earliest first, and for each:
+
+1. **Takes it.** One `UpdateAsync` of its record gives the job this sweep's claim, a fresh id, for
+   `claim` seconds. A job another server holds is left (`busy`).
+2. **Runs it.** `handler(key, job)` is called outside any transform: it may yield, send a request,
+   grant a reward.
+3. **Stores what the handler answers**, in one more `UpdateAsync`:
+
+| The handler returns | The job |
+|---|---|
+| `nil` | Done: removed. |
+| a job `{ due, data }` | Kept, with its new time and data, for a later sweep. |
+| `false` | Left as it was, for the next sweep. |
+| (throws) | Left as it was, and reported through `onError` with the kind `"schedule"`. |
+
+What the handler answers is stored only while the claim is still this sweep's and the job unchanged
+since it was taken. A game's `update` made while the handler ran wins: the answer is not stored, the
+claim is taken off, and the changed job is swept again in its time.
+
+`sweep` returns what it did: `{ done, kept, left, failed, dropped, busy, early }`, each a count of keys.
+`failed` counts a handler that threw and a call that did not answer; `early` counts index entries a
+sweep moved to their job's later time, or parked for a key that holds no job.
+
+| Sweep option | Meaning |
+|---|---|
+| `limit` | How many due keys one sweep reads at most. Default 50, at most 100 (one page). |
+| `reserve` | Standard writes left in this server's budget below which the sweep stops, so saves keep theirs. Default 20. |
+
+Nothing is retried within a sweep. What fails is left for the next one.
+
+<Aside type="caution">
+One server holds a job at a time, and a job whose handler finishes runs once. It can run again in two
+cases: the server dies inside the handler, or the handler takes longer than `claim` seconds. Either way
+the claim expires and another sweep takes the job. Keep a handler well under `claim`, and make it safe
+to repeat: a notification sent twice is usually fine, and a reward is best granted by something that
+lands once, such as an [offline message](/KeepBlox/guides/messages-and-edits/).
+</Aside>
+
+## How a job is found
+
+The jobs live in the data store, one record a key. Beside them an ordered data store, the index, holds
+for each key a second at or before which its job is due, and a sweep asks it for the keys whose second
+has come (`GetSortedAsync` with a maximum of now).
+
+The index is never written blind. Its one rule: **while a key holds a job, the index holds a second no
+later than the job's due time**, so a job is never found late. An update writes the job first, then
+moves the index earlier if the job is due sooner, never later; of two servers updating a key at once,
+the index keeps the earlier second. A sweep that finds a job not due yet moves the index to it. A key
+that holds no job any more has its index entry parked, never removed: a removal cannot be made
+conditional, and a parked entry is never due. Each such move is made only from the second it was seen
+at, and is followed by a read of the record: a job put meanwhile lowers the index again.
+
+If a job is stored but its index cannot be written within `loadTimeout`, `update` answers `"failed"`
+and `onError` reports it with the kind `"schedule"`. The job waits until the next change of the key.
+
+## Costs
+
+A sweep spends one ordered list request (5 + 2 per player a minute per server), and for each due key
+up to two standard writes and an ordered write. An update spends a standard write and an ordered
+write. A sweep every 30 seconds on each server, taking a few jobs each time, stays well inside the
+budget; `reserve` keeps the last writes for saves.
+
+## onError
+
+`onError` fires `(key, message, kind)` as a store's does: kind `"schedule"` for a job stored but not
+indexed and for a handler that threw, and `"studio"` once when Studio cannot reach live data and keeps
+the jobs in memory.
+
+## Use a data store of its own
+
+A key that holds anything but a job is refused (`"foreign"`) and never touched. Keep jobs in their own
+data store, apart from profiles and shared documents.

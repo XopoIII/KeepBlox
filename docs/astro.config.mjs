@@ -22,6 +22,7 @@ const sidebar = [
 			'guides/messages-and-edits',
 			'guides/trades',
 			'guides/shared-documents',
+			'guides/scheduled-jobs',
 			'guides/leaderboards',
 			'guides/versions-and-rollback',
 			'guides/large-profiles',

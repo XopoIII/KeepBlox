@@ -70,10 +70,10 @@ Spec.test("Typings: the kinds onError fires are the same list in Luau and for ro
 	const luau = assert(string.match(fs.readFile("src/Report.luau"), "\nexport type ErrorKind =(.-)\n\n"))
 	const declared = assert(string.match(DECLARATIONS, "\n\ttype ErrorKind =(.-);"))
 	const kinds = words(luau)
-	Spec.equal(#kinds, 13)
+	Spec.equal(#kinds, 14)
 	Spec.equal(words(declared), kinds)
-	-- The listener of each store is told the kind, by that type.
-	Spec.equal(select(2, string.gsub(DECLARATIONS, "kind: ErrorKind%]>", "")), 2)
+	-- The listener of each store, the shared one and the schedule is told the kind, by that type.
+	Spec.equal(select(2, string.gsub(DECLARATIONS, "kind: ErrorKind%]>", "")), 3)
 end)
 
 return nil

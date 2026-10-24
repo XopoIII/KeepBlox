@@ -158,6 +158,30 @@ shared.onError:connect(function(_key: string, _message: string, kind: KeepBlox.E
 end)
 print(sharedName)
 
+-- A schedule: a job put, changed and swept, its handler answering each of its three ways.
+const SCHEDULE: KeepBlox.ScheduleOptions = { claim = 60, keep = 3600 }
+const reminders: KeepBlox.Schedule = KeepBlox.schedule("Reminders", SCHEDULE)
+const put = reminders:put("u_1", os.time() + 60, { crop = "pumpkin" })
+if put.ok and put.job then
+	const due: number = put.job.due
+	print(due)
+end
+reminders:update("u_1", function(job: KeepBlox.Job?): KeepBlox.Job?
+	return if job then { due = job.due + 60, data = job.data } else nil
+end)
+const swept: KeepBlox.Swept = reminders:sweep(function(_key: string, job: KeepBlox.Job): KeepBlox.Handled
+	if job.data == nil then
+		return false
+	elseif job.due > os.time() then
+		return { due = job.due, data = job.data }
+	end
+	return nil
+end, { limit = 10, reserve = 30 })
+reminders.onError:connect(function(_key: string, _message: string, kind: KeepBlox.ErrorKind)
+	print(kind)
+end)
+print(swept.done, swept.kept, swept.left, swept.failed, swept.dropped, swept.busy, swept.early)
+
 -- A game that types its data names the shape once, on the store; every profile of it carries the shape.
 type PlayerData = { coins: number, items: { string } }
 const typed: KeepBlox.Store<PlayerData> = KeepBlox.store("Typed", { template = { coins = 0, items = {} } })
