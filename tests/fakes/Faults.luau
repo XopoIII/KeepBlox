@@ -8,7 +8,8 @@
 --- must survive exactly that. A delay is a request that waits and then runs: over the budget, "requests
 --- are added to a queue" and sent later (data-stores/error-codes-and-limits, "Throttling"), and a
 --- caller that stopped waiting does not stop the request. Held before the read, the call runs late,
---- on whatever is stored by then; held `after` the write, it committed and answers late.
+--- on whatever is stored by then; held `after` the write, it committed and answers late; held `after` a
+--- read (GetAsync), it answers late with what was stored when it read.
 const Prng = require("./Prng")
 
 export type Rule = {

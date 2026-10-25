@@ -1,0 +1,120 @@
+---
+title: Tallies
+description: KeepBlox.tally keeps counts that every server adds to, summed across the whole game and read back by every server, without one key taking every server's writes.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Some numbers belong to the whole game: the gifts every player has given to a community goal, the
+pumpkins harvested this season, the damage dealt to a world boss. Every server adds to them, and every
+server shows them. `KeepBlox.tally` opens a store of such counts.
+
+```lua
+const gives = KeepBlox.tally("Gives")
+
+-- when a player gives
+gives:add("harvest", 1)
+
+-- on every server, to show the goal
+gives:watch("harvest", function(total)
+	goalLabel.Text = `{total} / 1000`
+end)
+
+-- or now, without yielding
+print(gives:total("harvest"))
+```
+
+## Why not one key
+
+The obvious way, one key and an `UpdateAsync` for each add, works with a few servers. Every server
+then writes the same key at once: each write that loses the race is run again, the key's writes queue,
+and the game's busiest moment is the one that fails. A sorted map in MemoryStore has the same key, and
+a quota that grows only with the players in the game at once.
+
+A tally spreads each count over several keys, its **shards**, and a server writes only every
+`interval` seconds: everything its players added meanwhile goes as one batch, in one write. However
+many adds a server has, a shard takes about one write an interval from each server in `shards` of
+them.
+
+## Options
+
+`KeepBlox.tally(name, options?)` takes the data store name and:
+
+| Option | Meaning |
+|---|---|
+| `interval` | Seconds between a server's batches, and between its reads of the keys it watches. Default 60. |
+| `shards` | Keys each count is spread over, `"<key>/1"` to `"<key>/<shards>"`. Default 8. Fixed for the tally's name (see below). |
+| `remember` | Seconds a shard keeps the entry of a server that stopped writing there, and so how long a batch is safe to try again. Default 86400 (a day). |
+| `reserve` | Standard requests left in this server's budget below which a turn waits, so saves keep theirs. Default 10. |
+| `config` | Overrides for the defaults (see [Config](/KeepBlox/reference/config/)). A tally uses `callTimeout`, `shutdownDeadline`, `backoffMin` and `backoffMax`. |
+| `mock` | Keep the counts in memory: `true`, or the name of a scratch set (see [Studio and testing](/KeepBlox/guides/studio-and-testing/)). |
+| `services` | The engine services; tests pass fakes. |
+
+A key with its shard's number must fit the 50 characters a data store key may have: with 8 shards,
+a key of up to 48.
+
+## add, total, read, flush
+
+```lua
+gives:add(key, amount)   -- counted here at once; never yields
+gives:total(key)         -- every server's count as last read, with this server's adds since; never yields
+gives:read(key)          -- reads every shard now: { ok = true, total = ... }; yields
+gives:flush()            -- writes every key's batch now, one try each; true when nothing is left; yields
+```
+
+`amount` is any finite number, negative ones too. A server's own adds are in its `total` at once;
+everyone else's arrive when this server reads them, at most about two intervals later.
+
+`read` answers `{ ok = false, reason = "failed" }` when a shard could not be read, and
+`{ ok = false, reason = "foreign" }` when a shard's key holds something that is not a tally's.
+
+## watch
+
+`watch(key, handler)` reads the key at once, calls `handler(total)` with what it found, and from then on
+reads the key every `interval` seconds while it is watched, calling `handler` whenever the total changes,
+by a read or by this server's own add. It returns a connection; `Disconnect()` stops it, and a key no one
+watches is not read.
+
+## How a batch lands once
+
+A write that seems to fail may still have gone through, and a call the library stopped waiting for keeps
+running in the engine. A batch tried again must not count twice. Each server numbers its batches on a
+key, and its shard keeps, for each server that wrote there lately, the number of its last batch that
+landed. A try that finds its number there already changes nothing. The server sends a key's batches one
+at a time and keeps trying the same batch until one try is seen to land, by its own write or by a read
+of its shard.
+
+A shard holds one entry a server, forgotten `remember` seconds after that server's last write there, so
+a shard stays small: a day's servers divided among the shards.
+
+## Costs
+
+Each `interval`, a server spends one `UpdateAsync` for each key added to since its last turn, and
+`shards` reads for each key it watches. With the defaults that is 8 reads a minute a watched key, from
+the server's standard read budget, which grows with its players. A turn writes nothing while fewer than `reserve` standard writes are
+left, and reads nothing while fewer than `shards + reserve` reads are; what waits goes at the next turn.
+`flush` and `read` are the game's own asks and do not wait for the budget.
+
+## What it does not promise
+
+<Aside type="caution">
+- **A crash loses the last interval.** Adds a server has not written yet are lost if it stops without
+  closing. A server that closes writes them first, within `shutdownDeadline`. A smaller `interval` loses
+  less and writes more.
+- **A batch stuck for a day may count twice.** A batch that cannot land for `remember` seconds may find
+  its server's entry forgotten when it does.
+- **`shards` is fixed for a name.** A server that reads fewer shards than another writes misses those
+  counts. To change it, open a tally under a new name.
+</Aside>
+
+## onError
+
+`onError` fires `(key, message, kind)` as a store's does: kind `"tally"` for a batch that could not be
+written (once, until one lands), a watched key that could not be read, and a shard that holds something
+that is not a tally's; and `"studio"` once when Studio cannot reach live data and keeps the counts in
+memory.
+
+## Use a data store of its own
+
+A shard's key that holds anything but a tally's shard is never written and never counted. Keep tallies in
+their own data store, apart from profiles, shared documents and schedules.

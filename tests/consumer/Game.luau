@@ -182,6 +182,24 @@ reminders.onError:connect(function(_key: string, _message: string, kind: KeepBlo
 end)
 print(swept.done, swept.kept, swept.left, swept.failed, swept.dropped, swept.busy, swept.early)
 
+-- A tally: added to, watched, read and flushed.
+const TALLY: KeepBlox.TallyOptions = { interval = 30, shards = 4, remember = 3600, reserve = 20 }
+const gives: KeepBlox.Tally = KeepBlox.tally("Gives", TALLY)
+gives:add("harvest", 1)
+const shown: number = gives:total("harvest")
+const watching = gives:watch("harvest", function(total: number)
+	print(total)
+end)
+watching:Disconnect()
+const counted: KeepBlox.TallyResult = gives:read("harvest")
+if counted.ok then
+	print(counted.total + shown)
+end
+const flushed: boolean = gives:flush()
+gives.onError:connect(function(_key: string, _message: string, kind: KeepBlox.ErrorKind)
+	print(kind, flushed)
+end)
+
 -- A game that types its data names the shape once, on the store; every profile of it carries the shape.
 type PlayerData = { coins: number, items: { string } }
 const typed: KeepBlox.Store<PlayerData> = KeepBlox.store("Typed", { template = { coins = 0, items = {} } })

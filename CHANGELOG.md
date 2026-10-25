@@ -5,6 +5,40 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.9.0 - 2026-10-25
+
+Tallies: counts every server adds to, summed across the whole game and read back by every server,
+without one key taking every server's writes. Nothing that existed changes.
+
+### Added
+
+- **`KeepBlox.tally(name, options?)`** opens a tally (`Tally`). `add(key, amount)` counts at once on
+  this server and never yields; `total(key)` is every server's count as last read with this server's
+  adds since, and never yields; `read(key)` reads it now; `flush()` writes now; `watch(key, handler)`
+  reads at once and every `interval` while watched, and calls the handler when the total changes.
+- A count is spread over `shards` keys (`"<key>/1"` to `"<key>/<shards>"`, default 8). Each server writes
+  one of them, every `interval` seconds (default 60), everything added meanwhile as one batch in one
+  UpdateAsync. A batch lands once though its call is tried again or lands late: each shard keeps the
+  serial of each server's last batch, forgotten `remember` seconds after that server's last write there
+  (default a day), and a batch seen to land by a read is not written again (`TallyShard`, `TallyCount`).
+- A turn writes nothing while fewer than `reserve` standard writes are left in the server's budget, and
+  reads nothing while fewer than `shards + reserve` reads are (default 10). A server that closes writes
+  its batches first, within `shutdownDeadline`.
+- A new `onError` kind, `"tally"`: a batch not written, a watched key not read, or a shard holding a
+  value that is not a tally's (left as it is, and counted by no one).
+- roblox-ts declarations for all of it, and the guide "Tallies".
+
+### Tests
+
+- 18 specs (`tests/unit/Tally.luau`, `tests/unit/TallyRace.luau`): adds summed for every server, a
+  server's own at once; one write a turn whatever the number of adds; watchers told after the first
+  read, on each change and not after they leave; the shutdown's writes and a crash's loss; the budget's
+  reserve; a batch that landed and failed, that was held past its timeout, or that a read settled,
+  counted once; a try run after its entry was forgotten; an older answer not taken over a newer one; a
+  foreign shard; six servers on one shard over six seeds; the shard's format and the spread of servers.
+- 13 mutants (`tests/MutantsTally.luau`), each failing those specs.
+- The standard data store fake can now hold a read's answer `after` the read, as it holds a write's.
+
 ## 0.8.0 - 2026-10-24
 
 Scheduled jobs: work due at a time, kept in a data store and run by whichever server sweeps first
