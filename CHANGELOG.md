@@ -5,6 +5,21 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.9.2 - 2026-10-25
+
+A toolchain release. The package's code is 0.9.1's: nothing in `src/` changes.
+
+### Changed
+
+- **Tests run on LuneBlox 0.11.2**, up from 0.11.1. It sets the fast flags of the Roblox client 0.744,
+  which turned `DebugCodegenOptSize` off, so native code gets block linearisation back; Luau itself
+  is the same. Its macOS binaries are built with Apple Clang 21, where 0.11.1's, from Clang 17,
+  interpreted about 30% slower than the same source allows. The benchmark tables count bytes and
+  data store requests, not CPU time, so neither change touches them, and they are not measured
+  again.
+- **The documentation site is built with Astro 7.4.2 and Starlight 0.42.7**, from 7.4.1 and 0.42.6.
+  Every other tool, package and CI action was already at its latest release.
+
 ## 0.9.1 - 2026-10-25
 
 A toolchain release. The package's code is 0.9.0's: nothing in `src/` changes.
