@@ -6,7 +6,7 @@
   "lintErrors": true,
   "typeErrors": true,
   "aliases": {
-    "lune": "~/.luneblox/.typedefs/0.10.18/",
+    "lune": "~/.luneblox/.typedefs/0.11.1/",
     "keepblox": "./src",
     "fakes": "./tests/fakes",
     "sim": "./tests/sim"
