@@ -35,6 +35,7 @@ const Schedule = require("@self/Schedule")
 const Schema = require("@self/Schema")
 const Shared = require("@self/Shared")
 const Store = require("@self/Store")
+const Tally = require("@self/Tally")
 
 export type Store<T = any> = Store.Store<T>
 --> What `KeepBlox.store` takes.
@@ -49,6 +50,10 @@ export type Job = Schedule.Job
 export type Handled = Schedule.Handled
 export type SweepOptions = Schedule.SweepOptions
 export type Swept = Schedule.Swept
+export type Tally = Tally.Tally
+--> What `KeepBlox.tally` takes, and what its `read` answers.
+export type TallyOptions = Tally.Options
+export type TallyResult = Tally.Result
 export type Profile<T = any> = Profile.Profile<T>
 --> Why a session ended: what `profile.onEnded` fires with.
 export type EndReason = Profile.EndReason
@@ -83,6 +88,9 @@ KeepBlox.shared = Shared.new
 
 --> Opens the schedule `name`: jobs due at a time, run by whichever server sweeps first (see Schedule).
 KeepBlox.schedule = Schedule.new
+
+--> Opens the tally `name`: counts every server adds to, summed across the game (see Tally).
+KeepBlox.tally = Tally.new
 
 --> Builders for a store's `schema` (see Schema).
 KeepBlox.schema = Schema

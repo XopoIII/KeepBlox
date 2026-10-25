@@ -19,7 +19,8 @@ declare namespace KeepBlox {
 		| "message"
 		| "import"
 		| "studio"
-		| "schedule";
+		| "schedule"
+		| "tally";
 
 	type LoadFailure =
 		| "cancelled"
@@ -242,6 +243,34 @@ declare namespace KeepBlox {
 		sweep(handler: (key: string, job: Job<D>) => Handled<D>, options?: SweepOptions): Swept;
 	}
 
+	interface TallyOptions {
+		/** Seconds between a server's batches, and between its reads of the keys watched. Default 60. */
+		interval?: number;
+		/** Keys a count is spread over. Default 8. Fixed for the tally's name. */
+		shards?: number;
+		/** Seconds a shard keeps the entry of a server that stopped writing there. Default a day. */
+		remember?: number;
+		/** Standard requests left in the server's budget below which a turn waits. Default 10. */
+		reserve?: number;
+		mock?: boolean | string;
+		config?: ConfigOverrides;
+	}
+
+	type TallyResult = { ok: true; total: number } | { ok: false; reason: "foreign" | "failed"; message?: string };
+
+	interface Tally {
+		readonly name: string;
+		/** A batch not written, a watched key not read, a shard holding something else (kind "tally"); Studio in memory (kind "studio"). */
+		readonly onError: Signal<[key: string, message: string, kind: ErrorKind]>;
+		/** Counted here at once, written with this server's next batch. Never yields. */
+		add(key: string, amount: number): void;
+		/** Every server's count as last read, with this server's adds since. Never yields. */
+		total(key: string): number;
+		read(key: string): TallyResult;
+		flush(): boolean;
+		watch(key: string, handler: (total: number) => void): { Disconnect(): void };
+	}
+
 	interface Defaults {
 		renew: number;
 		death: number;
@@ -312,6 +341,7 @@ interface KeepBlox {
 	store<T extends object>(name: string, options: KeepBlox.StoreOptions<T>): KeepBlox.Store<T>;
 	shared<T extends object>(name: string, options: KeepBlox.SharedOptions<T>): KeepBlox.SharedStore<T>;
 	schedule<D = unknown>(name: string, options?: KeepBlox.ScheduleOptions): KeepBlox.Schedule<D>;
+	tally(name: string, options?: KeepBlox.TallyOptions): KeepBlox.Tally;
 	readonly defaults: KeepBlox.Defaults;
 	readonly schema: KeepBlox.Schema;
 	readonly importers: KeepBlox.Importers;

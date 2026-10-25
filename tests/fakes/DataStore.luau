@@ -97,6 +97,8 @@ function DataStore.new(context: Context, store: string): Services.DataStore
 		fault("GetAsync", key, false)
 		travel()
 		const value, info = current(key)
+		-- Held `after` the read, the answer comes back late with what was stored when it was read.
+		fault("GetAsync", key, true)
 		travel()
 		remember(key, value, info)
 		return value, info

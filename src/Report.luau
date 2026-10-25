@@ -21,6 +21,7 @@
 --- | `"import"` | A read from the library being moved from failed, and is tried again |
 --- | `"studio"` | Studio keeps the data in memory, or could not read a live profile to copy |
 --- | `"schedule"` | A scheduled job was stored but not indexed, or its handler threw |
+--- | `"tally"` | A tally's batch was not written, a watched key was not read, or a shard holds something else |
 ---
 --- A kind is added only in a release that says so in its changelog; none is ever renamed or removed.
 
@@ -39,6 +40,7 @@ export type ErrorKind =
 	| "import"
 	| "studio"
 	| "schedule"
+	| "tally"
 
 --> Hears of a problem: the store's `onError`. Every site names its kind; none can leave it out.
 export type Report = (key: string, message: string, kind: ErrorKind) -> ()
