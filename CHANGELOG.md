@@ -5,6 +5,18 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.9.1 - 2026-10-25
+
+A toolchain release. The package's code is 0.9.0's: nothing in `src/` changes.
+
+### Changed
+
+- **Tests run on LuneBlox 0.11.1**, up from 0.10.18. It runs the same Luau and fast flags as before;
+  between the two, 0.10.19 fixed `net`'s certificate checks, 0.11.0 made Roblox's `Enum` a global,
+  and 0.11.1 keeps `luneblox setup` from putting `Enum` and `warn` in `.luaurc`'s `globals`, where
+  luau-lsp would type them as `any` over the Roblox definitions. Every other tool and CI action was
+  already at its latest release.
+
 ## 0.9.0 - 2026-10-25
 
 Tallies: counts every server adds to, summed across the whole game and read back by every server,
