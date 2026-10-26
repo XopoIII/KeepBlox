@@ -281,6 +281,7 @@ declare namespace KeepBlox {
 		backoffMin: number;
 		backoffMax: number;
 		writeBytesPerMinute: number;
+		writeSpacing: number;
 		shutdownDeadline: number;
 		heartbeat: number;
 		renewFallback: number;

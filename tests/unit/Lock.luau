@@ -73,6 +73,20 @@ Spec.test("Lock: a held key gets a hand-over request; the owner's lease is repor
 	Spec.equal(record.MetaData.ActiveSession, { 1, "job-B", "guid-B" })
 end)
 
+Spec.test("Lock: a request already standing is not written again; one another server made since is", function()
+	const asked = claimed(claimed(nil, THERE), HERE)
+	const again, still = claimed(Record.copy(asked), HERE)
+	Spec.equal(again, nil)
+	Spec.equal(still.kind, "busy")
+	Spec.equal((still :: any).owner.session, { 1, "job-B", "guid-B" })
+	-- A third server asked since: the request is ours again only by writing it.
+	const outbid = claimed(Record.copy(asked), THIRD)
+	Spec.equal(outbid.MetaData.ForceLoadSession, { 1, "job-C" })
+	const back, busy = claimed(outbid, HERE)
+	Spec.equal(busy.kind, "busy")
+	Spec.equal(back.MetaData.ForceLoadSession, { 1, "job-A" })
+end)
+
 Spec.test("Lock: a ProfileStore owner reports no lease", function()
 	const held = claimed(nil, THERE)
 	held.MetaData.KeepBlox = nil

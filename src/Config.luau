@@ -28,6 +28,9 @@ export type Config = {
 	backoffMax: number,
 	--> Bytes of data one key may write a minute; a larger profile saves less often (Roblox allows 4 MB).
 	writeBytesPerMinute: number,
+	--> Seconds a session leaves between its writes to its key, when the write can wait. Roblox takes one
+	--> write to a key about every 6 seconds and queues the rest, and a full queue drops requests.
+	writeSpacing: number,
 	--> Seconds BindToClose waits for releases before it gives up (Roblox allows 30).
 	shutdownDeadline: number,
 	--> Seconds between an owner's MemoryStore beats (see Lease).
@@ -57,6 +60,7 @@ export type Overrides = {
 	backoffMin: number?,
 	backoffMax: number?,
 	writeBytesPerMinute: number?,
+	writeSpacing: number?,
 	shutdownDeadline: number?,
 	heartbeat: number?,
 	renewFallback: number?,
@@ -77,6 +81,7 @@ Config.DEFAULT = table.freeze({
 	backoffMin = 1,
 	backoffMax = 5,
 	writeBytesPerMinute = 3 * 1024 * 1024,
+	writeSpacing = 6,
 	shutdownDeadline = 25,
 	heartbeat = 4,
 	renewFallback = 30,
@@ -98,6 +103,8 @@ function Config.resolve(overrides: Overrides?): Config
 	end
 	assert(config.death >= 2 * config.renew, "KeepBlox: death must be at least twice renew")
 	assert(config.backoffMin <= config.backoffMax, "KeepBlox: backoffMin must not exceed backoffMax")
+	-- A renewal the spacing held off longer could let a live owner's lease look dead.
+	assert(config.writeSpacing <= config.renew, "KeepBlox: writeSpacing must not exceed renew")
 	-- A fallback slower than the renewal itself would be no fallback.
 	config.renewFallback = math.min(config.renewFallback, config.renew)
 	return config

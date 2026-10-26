@@ -231,13 +231,17 @@ Spec.test("Load gives back: a load that fails past its claim stores the last bea
 end)
 
 -- What a load nobody stops spends until it answers: data store reads and writes, memory store units,
--- messages published. The numbers are 0.6.8's, read from its sources with this same spec.
+-- messages published. The numbers are 0.6.8's, read from its sources with this same spec, but for the
+-- writes of a load that waits: since 0.9.3 a poll that finds its own request standing writes nothing,
+-- where it wrote the request again (ten more writes of the key waiting on a dead owner). So a poll no
+-- longer lands as the claim the moment the owner lets go, and the hand-over takes one more poll: a
+-- read, and a look at the beat.
 const COSTS: { [LoadScenes.Case]: { number } } = {
 	[NEW] = { 1, 1, 1, 0 },
-	[HANDED] = { 2, 2, 3, 1 },
-	[DEAD] = { 13, 13, 16, 1 },
+	[HANDED] = { 3, 2, 4, 1 },
+	[DEAD] = { 13, 3, 16, 1 },
 	[IMPORTED] = { 3, 1, 0, 0 },
-	[TRADE] = { 13, 13, 15, 1 },
+	[TRADE] = { 13, 3, 15, 1 },
 }
 
 Spec.test("Load gives back: a load nobody stops answers as it did and spends what it did", function()

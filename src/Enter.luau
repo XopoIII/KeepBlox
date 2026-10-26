@@ -150,6 +150,8 @@ function Enter.session(
 		storedText = if encoded then encoded.text else "",
 		storedSize = if encoded then encoded.size else 0,
 		lastDataWrite = clock.now(),
+		-- The claim just wrote the key.
+		lastWrite = clock.now(),
 		nextRenew = clock.now() + state.config.renew * (1 + offset(key)),
 		serial = Serial.new(clock, function(problem: any)
 			state.onError:fire(key, `a write failed after its caller was cancelled: {problem}`, "save")
@@ -161,6 +163,7 @@ function Enter.session(
 			state.onError:fire(key, message, "message")
 		end),
 		saveSoon = false,
+		saveNow = false,
 		receipts = Record.receipts(record.MetaData),
 		storedReceipts = {},
 		listener = listener,

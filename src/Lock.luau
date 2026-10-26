@@ -148,6 +148,11 @@ const function decide(
 		end
 		return nil, { kind = "outbid" }
 	end
+	if Record.isHere(request, identity) then
+		-- Asked already, and nobody asked since: writing the same request again would only spend the
+		-- key's writes, every poll.
+		return nil, { kind = "busy", owner = owner }
+	end
 	meta.ForceLoadSession = { identity.placeId, identity.jobId }
 	return record, { kind = "busy", owner = owner }
 end
