@@ -52,6 +52,7 @@ Change them only for a reason you can name.
 | Field | Default | Meaning |
 |---|---|---|
 | `writeBytesPerMinute` | 3145728 (3 MB) | Bytes of data one key may write a minute. A larger profile saves its data less often on renewals. Roblox allows 4 MB. See [Large profiles](/KeepBlox/guides/large-profiles/). |
+| `writeSpacing` | 6 | Seconds a session leaves after this server's last write of its key before a write that can wait: a renewal, or the save a message asks for. Roblox takes one write to a key about every 6 seconds and queues the rest. The release, `profile:save()` and a purchase do not wait. |
 | `shutdownDeadline` | 25 | Seconds a shutdown (or `store:close()`) waits for releases before it gives up. Roblox allows 30 for `BindToClose`. |
 
 ## Resolve rules
@@ -64,6 +65,8 @@ A store resolves its config when it is opened, and raises an error on a bad one:
 - Every value must be a positive number.
 - `death` must be at least twice `renew`, so a slow owner is never mistaken for a dead one.
 - `backoffMin` must not exceed `backoffMax`.
+- `writeSpacing` must not exceed `renew`: a renewal held off longer could let a live owner's lease look
+  dead.
 - `renewFallback` is capped at `renew`: a fallback slower than the renewal itself would be no fallback.
   This one is adjusted, not refused.
 

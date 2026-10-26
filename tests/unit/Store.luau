@@ -1,5 +1,6 @@
 --!strict
 --- The public API, one behaviour at a time, on a simulated server.
+const Config = require("@keepblox/Config")
 const KeepBlox = require("@keepblox")
 const Sim = require("./Sim")
 const Spec = require("../Spec")
@@ -237,6 +238,11 @@ Spec.test("Store: a bad setup is refused", function()
 	Spec.throws(function()
 		KeepBlox.store("P", { template = {}, config = { renew = 20, death = 30 } })
 	end, "death must be at least twice renew")
+	Spec.throws(function()
+		KeepBlox.store("P", { template = {}, config = { renew = 20, death = 40, writeSpacing = 21 } })
+	end, "writeSpacing must not exceed renew")
+	-- At the bound it is taken.
+	Spec.equal(Config.resolve({ renew = 20, death = 40, writeSpacing = 20 }).writeSpacing, 20)
 end)
 
 return nil

@@ -1,5 +1,6 @@
 --!strict
 --- Offline messages: the stored queue, and exactly-once handling through the public API.
+const Config = require("@keepblox/Config")
 const KeepBlox = require("@keepblox")
 const Messages = require("@keepblox/Messages")
 const Sim = require("./Sim")
@@ -62,7 +63,8 @@ Spec.test(
 			const result = stores.A:load("u_1")
 			assert(result.ok, "loaded")
 			gifted(result.profile)
-			world.scheduler:wait(3)
+			-- The save that stores the effect leaves the write spacing after the claim (see Upkeep).
+			world.scheduler:wait(Config.DEFAULT.writeSpacing + 3)
 			const record = (world.backend:latest("Profiles/global", "u_1") :: any).value
 			Spec.equal(record.Data.gifts, { g1 = 1 })
 			Spec.equal(record.GlobalUpdates[2], {})
@@ -134,7 +136,8 @@ Spec.test("Messages: the owner on another server hears of a new message and hand
 			result.profile.Data.gifts[message.id] = 1
 			processed()
 		end)
-	end, 2)
+		-- Past the claim's write spacing: what is measured is how soon the owner hears (see Spacing).
+	end, Config.DEFAULT.writeSpacing + 2)
 	const sent = world.scheduler.now
 	Sim.run(world.scheduler, "B", function()
 		stores.B:message("u_1", { id = "g1" })

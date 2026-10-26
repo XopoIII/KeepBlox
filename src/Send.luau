@@ -61,6 +61,8 @@ function Send.message(internals: Internals, key: string, message: any): Result
 			end
 			const here = internals.sessions[key]
 			if here then
+				-- This server just wrote the key: the save that brings the message in waits its spacing.
+				here.lastWrite = clock.now()
 				here.saveSoon = true
 			elseif
 				(outcome.kind == "sent" or outcome.kind == "again")

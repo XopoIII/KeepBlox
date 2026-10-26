@@ -173,6 +173,8 @@ const function write(
 			return record
 		end
 	)
+	-- A call that failed may still have landed, and Roblox counts it against the key either way.
+	session.lastWrite = clock.now()
 	if not ok then
 		context.report(session.key, `save failed: {err}`, "save")
 		return false

@@ -103,7 +103,7 @@ function Upkeep.beat(internals: Internals, beating: { ok: boolean, sentAt: numbe
 			beating.ok = false
 			for _, session in internals.sessions do
 				session.snapshotted = false
-				session.saveSoon = true
+				session.saveNow = true
 			end
 		end
 	end
@@ -113,6 +113,10 @@ end
 --> Renews every session every `renew` seconds, and saves soon the ones that asked for it. The loop
 --> waits while the server's data store budget is spent, so loads and releases are not starved.
 --> `every` runs each second first (the beat's trust check).
+---
+--> Both wait until `writeSpacing` has passed since this server last wrote the key: Roblox queues a
+--> write that comes sooner, and a full queue drops requests. Whatever asks meanwhile (a message sent,
+--> one processed) goes in the same write. Only `saveNow` does not wait.
 function Upkeep.renew(internals: Internals, every: () -> ())
 	const clock = internals.context().services.clock
 	clock.spawn(function()
@@ -124,7 +128,12 @@ function Upkeep.renew(internals: Internals, every: () -> ())
 			const now = clock.now()
 			for _, session in internals.sessions do
 				const due = now >= session.nextRenew
-				if session.active and (due or session.saveSoon) and not session.serial:busy() then
+				const spaced = now - session.lastWrite >= context.config.writeSpacing
+				if
+					session.active
+					and (session.saveNow or (due or session.saveSoon) and spaced)
+					and not session.serial:busy()
+				then
 					if
 						dataStores:GetRequestBudgetForRequestType("StandardWrite") <= 0
 						or dataStores:GetRequestBudgetForRequestType("StandardRead") <= 0
@@ -136,6 +145,7 @@ function Upkeep.renew(internals: Internals, every: () -> ())
 							+ if session.snapshotted then context.config.renew else context.config.renewFallback
 					end
 					session.saveSoon = false
+					session.saveNow = false
 					clock.spawn(Session.save, session.context, session, true)
 				end
 			end

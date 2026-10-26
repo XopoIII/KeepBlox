@@ -284,6 +284,7 @@ for _, more in
 		require("./MutantsRejoin"), -- a quick rejoin while the earlier load is in flight (0.6.14)
 		require("./MutantsSchedule"), -- a schedule's jobs, run once and never found late (0.8.0)
 		require("./MutantsTally"), -- a tally's batches, counted once and summed by every server (0.9.0)
+		require("./MutantsSpacing"), -- the spacing between a session's writes to its key (0.9.3)
 	} :: { { Mutant } }
 do
 	for _, mutant in more do

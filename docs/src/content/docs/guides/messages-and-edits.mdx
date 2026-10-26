@@ -28,7 +28,8 @@ The message is queued in the key's record, whether or not anyone holds the key, 
 session processes it. A key that was never played gets a record holding only the queue. After queueing,
 the owner is told to save soon: directly when it is this server, or with ProfileStore's `{ LoadCount }`
 message on `"PS_" .. GUID` when it is another. A player online elsewhere gets the message within
-seconds.
+seconds. On the server that holds the key, the send has just written it, so the save that brings the
+message in waits `writeSpacing` (6 s) after it: Roblox takes one write to a key about every 6 seconds.
 
 `store:message` yields, and returns:
 

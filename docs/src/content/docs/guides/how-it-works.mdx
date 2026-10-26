@@ -51,7 +51,9 @@ A load claims a key in four steps (`src/Claim.luau`):
    the message ProfileStore sends, `{ LoadCount, EndSession = true }` on the topic `"PS_" .. GUID`. A
    live KeepBlox owner saves and hands over within a second of the message. On Roblox's real services a
    whole hand-over, from the ask to the newcomer's profile, took 4.2-4.6 s.
-3. **Wait.** The key is polled with a backoff from `backoffMin` (1 s) to `backoffMax` (5 s).
+3. **Wait.** The key is polled with a backoff from `backoffMin` (1 s) to `backoffMax` (5 s). A poll
+   that finds this server's request still standing writes nothing; only one a third server replaced
+   writes it again.
 4. **Take over**, if the owner is gone. The takeover succeeds only while this server's request is still
    the latest. A third server that asked since then wins, and this load fails with `"outbid"`.
 
@@ -138,8 +140,15 @@ minute, shared by all servers, and requests over it fail with `StandardReadExper
 Some saves do not wait for the renewal:
 
 - `profile:save()`, a purchase and a trade write at once;
-- a processed offline message, or a message someone sent to this profile, makes the session save within
-  a second.
+- a processed offline message, or a message someone sent to this profile, makes the session save at
+  its next second, once `writeSpacing` (6 s) has passed since this server last wrote the key.
+
+Roblox takes one write to a key about every 6 seconds and queues the rest ("DataStore request was added
+to queue"), and a full queue drops requests. So a write that can wait leaves `writeSpacing` after the
+key's last write from this server: the claim, a save, or a message sent from here. Whatever asks for a
+save meanwhile goes in the same write. A message sent from the server that holds the key is taken in by
+a save 6 s after the send, and its effect stored 6 s after that. The release, `profile:save()`, a
+purchase, and the write that stops the record vouching for a beat that no longer lands go at once.
 
 Repeated `save` calls join the one waiting in line, so a game calling `save` in a loop makes a few
 writes, not a queue of them.

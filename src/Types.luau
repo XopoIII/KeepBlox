@@ -49,14 +49,21 @@ export type Session = {
 	storedText: string,
 	storedSize: number,
 	lastDataWrite: number,
+	--> When this server last wrote the session's key (`clock.now()`): the session's own writes, its claim
+	--> and a message sent from here. A write that can wait leaves `writeSpacing` after it (see Upkeep).
+	lastWrite: number,
 	nextRenew: number,
 	serial: Serial.Serial,
 	--> The last validation problem reported, so it is not reported on every renewal.
 	lastProblem: string?,
 	--> The incoming messages and their handlers.
 	inbox: Inbox.Inbox,
-	--> Save at the next tick, not at the next renewal: a message was processed, or someone sent one.
+	--> Save at the next tick the key's write spacing allows, not at the next renewal: a message was
+	--> processed, someone sent one, or the beat is back.
 	saveSoon: boolean,
+	--> Save at the next tick, spacing or not: the beat's trust ran out, and the record must stop vouching
+	--> for it before a newcomer could judge the beat dead (see Upkeep.beat).
+	saveNow: boolean,
 	--> Purchase receipt ids granted into the data, the ones not yet stored included (see Receipts).
 	receipts: { string },
 	--> The receipt ids the store is known to hold.

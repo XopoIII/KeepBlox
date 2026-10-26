@@ -5,6 +5,59 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.9.3 - 2026-10-25
+
+A session no longer writes its key faster than Roblox takes writes to one key, and a load that waits for
+a key no longer writes its request again at every poll. The API is unchanged, but for one new setting.
+
+### Fixed
+
+- **A message sent to a profile open on the same server wrote its key three times in two seconds.**
+  Roblox takes one write to a key about every 6 seconds and queues the rest, warning "DataStore request
+  was added to queue. If request queue fills, further requests will be dropped." Seen in a live game:
+  `store:message` wrote the key, the session saved a second later to take the message in, and saved
+  again a second after that to store what its handler did. Nothing kept the session's writes apart but
+  the spacing by data size, which a processed message skips. Now a write that can wait (a renewal, or
+  the save a message or a returning beat asks for) leaves `writeSpacing` seconds after this server's
+  last write of the key: the claim, a save, or a message sent from here. Whatever asks meanwhile goes in
+  the same write. So that message makes three writes 6 s apart, and a message waiting when the key is
+  loaded is stored 6 s after the claim.
+- **A load waiting for a key wrote its hand-over request at every poll**, every half second while the
+  owner hands over and for as long as a dead owner's beat is watched: ten more writes of the key while
+  waiting on a dead owner. A poll that finds this server's request still standing now writes nothing;
+  one a third server replaced writes it again, as before.
+
+### Added
+
+- **`writeSpacing`** (default 6) in `config`. It must not exceed `renew`, so a renewal it holds off can
+  never let a live owner's lease look dead.
+
+### Changed
+
+- These do not wait for the spacing, as a write that cannot: the release (shutdown has its deadline,
+  and a newcomer may be waiting), `profile:save()` and `store:edit` on an open profile (the game asked
+  for the write now), a purchase (its receipt is answered only once stored), and the write that stops
+  the record vouching for a beat that no longer lands, which must land before a newcomer could judge
+  the beat dead. Roblox queues one of them when it comes too soon; it is not dropped.
+- A hand-over now takes one more poll, about half a second, where a poll used to land as the claim the
+  moment the owner let go: its write found the key changed and ran again.
+
+### Tests
+
+- 7 new specs (`tests/unit/Spacing.luau`, `tests/unit/Lock.luau`) and one extended
+  (`tests/unit/Store.luau`), 507 in all: messages sent
+  and processed where the key is held write it at least `writeSpacing` apart, are delivered once and
+  stored with their effect, and two sends a second apart are taken in and stored by one write each;
+  beside it, with a spacing of half a second the same writes come within two seconds. A save the game
+  asks for and a release go at once; a message waiting at the load is stored a spacing after the claim;
+  an owner whose beats hang stops vouching for them at once though it just wrote, over eight seeds, and
+  one whose beats land writes nothing more while the spacing lasts. A standing request is not written
+  again; one a third server replaced is. A spacing over `renew` is refused, and one at it taken.
+- Three specs wait for the spacing now: a message to an offline key is stored a spacing after the
+  load, the owner on another server hears of a message once the claim's spacing has passed, and a
+  load's costs count the hand-over's extra poll and the waiting load's writes (13 down to 3).
+- 7 mutants (`tests/MutantsSpacing.luau`), each seen failing the suite.
+
 ## 0.9.2 - 2026-10-25
 
 A toolchain release. The package's code is 0.9.1's: nothing in `src/` changes.
