@@ -5,6 +5,16 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.9.4 - 2026-10-27
+
+A maintenance release. The library, its API and the on-disk format are those of 0.9.3.
+
+### Changed
+
+- **Tests and benchmarks run on LuneBlox 0.11.3**, from 0.11.2. The update brings compression
+  security fixes, reverse Roblox property migrations and optional OCALE conformance tooling. The
+  `@lune` typedef alias follows it.
+
 ## 0.9.3 - 2026-10-25
 
 A session no longer writes its key faster than Roblox takes writes to one key, and a load that waits for
