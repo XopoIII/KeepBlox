@@ -5,6 +5,20 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.9.6 - 2026-10-29
+
+The API and the on-disk format are those of 0.9.5.
+
+### Fixed
+
+- **A release whose write landed but answered with an error ended the session as lost.** Roblox can
+  store a write and still fail the call (a 502 after the commit, or an answer slower than
+  `callTimeout`). The release tries again, and its retry found the key already let go by that very
+  try, so it reported `onEnded("lost")`, though the data was stored and no other server held the key.
+  During a data store outage every such release raised a loss a game alerts on. A release that finds
+  the key let go by its own session (no active session, its own load count and owner) now writes
+  nothing and ends as `released`; a key another server took meanwhile still ends as `lost`.
+
 ## 0.9.5 - 2026-10-29
 
 The API and the on-disk format are those of 0.9.4.

@@ -285,6 +285,7 @@ for _, more in
 		require("./MutantsSchedule"), -- a schedule's jobs, run once and never found late (0.8.0)
 		require("./MutantsTally"), -- a tally's batches, counted once and summed by every server (0.9.0)
 		require("./MutantsSpacing"), -- the spacing between a session's writes to its key (0.9.3)
+		require("./MutantsReleaseLanded"), -- a release whose earlier try landed unanswered (0.9.6)
 	} :: { { Mutant } }
 do
 	for _, mutant in more do
