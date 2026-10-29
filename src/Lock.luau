@@ -8,7 +8,8 @@
 --- - `force` takes the key from whoever holds it, at once (ProfileStore's `Steal = true`).
 --- - `quiet` never asks: a held key is left as it is, unless the caller proves its owner dead.
 --- - `save` writes only while `ActiveSession` is this server and `SessionLoadCount` is this session's.
----   Otherwise it writes nothing and reports the session lost. Every save bumps our lease and
+---   Otherwise it writes nothing and reports the session lost, except to a release whose own earlier
+---   try already let the key go: that one writes nothing and reports it saved. Every save bumps our lease and
 ---   `LastUpdate`, and reports another server's pending `ForceLoadSession`, so the owner hands over.
 --- - `disown` lets go of a key a claim may have taken without learning it did (its answer was lost),
 ---   and only if that very claim holds it; or of one this server holds at a given load count.
@@ -189,7 +190,17 @@ function Lock.save(
 	end
 	const meta = value.MetaData
 	const active = meta.ActiveSession
-	if not Record.isHere(active, identity) or meta.SessionLoadCount ~= loadCount then
+	if
+		payload.release
+		and active == nil
+		and meta.SessionLoadCount == loadCount
+		and identity.guid ~= ""
+		and Record.ours(meta).owner == identity.guid
+	then
+		-- This very session let the key go: an earlier try of its release landed unanswered. The data
+		-- froze when the release began, so that try stored what this one carries.
+		return nil, { kind = "saved", handOver = false, record = value, messages = Messages.list(value) }
+	elseif not Record.isHere(active, identity) or meta.SessionLoadCount ~= loadCount then
 		return nil, { kind = "lost", owner = active }
 	elseif not Once.fence(Record.ours(meta), loadCount, payload.stamp) then
 		const handOver = meta.ForceLoadSession ~= nil and not Record.isHere(meta.ForceLoadSession, identity)

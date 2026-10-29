@@ -141,6 +141,30 @@ Spec.test("Lock: a session that no longer owns the key writes nothing", function
 	Spec.equal((lost :: any).owner, { 1, "job-B", "guid-B" })
 end)
 
+Spec.test("Lock: a release finding its own earlier try landed writes nothing and reports it saved", function()
+	const released = Lock.save(claimed(nil, HERE), HERE, 1, { data = { coins = 4 }, release = true }, 1010)
+	const none, again = Lock.save(Record.copy(released), HERE, 1, { data = { coins = 4 }, release = true }, 1020)
+	Spec.equal(none, nil)
+	Spec.equal(again.kind, "saved")
+	Spec.equal((again :: any).handOver, false)
+	Spec.equal((again :: any).record.Data, { coins = 4 })
+	-- Only a release: a renewal or a save after the key was let go is still lost.
+	const _, renewal = Lock.save(Record.copy(released), HERE, 1, { data = { coins = 5 }, release = false }, 1020)
+	Spec.equal(renewal.kind, "lost")
+	-- Another session's release, or this server's other load, is not this one's.
+	const _, other = Lock.save(Record.copy(released), THERE, 1, { data = { coins = 5 }, release = true }, 1020)
+	Spec.equal(other.kind, "lost")
+	const _, older = Lock.save(Record.copy(released), HERE, 0, { data = { coins = 5 }, release = true }, 1020)
+	Spec.equal(older.kind, "lost")
+	-- Taken and let go by another server since: the stored data is that server's.
+	const after =
+		Lock.save(claimed(Record.copy(released), THERE), THERE, 2, { data = { coins = 9 }, release = true }, 1030)
+	Spec.equal(after.MetaData.ActiveSession, nil)
+	const lostNone, lost = Lock.save(Record.copy(after), HERE, 1, { data = { coins = 4 }, release = true }, 1040)
+	Spec.equal(lostNone, nil)
+	Spec.equal(lost.kind, "lost")
+end)
+
 Spec.test("Lock: a quiet takeover lands only on the very lease it watched stand still", function()
 	const record = claimed(nil, THERE)
 	const function quiet(expect: Lock.Expected): string
