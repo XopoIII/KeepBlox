@@ -29,6 +29,12 @@ return {
 		breaks = "a message sent where the key is held starts the spacing",
 	},
 	{
+		file = "src/Upkeep.luau",
+		from = "\t\t\t\t\t\tsession.lastWrite = services.clock.now()\n",
+		to = "",
+		breaks = "a message sent from another server starts the spacing",
+	},
+	{
 		file = "src/Enter.luau",
 		from = "\t\tlastWrite = clock.now(),\n",
 		to = "\t\tlastWrite = -math.huge,\n",

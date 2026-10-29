@@ -142,7 +142,9 @@ Spec.test("Messages: the owner on another server hears of a new message and hand
 	Sim.run(world.scheduler, "B", function()
 		stores.B:message("u_1", { id = "g1" })
 	end, sent + 10)
-	Spec.truthy(at > 0 and at - sent < 5, `handled {at - sent} s after sending`)
+	-- The sender wrote the key to queue the message, so the save that takes it in waits the write
+	-- spacing from then (see Spacing): heard at once, handled a spacing and a second or two later.
+	Spec.truthy(at > 0 and at - sent < Config.DEFAULT.writeSpacing + 3, `handled {at - sent} s after sending`)
 end)
 
 Spec.test("Messages: a message that cannot be stored is refused before it is sent", function()
