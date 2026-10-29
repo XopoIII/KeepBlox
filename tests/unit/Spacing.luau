@@ -149,6 +149,34 @@ Spec.test("Spacing: a message waiting when the key is loaded is stored a spacing
 	Spec.truthy(scene.writes[3] - scene.writes[2] >= SPACING, `{scene.writes[3] - scene.writes[2]} s after the claim`)
 end)
 
+-- Another server's send writes the key too: the owner's save that takes the message in waits the
+-- spacing from that write, though its own last write was long before.
+Spec.test("Spacing: a message sent from another server is taken in a spacing after its write", function()
+	const scene = rig(4)
+	const other = KeepBlox.store(
+		"Profiles",
+		{ template = { gifts = {} }, services = scene.world:server({ name = "B" }).services }
+	)
+	const seen = { n = 0 }
+	Sim.run(scene.world.scheduler, "A", function()
+		const result = scene.store:load("u_1")
+		assert(result.ok, "loaded")
+		gifted(result.profile, seen)
+	end, 2 * SPACING)
+	Sim.run(scene.world.scheduler, "B", function()
+		Spec.equal(other:message("u_1", { id = "g1" }), { ok = true })
+	end, scene.world.scheduler.now + 4 * SPACING)
+	Spec.equal(seen.n, 1)
+	Spec.equal(stored(scene.world).Data.gifts, { g1 = 1 })
+	-- The claim, B's send, the save that took the message in, the one that stored its effect.
+	Spec.equal(#scene.writes, 4)
+	const apart = gaps(scene.writes, 2)
+	for index = 1, 2 do
+		Spec.truthy(apart[index] >= SPACING, `write {index + 2} came {apart[index]} s after the one before`)
+	end
+	Spec.equal(scene.errors, {})
+end)
+
 -- The owner's record must stop vouching for its beat before a newcomer could judge the beat dead (see
 -- Upkeep.beat): that write does not wait. A spacing as long as the renewal leaves it the only write
 -- that could land in time.

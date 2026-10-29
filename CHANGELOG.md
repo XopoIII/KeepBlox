@@ -5,6 +5,19 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.9.5 - 2026-10-29
+
+The API and the on-disk format are those of 0.9.4.
+
+### Fixed
+
+- **A message sent from another server still wrote its key twice within a second or two.** The
+  sender writes the key to queue the message and tells the owner, whose save that takes it in waited
+  the write spacing only from its own last write, long before: so it wrote right after the sender, and
+  Roblox queued the write with its warning "DataStore request was added to queue". The owner now
+  counts the sender's write as the key's last one, and the save waits the spacing from it. A message
+  from another server is handled a spacing later than before (about 7 s instead of 1 to 2 s).
+
 ## 0.9.4 - 2026-10-27
 
 A maintenance release. The library, its API and the on-disk format are those of 0.9.3.

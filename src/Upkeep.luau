@@ -196,7 +196,7 @@ function Upkeep.shutdown(internals: Internals, close: () -> ()): () -> ()
 end
 
 --> Listens on "PS_"..`guid` for requests to a session: `EndSession` hands it over, and a bare
---> `LoadCount` (someone sent a message) makes it save soon. It subscribes before the claim, so a
+--> `LoadCount` (someone sent a message, writing the key) makes it save soon, a spacing after that write. It subscribes before the claim, so a
 --> request that comes right after the key is taken is not missed. Subscribing can hang (as in Team
 --> Test), so it never holds up the load.
 ---
@@ -217,6 +217,9 @@ function Upkeep.listen(services: Services.Services, guid: string, target: Listen
 					if data.EndSession then
 						Session.release(session.context, session, "handedOver")
 					else
+						-- The sender has just written the key to queue its message: the save that takes
+						-- it in waits the spacing from that write, not from this server's last one.
+						session.lastWrite = services.clock.now()
 						session.saveSoon = true
 					end
 				end)
