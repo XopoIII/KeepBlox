@@ -5,6 +5,20 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.9.7 - 2026-11-06
+
+A maintenance release. The library, its API and the on-disk format are those of 0.9.6.
+
+### Changed
+
+- **Tests and benchmarks run on LuneBlox 0.11.4**, from 0.11.3. The update preserves numeric Roblox
+  attributes as Float64, fixes empty-model DOM cleanup, backports a conditional-spill codegen fix and
+  refreshes fast flags against the Roblox client. Luau remains at 0.740; the `@lune` typedef alias
+  follows the runtime.
+- **Documentation dependencies are refreshed** to Astro 7.4.7, Starlight 0.42.9 and the pinned
+  `postcss-selector-parser` override 7.1.7. The optional macOS watcher uses its shipped binary; its
+  unneeded install hook is explicitly denied in npm's install-script policy.
+
 ## 0.9.6 - 2026-10-29
 
 The API and the on-disk format are those of 0.9.5.
