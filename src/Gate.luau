@@ -25,10 +25,12 @@ type State = {
 	answered: number,
 }
 
-const Gate = {}
-
---> False turns the gate off: every retry goes at its own backoff. The benchmark measures against that.
-Gate.enabled = true
+--> False turns the gate off: every retry goes at its own backoff. The benchmark measures against
+--> that. The flag goes in through a `boolean`-typed local: a bare `= true` in the literal keeps the
+--> singleton `true` in the module's export under the new solver, which then refuses the boolean a
+--> benchmark assigns.
+local flag: boolean = true
+const Gate = { enabled = flag }
 
 const OPEN = 0.3
 const WEIGHT = 0.2

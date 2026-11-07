@@ -22,7 +22,7 @@ const MIGRATIONS: { [number]: (data: any) -> ...any } = {
 		data.wins, data.losses = nil, nil
 	end,
 }
-const OPTIONS = { schema = SCHEMA, migrations = MIGRATIONS }
+const OPTIONS: KeepBlox.MigrateOptions = { schema = SCHEMA, migrations = MIGRATIONS }
 
 Spec.test("Migrate: each migration, from its fixture before to its fixture after", function()
 	Spec.equal(KeepBlox.migrate(OPTIONS, { gold = 5, wins = 1, losses = 2 }, 0), {

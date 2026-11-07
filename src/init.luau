@@ -74,6 +74,7 @@ export type Config = Config.Config
 export type ConfigOverrides = Config.Overrides
 --> One migration: a step, or `{ up, down }` for a release that can be rolled back (see Migrate).
 export type Migration = Migrate.Migration
+export type MigrateOptions = Migrate.Options
 
 const KeepBlox = {}
 
@@ -102,15 +103,7 @@ KeepBlox.importers = Importers
 
 --> Runs a store's migrations, defaults and schema check on a copy of `data` stored at version `from`,
 --> exactly as a load does. For testing each migration with fixtures from before and after it.
-function KeepBlox.migrate(
-	options: {
-		read schema: Schema.Node?,
-		read version: number?,
-		read migrations: { read [number]: Migrate.Migration }?,
-	},
-	data: any,
-	from: number
-): Migrate.Outcome
+function KeepBlox.migrate(options: Migrate.Options, data: any, from: number): Migrate.Outcome
 	const plan = Migrate.plan(options.schema, options.version, options.migrations)
 	return Migrate.run(plan, Record.copy(data), from)
 end
@@ -118,11 +111,7 @@ end
 --> Runs a store's down steps on a copy of `data`, at `version`, down to version `to`: what a release
 --> with `writeVersion = to` stores. For testing that each `down` undoes its `up`.
 function KeepBlox.migrateDown(
-	options: {
-		read schema: Schema.Node?,
-		read version: number?,
-		read migrations: { read [number]: Migrate.Migration }?,
-	},
+	options: Migrate.Options,
 	data: any,
 	to: number
 ): { ok: true, data: any } | { ok: false, message: string }

@@ -29,6 +29,15 @@ export type Step = (data: any) -> ...any
 --> One migration: the step up, or the step up and the step back down.
 export type Migration = Step | { read up: Step, read down: Step }
 
+--> The options `KeepBlox.migrate` and `KeepBlox.migrateDown` take, named for the callers that hold
+--> one in a local: a table literal in a local no longer widens into this shape by itself under the
+--> new solver, and an annotation names it.
+export type Options = {
+	read schema: Schema.Node?,
+	read version: number?,
+	read migrations: { read [number]: Migration }?,
+}
+
 export type Plan = {
 	schema: Schema.Node?,
 	--> The version this server plays at.

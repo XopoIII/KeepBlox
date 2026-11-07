@@ -5,6 +5,29 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.9.8 - 2026-11-08
+
+A maintenance release. The library's runtime behaviour, its public API and the on-disk format are
+those of 0.9.7; the source gains two type-level changes that erase at runtime. A game that moves to
+it changes a version number.
+
+### Changed
+
+- **The type gate runs on XopoIII/luau-lsp 1.70.1-xopoiii.1**, the fork, from JohnnyMorganz/luau-lsp
+  1.70.1. The analyzer reads Luau 0.745, from 0.740, and carries the fork's fixes ahead of the
+  stable release: `analyze` reports each module's errors once instead of repeating a dependency's,
+  no longer warns about watcher registration it never uses, and `EnumItem.EnumType` is the item's
+  own enum. The Roblox definitions the gate loads now come from the fork's tag, so the pin and the
+  definitions are one thing. Every other tool stays at its current pin.
+- **`Migrate.Options` is exported, as `KeepBlox.MigrateOptions`.** `KeepBlox.migrate` and
+  `KeepBlox.migrateDown` took their options as an anonymous type, which a caller holding the table
+  in a local can no longer satisfy by inference alone: the new solver does not widen a table literal
+  in a local into a type whose fields are optional. The type is now named, in line with every other
+  options type the package exports, and the specs annotate their fixtures with it.
+- **`Gate`'s `enabled` flag goes in through a `boolean`-typed local.** A bare `= true` in the table
+  literal keeps the singleton `true` in the module's export under the new solver, which refused the
+  boolean `bench/Retry` assigns; the local widens the flag to `boolean`.
+
 ## 0.9.7 - 2026-11-06
 
 A maintenance release. The library, its API and the on-disk format are those of 0.9.6.

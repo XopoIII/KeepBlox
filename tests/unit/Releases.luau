@@ -73,6 +73,10 @@ const RELEASE_2 = {
 }
 const RELEASE_3 = { template = { gold = 0, stats = { wins = 0 } }, migrations = { [1] = WRAP[1], [2] = RENAME } }
 
+-- The same migrations as `migrate` options: a table literal held in a local does not widen into the
+-- options type by itself under the new solver, so the migrate calls below name it.
+const MIGRATE_3: KeepBlox.MigrateOptions = { migrations = { [1] = WRAP[1], [2] = RENAME } }
+
 const function open(world: World.World, name: string, release: any): KeepBlox.Store
 	const options = table.clone(release)
 	options.services = world:server({ name = name }).services
@@ -192,14 +196,14 @@ Spec.test("Releases: writeVersion is checked, and migrateDown runs the down step
 		})
 	end, "the template does not come back through migrations 1..1 down and up")
 	const fixture = { gold = 4, stats = { wins = 1 } }
-	Spec.equal(KeepBlox.migrateDown(RELEASE_3, fixture, 1), { ok = true, data = { coins = 4, stats = { wins = 1 } } })
+	Spec.equal(KeepBlox.migrateDown(MIGRATE_3, fixture, 1), { ok = true, data = { coins = 4, stats = { wins = 1 } } })
 	Spec.equal(
-		(KeepBlox.migrate(RELEASE_3, { coins = 4, stats = { wins = 1 } }, 1) :: any).data,
+		(KeepBlox.migrate(MIGRATE_3, { coins = 4, stats = { wins = 1 } }, 1) :: any).data,
 		fixture,
 		"up undoes down"
 	)
 	Spec.throws(function()
-		KeepBlox.migrateDown(RELEASE_3, fixture, 0)
+		KeepBlox.migrateDown(MIGRATE_3, fixture, 0)
 	end, "migration 1 has no down function")
 end)
 
