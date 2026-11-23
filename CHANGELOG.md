@@ -5,7 +5,7 @@ semantic versioning.
 
 ## Unreleased
 
-## 0.9.8 - 2026-11-23
+## 0.9.9 - 2026-11-23
 
 `game.JobId` is empty in Studio, and an empty identity is not a missing detail: it is a MemoryStore
 key that cannot be written.
