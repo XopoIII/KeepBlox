@@ -5,6 +5,23 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.9.10 - 2026-11-23
+
+A maintenance release. The library, its API and the on-disk format are those of 0.9.9.
+
+### Changed
+
+- **Tests and benchmarks run on LuneBlox 0.12.1**, from 0.11.4. The update moves Luau from the
+  patched 0.740 to 0.747, the release the Roblox client 0.747.0.7471481 runs: every fix the vendored
+  copy of Luau carried is upstream now, and the fast flag table is regenerated against that client.
+  Luau 0.747 drops the 64-bit integer C API, which neither `src/` nor the harness used. The `@lune`
+  typedef alias follows the runtime, and `CLAUDE.md` names the Luau the library writes for.
+- **pesde is 0.7.5**, from 0.7.4: `--help` and `--version` no longer fail on an invalid manifest or
+  config, and `install` no longer hangs when the dependency graph contains a cycle.
+- **Documentation dependencies are refreshed** to Astro 7.4.13, Starlight 0.43.1 and the pinned
+  `postcss-selector-parser` override 7.2.1. The optional macOS watcher keeps its shipped binary; its
+  unneeded install hook stays denied in npm's install-script policy.
+
 ## 0.9.9 - 2026-11-23
 
 `game.JobId` is empty in Studio, and an empty identity is not a missing detail: it is a MemoryStore

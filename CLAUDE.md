@@ -42,7 +42,7 @@ seen failing once (against a deliberately broken fake or module) before it is tr
 
 ## Modern Luau: the version Roblox runs
 
-We write for the Luau Roblox runs today (0.740, September 2026), which LuneBlox also runs, and we use
+We write for the Luau Roblox runs today (0.747, November 2026), which LuneBlox also runs, and we use
 what it offers:
 - **`const`** for every binding that is never reassigned, including requires, module tables and
   functions (`const function`). Use `local` only for a binding that really is reassigned.
