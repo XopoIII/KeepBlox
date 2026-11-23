@@ -4,9 +4,30 @@
 --- Nothing here runs at require time: `game` is touched only inside `build()`, so the module can be
 --- required (and type-checked) anywhere. The adapter translates the seam's plain arguments into the
 --- engine's option Instances and passes everything else straight through.
+const Identity = require("./Identity")
 const Services = require("./Services")
 
 const RobloxServices = {}
+
+-- One session identity for every store this process opens. A Studio session has no `game.JobId`,
+-- so one is minted and kept: a heartbeat must be written under a key, and every store of this
+-- session must name the same one.
+local sessionJobId: string? = nil
+const function sessionIdentity(): string
+	const real = game.JobId
+	if real ~= "" then
+		return real
+	end
+	const held = sessionJobId
+	if held ~= nil then
+		return held
+	end
+	const minted = Identity.job("", function(): string
+		return game:GetService("HttpService"):GenerateGUID(false)
+	end)
+	sessionJobId = minted
+	return minted
+end
 
 const function wrapStore(store: DataStore): Services.DataStore
 	const wrapped = {}
@@ -148,7 +169,7 @@ function RobloxServices.build(): Services.Services
 		messaging = messaging :: Services.Messaging,
 		clock = clock,
 		placeId = game.PlaceId,
-		jobId = game.JobId,
+		jobId = sessionIdentity(),
 		isStudio = game:GetService("RunService"):IsStudio(),
 		bindToClose = function(callback: () -> ())
 			game:BindToClose(callback)

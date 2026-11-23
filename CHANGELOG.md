@@ -5,6 +5,23 @@ semantic versioning.
 
 ## Unreleased
 
+## 0.9.8 - 2026-11-23
+
+`game.JobId` is empty in Studio, and an empty identity is not a missing detail: it is a MemoryStore
+key that cannot be written.
+
+### Fixed
+
+- **A session without a JobId now has an identity.** Each server writes one heartbeat in the
+  `KB_servers` sorted map under its JobId, and a newcomer reads that entry to tell a dead session
+  from a live one before it takes a profile. In Studio the JobId is empty, so the call was refused
+  (`InvalidParameter: The key field is required`) and every newcomer was left unable to prove the
+  previous session dead: the profile was refused on the next join, while the same record still
+  decoded and its writes still landed. `RobloxServices` now mints one `studio-...` identity per
+  session when the JobId is empty and keeps it for every store that session opens
+  (`src/Identity.luau`, pinned by `tests/unit/Identity.luau`). A live server is unchanged: its own
+  JobId is used and nothing is minted.
+
 ## 0.9.7 - 2026-11-06
 
 A maintenance release. The library, its API and the on-disk format are those of 0.9.6.
